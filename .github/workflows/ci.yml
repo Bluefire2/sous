@@ -62,7 +62,8 @@ jobs:
 
   # Test mode (docs/plans/test-mode.md): the built app against a seeded
   # Firestore emulator, with fake personas signed in by /__test/sign-in. The
-  # only job that runs the emulator; unit tests stay pure. Needs no secrets.
+  # only CI job that runs the emulator (the scheduled i18n-review.yml is the
+  # other workflow); unit tests stay pure. Needs no secrets.
   test-mode:
     runs-on: ubuntu-latest
     timeout-minutes: 15

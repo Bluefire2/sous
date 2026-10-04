@@ -1,6 +1,6 @@
 # Test mode
 
-Status: built on `claude/test-mode` (#123). Steps 1–7 done. The
+Status: merged (#123). Steps 1–7 done. The
 `test-mode` CI job passed on GitHub on its first run and on every push since.
 
 Constitutions applied: none binds this change. It adds no app UI, no catalog

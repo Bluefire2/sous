@@ -4,7 +4,7 @@
  * `/recipe/<id>` by a constant. Timestamps are relative to the seed run, so
  * relative-time labels read the same on every run.
  */
-import type { ChatMessage, CookLog, CookStateRow, Collection, Recipe } from '../src/lib/types.ts';
+import type { ChatMessage, CookLog, CookStateRow, Collection, Recipe, RecipeDraft } from '../src/lib/types.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -34,6 +34,12 @@ export const FIXTURE_IDS = {
   },
   viewer: {
     pancakes: uuid(301),
+    /** Ask on member's Quick tomato pasta, seen through Weeknights (viewer). */
+    pastaQuestion: uuid(381),
+    pastaProposal: uuid(382),
+    /** Ask on owner's Shakshuka, through Owner's picks (editor). */
+    shakshukaQuestion: uuid(383),
+    shakshukaProposal: uuid(384),
   },
 } as const;
 
@@ -198,6 +204,8 @@ export function memberLibrary(now: number): PersonaLibrary {
     servings: 8,
     cookMinutes: 60,
     lang: 'en',
+    // Imported from a page, so the warning box offers Retry import and View original.
+    sourceUrl: 'https://example.com/banana-bread',
     tags: ['baking'],
     ingredientSections: [
       {
@@ -355,4 +363,81 @@ export function viewerLibrary(now: number): PersonaLibrary {
     ],
   });
   return { recipes: [pancakes], collections: [], cookStates: [], cookLogs: [], chat: [] };
+}
+
+function draftOf(recipe: Recipe): RecipeDraft {
+  const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...draft } = recipe;
+  return draft;
+}
+
+/**
+ * `viewer`'s Ask threads on recipes shared with them, each ending in a
+ * proposal card: a viewer share offers only Save as a new recipe, an editor
+ * share also Apply. Pushed after the grants exist, since the server checks
+ * the share on every chat write.
+ */
+export function viewerSharedChat(now: number): ChatMessage[] {
+  const ids = FIXTURE_IDS.viewer;
+  const pasta = memberLibrary(now).recipes.find((r) => r.id === FIXTURE_IDS.member.tomatoPasta)!;
+  const shakshuka = ownerLibrary(now).recipes.find((r) => r.id === FIXTURE_IDS.owner.shakshuka)!;
+  return [
+    {
+      id: ids.pastaQuestion,
+      recipeId: pasta.id,
+      role: 'user',
+      content: 'Can you make this for four people?',
+      createdAt: now - 3 * DAY,
+    },
+    {
+      id: ids.pastaProposal,
+      recipeId: pasta.id,
+      role: 'assistant',
+      content: 'Here it is doubled for four.',
+      proposedRecipe: {
+        ...draftOf(pasta),
+        servings: 4,
+        ingredientSections: [
+          {
+            items: [
+              { quantity: 400, unit: 'g', item: 'spaghetti' },
+              { quantity: 800, unit: 'g', item: 'tinned chopped tomatoes' },
+              { quantity: 4, item: 'garlic cloves', note: 'sliced' },
+              { quantity: 4, unit: 'tbsp', item: 'olive oil' },
+              { item: 'basil leaves' },
+            ],
+          },
+        ],
+      },
+      createdAt: now - 3 * DAY + 5_000,
+    },
+    {
+      id: ids.shakshukaQuestion,
+      recipeId: shakshuka.id,
+      role: 'user',
+      content: 'Add some feta?',
+      createdAt: now - 2 * DAY,
+    },
+    {
+      id: ids.shakshukaProposal,
+      recipeId: shakshuka.id,
+      role: 'assistant',
+      content: 'Crumble feta over the top just before serving.',
+      proposedRecipe: {
+        ...draftOf(shakshuka),
+        ingredientSections: [
+          {
+            items: [
+              ...shakshuka.ingredientSections[0].items,
+              { quantity: 100, unit: 'g', item: 'feta', note: 'crumbled' },
+            ],
+          },
+        ],
+        steps: [
+          ...shakshuka.steps,
+          { text: 'Crumble the feta over the top before serving.' },
+        ],
+      },
+      createdAt: now - 2 * DAY + 5_000,
+    },
+  ];
 }

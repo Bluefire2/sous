@@ -258,6 +258,14 @@ people who see the intro are members.
   (`docs/i18n-review/README.md`) for the three intro screens and Settings in
   `uk`, `ru` and `zh-Hans`.
 
+The translation review runs as `npm run test:i18n` (`testing/i18n-review/`).
+The three intro steps are scripted there from Settings as `member`, and the
+two empty-library states use the `introSeen` mock, so they still show the
+empty library and nothing closes the intro. Task run on 2026-10-04 over
+`intro-step-1..3`, `settings`, `library-empty` and
+`library-collections-empty`: 18 judged, 0 blockers, 0 nits; `--repeat 2`
+found every capture deterministic.
+
 No check here needs `dev:api` or a real Google sign-in.
 
 ## Rollout

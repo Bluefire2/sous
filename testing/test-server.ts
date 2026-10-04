@@ -104,6 +104,12 @@ function escapeHtml(text: string): string {
 let ready = false;
 
 /**
+ * When the seed's relative times were taken ("3 days ago"); absent with
+ * --keep. Browser tests can freeze their clock relative to it.
+ */
+let seededAt: number | undefined;
+
+/**
  * The persona list. Until the seed is done it offers no links: a sign-in then
  * would land signed out, because the persona is not admitted yet.
  * `/__test/sign-in` itself stays open, since the seed signs in through it.
@@ -151,6 +157,7 @@ function personasJson(): Response {
       admitted: p.admission === 'owner' || p.admission === 'member',
     })),
     fixtures: FIXTURE_IDS,
+    seededAt: seededAt ?? null,
     // Present after a fresh seed, absent with --keep. Raw tokens, test mode only.
     ...(mcp === null ? {} : { mcp }),
   };
@@ -266,7 +273,7 @@ if (values.keep === true) {
 } else {
   const { clearEmulator, seed } = await import('./seed.ts');
   await clearEmulator(host);
-  await seed(`http://localhost:${port}`);
+  seededAt = await seed(`http://localhost:${port}`);
   console.log('Seeded the emulator.');
 }
 

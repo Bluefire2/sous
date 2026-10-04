@@ -137,7 +137,7 @@ export const zhHans: Messages = {
   'settings.exportLibrary': '导出食谱库',
   'settings.importBackup': '导入备份',
   'settings.importedRecipes': {
-    other: '已导入 {count} 道食谱 ✓',
+    other: '已导入 {count} 个食谱 ✓',
   },
   'settings.importSkipped': {
     other: '跳过了 {count} 条无法读取的内容。',
@@ -239,9 +239,9 @@ export const zhHans: Messages = {
   'import.extracting': '正在提取…',
   'import.extractRecipes': '提取食谱',
   'import.extractRecipe': '提取食谱',
-  'import.readingProgress': '正在读取第 {current} 道，共 {total} 道',
+  'import.readingProgress': '正在读取第 {current} 个，共 {total} 个',
   'import.progressLabel': '批量导入进度',
-  'import.readingProgressHint': '正在读取第 {current} 道，共 {total} 道——需要几秒钟。',
+  'import.readingProgressHint': '正在读取第 {current} 个，共 {total} 个——需要几秒钟。',
   'import.readingHint': '正在读取食谱——需要几秒钟。',
   'import.placeholderPhotos': '可选备注，帮助识别照片，例如菜名…',
   'import.addPhotos': '添加照片',
@@ -612,19 +612,19 @@ export const zhHans: Messages = {
   'assistant.preparingMove': '正在准备移动…',
   'assistant.moveLeaveCurrentCollections': '这些食谱将离开它们当前的合集。',
   'assistant.moveHeadingToCollection': {
-    other: '将 {count} 道食谱移到「{name}」',
+    other: '将 {count} 个食谱移到「{name}」',
   },
   'assistant.moveHeadingToRecipes': {
-    other: '将 {count} 道食谱移回食谱',
+    other: '将 {count} 个食谱移回食谱',
   },
   'assistant.moveAppliedToCollection': {
-    other: '已将 {count} 道食谱移到「{name}」',
+    other: '已将 {count} 个食谱移到「{name}」',
   },
   'assistant.moveAppliedToRecipes': {
-    other: '已将 {count} 道食谱移回食谱',
+    other: '已将 {count} 个食谱移回食谱',
   },
   'assistant.moveAndMore': {
-    other: '还有 {count} 道',
+    other: '还有 {count} 个',
   },
   'assistant.moveShowAll': '显示全部食谱',
   'assistant.moveShowLess': '显示更少',
@@ -632,11 +632,11 @@ export const zhHans: Messages = {
   'assistant.moving': '正在移动…',
   'assistant.preparingCollection': '正在准备合集…',
   'assistant.createHeading': {
-    other: '创建「{name}」，包含 {count} 道食谱',
+    other: '创建「{name}」，包含 {count} 个食谱',
   },
   'assistant.createHeadingEmpty': '创建「{name}」',
   'assistant.createApplied': {
-    other: '已创建「{name}」，包含 {count} 道食谱',
+    other: '已创建「{name}」，包含 {count} 个食谱',
   },
   'assistant.createAppliedEmpty': '已创建「{name}」',
   'assistant.create': '创建',

@@ -9,7 +9,7 @@
  * fixture change moves the checks with it. Exits non-zero on any failure.
  */
 import type { PublicCollectionBody } from '../server/publicLinks.ts';
-import { FIXTURE_IDS, memberLibrary, ownerLibrary, viewerLibrary } from './fixtures.ts';
+import { FIXTURE_IDS, memberLibrary, ownerLibrary, viewerLibrary, viewerSharedChat } from './fixtures.ts';
 import { checkMcpEndpoints } from './mcpSmoke.ts';
 import { PERSONAS, type PersonaName, persona } from './personas.ts';
 
@@ -161,6 +161,7 @@ async function checkMember(cookie: string): Promise<void> {
 async function checkViewer(cookie: string): Promise<void> {
   const body = await pull(cookie);
   checkSame('viewer own recipes', ids(body?.changes.recipes), viewer.recipes.map((r) => r.id));
+  checkSame('viewer chat on shared recipes', ids(body?.changes.chatMessages), viewerSharedChat(0).map((m) => m.id));
 
   const roles = new Map<string, string>();
   const sharedRecipes: string[] = [];

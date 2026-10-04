@@ -25,6 +25,7 @@ import {
   memberLibrary,
   ownerLibrary,
   viewerLibrary,
+  viewerSharedChat,
   type PersonaLibrary,
 } from './fixtures.ts';
 import { PERSONAS, persona, type PersonaName } from './personas.ts';
@@ -191,8 +192,11 @@ async function exchangeMcpCode(
   return { accessToken: parsed.access_token, refreshToken: parsed.refresh_token };
 }
 
-/** Signs every persona in and writes the fixtures. The emulator must be empty. */
-export async function seed(baseUrl: string): Promise<void> {
+/**
+ * Signs every persona in and writes the fixtures. The emulator must be empty.
+ * Returns the time the fixtures are relative to.
+ */
+export async function seed(baseUrl: string): Promise<number> {
   const now = Date.now();
   const cookies = {} as Cookies;
   for (const p of PERSONAS) {
@@ -214,10 +218,16 @@ export async function seed(baseUrl: string): Promise<void> {
     cookie: cookies.owner,
     json: { email: viewerEmail, role: 'editor' },
   });
+  await push(
+    baseUrl,
+    cookies.viewer,
+    viewerSharedChat(now).map((payload) => ({ kind: 'chat.put', payload })),
+  );
   await request(baseUrl, `/api/collections/${FIXTURE_IDS.member.weeknights}/public`, {
     cookie: cookies.member,
   });
   await request(baseUrl, '/api/admin/invites', { cookie: cookies.owner });
 
   await connectApp(baseUrl, now);
+  return now;
 }

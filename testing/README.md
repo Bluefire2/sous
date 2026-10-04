@@ -79,7 +79,7 @@ refused.
 | `owner` | `owner@sous.invalid`, the owner (`ALLOWED_EMAILS`) | `/admin` with pending, approved, and declined requests and one unused invite link; 2 recipes; "Owner's picks", shared with `viewer` as editor |
 | `member` | `member@sous.invalid`, an approved member | 6 recipes (English, Ukrainian, Chinese, one with no language, one with import warnings); "Weeknights" (shared with `viewer`, public link on) and "Baking" (not shared); one unfiled recipe; cook progress, two cook-log entries, a chat thread; one connected AI app |
 | `empty` | `empty@sous.invalid`, an approved member | Nothing: the empty library and the first-collection prompt |
-| `viewer` | `viewer@sous.invalid`, an approved member | 1 recipe; views `member`'s "Weeknights"; edits `owner`'s "Owner's picks" |
+| `viewer` | `viewer@sous.invalid`, an approved member | 1 recipe; views `member`'s "Weeknights"; edits `owner`'s "Owner's picks"; an Ask thread ending in a proposal on one recipe from each |
 | `outsider` | `outsider@sous.invalid`, not admitted | A pending access request. Sign-in lands signed out, as for a real non-member. |
 | `declined` | `declined@sous.invalid`, not admitted | A declined access request. Same as `outsider`. |
 
@@ -125,6 +125,20 @@ without a key.
   recipe and disconnect the seeded app, and they need the tokens from this
   process's seed, so run the script once after a fresh start. It fails
   against `--keep`, and a second run against the same server fails too.
+
+## Reviewing translations
+
+The in-context translation review, `npm run test:i18n`, runs against
+`node testing/test-server.ts --static --port 4173`: see
+`docs/i18n-review/README.md` for how to run it and what it reports, and its
+"Without the suite" section for reviewing a screen by hand here. Start the
+server fresh first; the smoke script above changes the seed.
+
+It needs Playwright's Chromium, installed once with
+`npx playwright install chromium`. If that download stalls while `curl`
+fetches the same URL fine, download the archives the install names with
+`curl`, serve them from a local directory with the same paths, and point
+the install at it with `PLAYWRIGHT_DOWNLOAD_HOST=http://localhost:<port>`.
 
 ## What test mode changes
 
