@@ -65,6 +65,24 @@ const PIN_FLOATING_TO_END = `(() => {
   return moved;
 })()`;
 
+/**
+ * Stops the browser's timers where they are, so a toast cannot fade before
+ * the screenshot. `pauseAt` only moves forward, and the clock keeps running
+ * between reading it and pausing, so aim a little ahead (well inside a
+ * toast's 2.5 s) and aim again if a slow machine has already passed that.
+ */
+async function pauseClock(page: Page): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const now = (await page.evaluate('Date.now()')) as number;
+    try {
+      await page.clock.pauseAt(now + 200);
+      return;
+    } catch (err) {
+      if (attempt >= 3 || !String(err).includes('fast-forward to the past')) throw err;
+    }
+  }
+}
+
 /** Captures read as if taken this long after the seed, whenever they run. */
 const CLOCK_AFTER_SEED_MS = 10 * 60 * 1000;
 
@@ -177,7 +195,7 @@ export async function captureState(
     if (entry.reach) {
       await entry.reach(page, ctx);
       if (entry.pauseClock) {
-        await page.clock.pauseAt(((await page.evaluate('Date.now()')) as number) + 1);
+        await pauseClock(page);
       }
       await settle(page);
     }

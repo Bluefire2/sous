@@ -580,8 +580,27 @@ production, which removes the reason for the read-only rule.
      (candidate key `settings.language`) and post "New (1)". Run B (2
      calls, clean), fed A's body, would close the issue and post
      "Resolved (1)". Both were partial, so neither recorded a commit.
-   - **The live check waits for the merge:** one dispatched run, then the
-     next scheduled run on an unchanged `main`.
+   - **Live check, run 1 (2026-10-04, dispatched on `2fea764`,
+     actions run 37169082802).** Every step ran on the runner: the gate
+     (`issue.ts` under Node 22.18 before `npm ci`), the Docker emulator,
+     Chromium, test mode, the review (363 of 364 captures, 363 pairs
+     judged with 365 calls, no confirmed blocker, so #132's fix held, one
+     nit, one unconfirmed), the artifact, and the issue: it created the
+     label and #134, with the nit (`ru` `import.bulkHint`, "Каждый" without
+     a noun) and one comment. The job then failed by design, because one
+     capture failed, which showed two bugs, fixed in a follow-up:
+     - `sync-toast` `zh-Hans`: "clock.pauseAt: Cannot fast-forward to the
+       past". The capture paused the clock 1 ms past the time it had just
+       read, and the runner took longer than that. It now aims 200 ms
+       ahead and aims again if that has passed; 36 toast captures (three
+       states, four languages, three repeats) were identical.
+     - The issue said the commit had uncommitted changes: the dirty check
+       counted the run's own `review/` and server log. It now ignores
+       untracked files.
+   - **Live check, run 2:** because run 1 was incomplete it recorded no
+     commit, so the next scheduled run reviews again; the one after a
+     complete run, on an unchanged `main`, should stop at the gate. Record
+     it here.
 7. **[core] Docs and amendment.** The constitution amendment; the README
    rewrite; the Cursor skill; `AGENTS.md` (the Playwright exception in Tests
    and verification, the UI text rule's "run the in-context translation

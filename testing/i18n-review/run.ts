@@ -87,7 +87,9 @@ const outDir = resolve(values.out ?? join(repoRoot, '.i18n-review', date));
 function gitState(): { commit: string | null; dirty: boolean } {
   const git = (...args: string[]) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
   try {
-    return { commit: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain') !== '' };
+    // Changes to tracked files only: a run writes its output and logs into
+    // the checkout (the workflow's review/), which is not a change to review.
+    return { commit: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain', '--untracked-files=no') !== '' };
   } catch {
     return { commit: process.env.GITHUB_SHA ?? null, dirty: false };
   }
