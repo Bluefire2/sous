@@ -537,7 +537,8 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `sous_mcp_authz` hop cookie, a nonce, `sameOriginPost`, `Referrer-Policy:
   same-origin`, `frame-ancestors 'none'`. Sous fetches a client's metadata
   document only once a member session exists, through the SSRF-safe pinned
-  fetch in `oauth/clientMetadata.ts`.
+  fetch in `oauth/clientMetadata.ts` (address check and pinning in
+  `server/netGuard.ts`).
 - **Tokens.** Opaque `sous_at_` (1 h) and `sous_rt_` (30 days, rotated on
   every use) tokens, stored only as sha256 hashes; they are not HMAC-signed
   and do not depend on `SESSION_SECRET`. `/mcp` reads the bearer from
