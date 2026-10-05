@@ -13,6 +13,8 @@ const required: Recipe = {
   tags: ['lunch'],
 };
 
+const ORIGINAL = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
 describe('compactRecipe', () => {
   it('omits optional keys that are undefined', () => {
     const compacted = compactRecipe({
@@ -26,6 +28,7 @@ describe('compactRecipe', () => {
       galleryPhotoIds: undefined,
       lang: undefined,
       importCheck: undefined,
+      variantOf: undefined,
     });
 
     expect(compacted).toEqual(required);
@@ -55,6 +58,7 @@ describe('compactRecipe', () => {
       galleryPhotoIds: ['g1', 'g2'],
       lang: 'it',
       importCheck: { at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] },
+      variantOf: ORIGINAL,
     });
 
     expect(compacted.description).toBe('Hot.');
@@ -66,6 +70,13 @@ describe('compactRecipe', () => {
     expect(compacted.galleryPhotoIds).toEqual(['g1', 'g2']);
     expect(compacted.lang).toBe('it');
     expect(compacted.importCheck).toEqual({ at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] });
+    expect(compacted.variantOf).toBe(ORIGINAL);
+  });
+
+  it('drops a malformed variantOf without dropping the recipe', () => {
+    expect(compactRecipe({ ...required, variantOf: 'not-a-recipe-id' })).toEqual(required);
+    const own = { ...required, id: ORIGINAL };
+    expect(compactRecipe({ ...own, variantOf: ORIGINAL })).toEqual(own);
   });
 
   it('drops a malformed importCheck without dropping the recipe', () => {

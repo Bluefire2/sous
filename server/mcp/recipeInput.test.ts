@@ -165,9 +165,10 @@ describe('mergeRecipeChanges', () => {
     galleryPhotoIds: ['22222222-2222-4222-8222-222222222222'],
     lang: 'en',
     importCheck: { at: 100, warnings: [{ code: 'MISSING_INSTRUCTIONS' }, { code: 'INGREDIENT_COUNT_MISMATCH' }] },
+    variantOf: '33333333-3333-4333-8333-333333333333',
   };
 
-  it('replaces the changed fields and keeps identity, photos, source, language', () => {
+  it('replaces the changed fields and keeps identity, photos, source, language, variant group', () => {
     const merged = mergeRecipeChanges(stored, { title: 'Dairy-free lasagne', servings: 4 }, 300);
     expect(merged).toMatchObject({
       id: ID,
@@ -179,6 +180,7 @@ describe('mergeRecipeChanges', () => {
       photoId: stored.photoId,
       galleryPhotoIds: stored.galleryPhotoIds,
       lang: 'en',
+      variantOf: stored.variantOf,
       notes: stored.notes,
       tags: ['pasta'],
     });

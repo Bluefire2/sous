@@ -159,12 +159,13 @@ so relative-time labels look the same on every run.
 The `member` library, enough to reach the `needsData` states in
 `docs/i18n-review/screens.json` that need no photos:
 
-- 6 recipes written for this file (no copied recipe text): English with prep
+- 7 recipes written for this file (no copied recipe text): English with prep
   and cook times; English with no times; Ukrainian (`lang: 'uk'`); one with no
-  `lang`; one Chinese (`lang: 'zh-Hans'`); one with `importCheck` warnings.
+  `lang`; one Chinese (`lang: 'zh-Hans'`); one with `importCheck` warnings;
+  one a variant of the first (`variantOf`, `docs/plans/recipe-variants.md`).
 - 2 named collections: "Weeknights" (3 recipes, shared with `viewer`, public
   link on) and "Baking" (2 recipes, no grantees, so the share sheet shows
-  "Nobody else can see this yet."). One recipe is in no collection.
+  "Nobody else can see this yet."). Two recipes are in no collection.
 - Cook state on one recipe (two ingredients checked, step 2), 2 cook-log
   entries with rating, notes, and a lesson, and a short chat thread on one
   recipe.

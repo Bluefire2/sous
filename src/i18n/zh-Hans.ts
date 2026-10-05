@@ -180,6 +180,8 @@ export const zhHans: Messages = {
   'recipe.yourCooks': '你的烹饪记录',
   'recipe.logACook': '记录烹饪',
   'recipe.source': '来自 {source}',
+  'recipe.variants': '变体',
+  'recipe.variantOriginal': '{title}（原版）',
   'recipe.ask': '提问',
   'recipe.translateLabelled': '{language} · 翻译',
   'recipe.translate': '翻译',

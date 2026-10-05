@@ -426,6 +426,7 @@ export const STATES: Record<string, StateEntry> = {
   },
   'recipe-view': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}` },
   'recipe-view-import-warnings': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}` },
+  'recipe-view-variants': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.herbRoastChicken}` },
   'recipe-view-import-retry-sheet': {
     persona: 'member',
     path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}`,

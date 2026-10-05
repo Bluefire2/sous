@@ -209,6 +209,8 @@ export const en = {
   'recipe.yourCooks': 'Your cooks',
   'recipe.logACook': 'Log a cook',
   'recipe.source': 'From {source}',
+  'recipe.variants': 'Variants',
+  'recipe.variantOriginal': '{title} (original)',
   'recipe.ask': 'Ask',
   'recipe.translateLabelled': '{language} · Translate',
   'recipe.translate': 'Translate',

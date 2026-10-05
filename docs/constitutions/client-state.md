@@ -6,7 +6,7 @@ scope:
   - src/lib/libraryMemory.ts (snapshot shape, writes and their copy/publish helpers, captureSnapshot/restoreSnapshot)
   - src/lib/useLibrary.ts
   - src/lib/librarySelectors.ts
-  - src/lib/recipeStore.ts (useRecipes, useRecipe, useRecipeAccess, useRecipeSharedBy, useRecipeCollectionId)
+  - src/lib/recipeStore.ts (useRecipes, useRecipe, useRecipeAccess, useRecipeSharedBy, useRecipeCollectionId, useRecipeVariants)
   - src/lib/collectionStore.ts (useCollections, useFullPull)
   - src/lib/chatStore.ts (useChatMessages)
   - src/lib/cookLogStore.ts (useCookLogs, useCookLog)
@@ -20,6 +20,7 @@ scope:
   - src/screens/RecipeView.tsx (access, shared-by, and filed-collection reads)
   - src/screens/RecipeEdit.tsx (access read)
   - src/screens/CookLogEdit.tsx (access read)
+  - src/components/VariantLinks.tsx (useRecipeVariants read)
   - scripts/invariants.test.ts (client state checks)
 ---
 

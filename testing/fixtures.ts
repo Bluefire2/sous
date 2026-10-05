@@ -20,6 +20,8 @@ export const FIXTURE_IDS = {
     overnightOats: uuid(104),
     eggTarts: uuid(105),
     bananaBread: uuid(106),
+    /** An unfiled variant of Lemon garlic roast chicken (`variantOf`). */
+    herbRoastChicken: uuid(107),
     weeknights: uuid(151),
     baking: uuid(152),
     cookLogRecent: uuid(171),
@@ -96,6 +98,36 @@ export function memberLibrary(now: number): PersonaLibrary {
       { text: 'Rest for 10 minutes before carving. Squeeze the roasted garlic over the potatoes.' },
     ],
     notes: 'Dry the skin the night before for the crispest result.',
+  });
+  const herbRoastChicken = recipe(ids.herbRoastChicken, 5, now, {
+    title: 'Herb roast chicken',
+    description: 'The roast chicken with thyme and rosemary butter under the skin instead of lemon.',
+    servings: 4,
+    prepMinutes: 20,
+    cookMinutes: 75,
+    lang: 'en',
+    tags: ['dinner', 'weekend'],
+    variantOf: ids.roastChicken,
+    ingredientSections: [
+      {
+        items: [
+          { quantity: 1, item: 'whole chicken', note: 'about 1.6 kg' },
+          { quantity: 800, unit: 'g', item: 'waxy potatoes', note: 'halved' },
+          { quantity: 50, unit: 'g', item: 'soft butter' },
+          { quantity: 1, unit: 'tbsp', item: 'thyme leaves' },
+          { quantity: 1, unit: 'tbsp', item: 'rosemary', note: 'finely chopped' },
+          { quantity: 6, item: 'garlic cloves', note: 'unpeeled' },
+          { item: 'salt and black pepper' },
+        ],
+      },
+    ],
+    steps: [
+      { text: 'Heat the oven to 200 °C. Mash the butter with the herbs and a pinch of salt.' },
+      { text: 'Loosen the breast skin and push the herb butter underneath. Season the chicken.' },
+      { text: 'Spread the potatoes and garlic in a roasting tin and set the chicken on top.' },
+      { text: 'Roast for 70 to 80 minutes, until the juices run clear.' },
+      { text: 'Rest for 10 minutes before carving.' },
+    ],
   });
   const tomatoPasta = recipe(ids.tomatoPasta, 12, now, {
     title: 'Quick tomato pasta',
@@ -229,7 +261,7 @@ export function memberLibrary(now: number): PersonaLibrary {
   const cookedRecently = now - 3 * DAY;
   const cookedEarlier = now - 17 * DAY;
   return {
-    recipes: [roastChicken, tomatoPasta, borscht, overnightOats, eggTarts, bananaBread],
+    recipes: [roastChicken, tomatoPasta, borscht, overnightOats, eggTarts, bananaBread, herbRoastChicken],
     collections: [
       collection(ids.weeknights, 'Weeknights', [roastChicken.id, tomatoPasta.id, borscht.id], 8, now),
       collection(ids.baking, 'Baking', [eggTarts.id, bananaBread.id], 2, now),

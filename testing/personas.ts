@@ -33,7 +33,7 @@ export const PERSONAS = [
     email: 'member@sous.invalid',
     name: 'Max Member',
     admission: 'member',
-    description: 'Member with a full library: 6 recipes, 2 collections, cook log, chat, a connected app',
+    description: 'Member with a full library: 7 recipes (one a variant), 2 collections, cook log, chat, a connected app',
   },
   {
     as: 'empty',

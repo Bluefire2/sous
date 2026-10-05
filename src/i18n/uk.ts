@@ -207,6 +207,8 @@ export const uk: Messages = {
   'recipe.yourCooks': 'Ваші приготування',
   'recipe.logACook': 'Записати приготування',
   'recipe.source': 'Джерело: {source}',
+  'recipe.variants': 'Варіанти',
+  'recipe.variantOriginal': '{title} (оригінал)',
   'recipe.ask': 'Запитати',
   'recipe.translateLabelled': '{language} · Перекласти',
   'recipe.translate': 'Перекласти',

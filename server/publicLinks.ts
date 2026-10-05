@@ -169,11 +169,13 @@ export function newestLivePublicLink(
 
 /**
  * What a visitor gets for one recipe: the stored recipe fields, without the
- * import check (the owner's import diagnostics, not recipe content).
+ * import check (the owner's import diagnostics, not recipe content) or
+ * `variantOf` (an id that may name a recipe outside the collection).
  */
 export function publicRecipeBody(recipe: Record<string, unknown>): Record<string, unknown> {
   const body = compactRecipeFields(recipe);
   delete body.importCheck;
+  delete body.variantOf;
   return body;
 }
 

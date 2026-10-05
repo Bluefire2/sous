@@ -149,7 +149,7 @@ describe('public link records', () => {
 });
 
 describe('publicRecipeBody', () => {
-  it('keeps recipe content and drops the import check and stored internals', () => {
+  it('keeps recipe content and drops the import check, variantOf, and stored internals', () => {
     const body = publicRecipeBody(
       recipe(recipeA, {
         notes: 'Rest it.',
@@ -158,11 +158,13 @@ describe('publicRecipeBody', () => {
         sharedParentOwnerSub: 'someone',
         serverUpdatedAt: now,
         deletedAt: null,
+        variantOf: '99999999-9999-4999-8999-999999999999',
       }),
     );
     expect(body.notes).toBe('Rest it.');
     expect(body.sourceUrl).toBe('https://example.com/r');
     expect(body).not.toHaveProperty('importCheck');
+    expect(body).not.toHaveProperty('variantOf');
     expect(body).not.toHaveProperty('sharedParentOwnerSub');
     expect(body).not.toHaveProperty('serverUpdatedAt');
   });

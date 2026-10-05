@@ -17,12 +17,13 @@ export interface CookingState {
 }
 
 /**
- * The recipe posted to `/api/chat`. `lang` is removed so the request stays
- * the same shape it had before the field existed.
+ * The recipe posted to `/api/chat`. `lang` and `variantOf` are removed so the
+ * request stays the same shape it had before those fields existed.
  */
 export function recipeForChat(recipe: Recipe): Recipe {
   const posted: Recipe = { ...recipe };
   delete posted.lang;
+  delete posted.variantOf;
   return posted;
 }
 

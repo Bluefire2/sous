@@ -40,6 +40,7 @@ import { reconcileImportCheck, type ImportCheck } from './importCheck';
 import { compactCollection } from './compactCollection';
 import { wouldExceedRecipeIdCap } from './collectionMembership';
 import { recipePhotoIds } from './recipePhotos';
+import { variantGroup } from './variantGroup';
 import type { Recipe, RecipeDraft } from './types';
 import type { PushOp } from './pushOps';
 import { isDiscardedPushReason } from './pushReasons';
@@ -481,7 +482,10 @@ async function discardCreatedRecipe(
  * An owned or shared save of a recipe whose import check is already decided.
  * `save` reconciles it first; `replaceFromImport` replaces it.
  */
-async function saveRecipe(recipe: Recipe): Promise<void> {
+async function saveRecipe(edit: Recipe): Promise<void> {
+  // A variant's group is fixed when it is created. No edit sets or clears it,
+  // and editors that rebuild the record never have to carry it.
+  const recipe: Recipe = { ...edit, variantOf: getRecipe(edit.id)?.variantOf };
   if (isSharedRecipe(recipe.id)) {
     if (recipeAccess(recipe.id) !== 'editor') {
       throw new Error(t('error.sharedViewOnly'));
@@ -691,7 +695,8 @@ export const recipeStore = {
    * A new recipe from an Ask proposal. Photos come from `parent`, copied onto
    * new ids. Fields on the draft never supply a photo. `lang` comes from
    * `parent` too: the proposal never carries it, including when `parent` is
-   * a shared recipe.
+   * a shared recipe. The new recipe joins `parent`'s variant group, keyed on
+   * the group's original, so a variant of a variant does not nest.
    */
   async createFromAsk(parent: Recipe, draft: RecipeDraft): Promise<Recipe> {
     const copied = await copyParentPhotos(parent);
@@ -703,6 +708,7 @@ export const recipeStore = {
         importCheck: undefined,
         photoId: copied.photoId,
         galleryPhotoIds: copied.galleryPhotoIds,
+        variantOf: parent.variantOf ?? parent.id,
       });
     } catch (err) {
       // A retry copies onto fresh ids, so these copies would never upload.
@@ -884,6 +890,16 @@ export function useRecipeSharedBy(id: string | undefined): string | undefined {
  */
 export function useRecipeCollectionId(id: string | undefined): string | undefined {
   return useLibrarySelect(selectRecipeCollectionId(id));
+}
+
+/**
+ * Reactive variant group of one recipe, the original first; empty when the
+ * recipe has no other variants. It re-renders on any recipe change, so only
+ * the component that shows the group should call it.
+ */
+export function useRecipeVariants(id: string | undefined): readonly Recipe[] {
+  const recipes = useLibrarySlice('recipes');
+  return useMemo(() => variantGroup(recipes, id), [recipes, id]);
 }
 
 /** Reactive access to one recipe; `undefined` when it is not in the library. */
