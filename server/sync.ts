@@ -14,6 +14,7 @@ import {
 import {
   membershipUnauthorized,
   membershipUnavailable,
+  readBoundedText,
   requireMember,
   storeUnavailable,
 } from './membership.ts';
@@ -61,7 +62,14 @@ export const STORE_KINDS: StoreKind[] = [
 ];
 
 const MAX_PUSH_OPS = 50;
-const MAX_PUSH_BYTES = 1_000_000;
+/** The push limit, in UTF-16 code units of the decoded body (`raw.length`). */
+const MAX_PUSH_CHARS = 1_000_000;
+/**
+ * Where reading stops. UTF-8 spends at most 3 bytes per UTF-16 code unit, so
+ * no body within `MAX_PUSH_CHARS` is longer than this: the stream is bounded
+ * without refusing a push of Cyrillic or CJK text that was accepted before.
+ */
+const MAX_PUSH_BYTES = 3 * MAX_PUSH_CHARS;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -302,14 +310,14 @@ export async function syncPush(req: Request): Promise<Response> {
     return membershipUnavailable();
   }
 
-  let raw: string;
+  let raw: string | null;
   try {
-    raw = await req.text();
+    raw = await readBoundedText(req, MAX_PUSH_BYTES);
   } catch {
     return jsonResponse({ error: 'Bad request' }, 400);
   }
 
-  if (raw.length > MAX_PUSH_BYTES) {
+  if (raw === null || raw.length > MAX_PUSH_CHARS) {
     return jsonResponse({ error: 'Payload too large; batch your ops' }, 413);
   }
 

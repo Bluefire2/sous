@@ -13,7 +13,7 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { requireHeaderMember } from './membership.ts';
+import { readBoundedText, requireHeaderMember } from './membership.ts';
 import { recipePutFromExtraction } from './recipeFromExtraction.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
@@ -26,8 +26,10 @@ import {
 } from './recipeImport.ts';
 import { applyPushOp } from './sync.ts';
 
-/** Buffered then measured, matching `syncPush`'s `raw.length` convention. */
+/** The body limit, in UTF-16 code units of the decoded body, matching `syncPush`. */
 const MAX_BODY_CHARS = 1_500_000;
+/** Where reading stops: UTF-8 spends at most 3 bytes per code unit, so no body within `MAX_BODY_CHARS` is longer. */
+const MAX_BODY_BYTES = 3 * MAX_BODY_CHARS;
 const TOO_LARGE = 'Page was too large to import.';
 const UNUSABLE = 'Extraction produced an unusable recipe.';
 
@@ -118,14 +120,14 @@ async function importAndSave(
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
 ): Promise<Response> {
-  let raw: string;
+  let raw: string | null;
   try {
-    raw = await req.text();
+    raw = await readBoundedText(req, MAX_BODY_BYTES);
   } catch {
     entry.outcome = 'bad_request';
     return fail(req, 'bad-request', 'Bad request', 400);
   }
-  if (raw.length > MAX_BODY_CHARS) {
+  if (raw === null || raw.length > MAX_BODY_CHARS) {
     entry.outcome = 'too_large';
     return fail(req, 'import-too-large', TOO_LARGE, 413);
   }
