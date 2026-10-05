@@ -1,6 +1,7 @@
 # Recipe variants
 
-Status: built on `claude/recipe-variant-parent-tracking-8e1908`, not deployed.
+Status: merged (#148), not deployed. The MCP section is #149, built on
+`claude/mcp-create-variant`.
 
 Constitutions applied: client-state (a new list hook, written to principles 4
 and 5 as they stand; only `scope` changed), i18n (new copy in every catalog,
