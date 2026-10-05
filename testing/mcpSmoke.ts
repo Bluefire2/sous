@@ -15,6 +15,9 @@ import { FIXTURE_IDS, memberLibrary } from './fixtures.ts';
 import { SEEDED_MCP_CLIENT_ID, SEEDED_MCP_REDIRECT_URI, type SeededMcpTokens } from './seededMcp.ts';
 
 const member = memberLibrary(0);
+const memberUnfiled = member.recipes.filter(
+  (recipe) => !member.collections.some((collection) => collection.recipeIds.includes(recipe.id)),
+).length;
 
 const INITIALIZE = {
   jsonrpc: '2.0',
@@ -364,7 +367,7 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
       byName.get('Weeknights')?.recipeCount === 3 &&
       byName.get('Baking')?.id === FIXTURE_IDS.member.baking &&
       byName.get('Baking')?.recipeCount === 2 &&
-      byName.get('Unfiled')?.recipeCount === 1 &&
+      byName.get('Unfiled')?.recipeCount === memberUnfiled &&
       byName.get("Owner's picks") === undefined &&
       rows.length === 3,
     JSON.stringify(rows.map((row) => `${row.name}:${row.recipeCount}`)),
