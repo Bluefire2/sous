@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useT } from '../i18n';
+import { useLocale, useT } from '../i18n';
 import CollectionSection from '../components/CollectionSection';
 import CreateCollectionSheet from '../components/CreateCollectionSheet';
 import IntroSheet from '../components/IntroSheet';
 import LanguageMenu from '../components/LanguageMenu';
-import LibraryInviteToast, {
-  type LibraryInviteNotice,
-} from '../components/LibraryInviteToast';
+import NoticeToast, { type Notice } from '../components/NoticeToast';
+import LibrarySortMenu from '../components/LibrarySortMenu';
 import ShareCollectionSheet from '../components/ShareCollectionSheet';
 import Sheet from '../components/Sheet';
 import { createInvite } from '../lib/adminApi';
@@ -37,6 +36,10 @@ import {
   readPersistedLibraryView,
   writePersistedLibraryView,
 } from '../lib/librarySearchMemory';
+import { sortLibraryRecipes } from '../lib/librarySort';
+import { useLastCookedOn } from '../lib/cookLogStore';
+import { lastCookedLabel } from '../lib/relativeTime';
+import { isLibrarySearchShortcut } from '../lib/librarySearchShortcut';
 import { recipeStore, useHasOwnRecipe, useRecipes } from '../lib/recipeStore';
 import { arrivedWithoutOwnRecipe, noteLibraryOnArrival, shouldAskAboutIntro } from '../lib/intro';
 import { introSeenFor, markIntroSeen } from '../lib/introApi';
@@ -70,7 +73,9 @@ function CardThumb({ photoId }: { photoId: string }) {
 
 export default function Library() {
   const t = useT();
+  const locale = useLocale();
   const allRecipes = useRecipes();
+  const lastCookedOn = useLastCookedOn();
   const collections = useCollections();
   const fullPull = useFullPull();
   const { status: sessionStatus, user } = useSession();
@@ -92,9 +97,10 @@ export default function Library() {
   const [browseAll, setBrowseAll] = useState(
     () => readPersistedLibraryView().browseAll,
   );
+  const [sort, setSort] = useState(() => readPersistedLibraryView().sort);
   useEffect(() => {
-    writePersistedLibraryView({ query, browseAll });
-  }, [query, browseAll]);
+    writePersistedLibraryView({ query, browseAll, sort });
+  }, [query, browseAll, sort]);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -112,10 +118,11 @@ export default function Library() {
   const [invitePending, setInvitePending] = useState(false);
   const [revealedUrl, setRevealedUrl] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [inviteNotice, setInviteNotice] = useState<LibraryInviteNotice | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<Notice | null>(null);
   const [inviteQuota, setInviteQuota] = useState<{ id: number; message: string } | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const firstActionRef = useRef<HTMLAnchorElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const scoped =
     allRecipes === undefined || collections === undefined
@@ -601,6 +608,18 @@ export default function Library() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // `/` jumps to the search. Not while a recipe menu or sheet is open,
+      // nor while a disclosure menu (language, collection actions) is: those
+      // keep their open state in their own hook, and their trigger says so.
+      const overlayOpen =
+        menuId !== null ||
+        sheet.kind !== 'closed' ||
+        document.querySelector('[aria-expanded="true"]') !== null;
+      if (isLibrarySearchShortcut(event, overlayOpen)) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       if (menuId !== null) {
         event.preventDefault();
@@ -654,9 +673,13 @@ export default function Library() {
       </button>
     ) : null;
 
+  // Ordering one recipe means nothing, and an empty library has no list.
+  const sortControl =
+    (allRecipes?.length ?? 0) > 1 ? <LibrarySortMenu sort={sort} onChange={setSort} /> : null;
+
   return (
     <div className={`mx-auto max-w-xl px-4 ${selecting ? 'pb-40' : 'pb-24'}`}>
-      <LibraryInviteToast notice={inviteNotice} />
+      <NoticeToast notice={inviteNotice} />
       <header className="flex items-center justify-between py-4">
         <h1 className="text-2xl font-bold">Sous</h1>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
@@ -791,6 +814,7 @@ export default function Library() {
       {showSwitcher ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={
               browseAll
@@ -803,7 +827,9 @@ export default function Library() {
             onChange={(e) => setQuery(e.target.value)}
             className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Sort comes last, so its menu, aligned to its right edge, opens
+              inside the page on a phone; the chips wrap rather than overflow. */}
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
             {selectControl}
             <button
               type="button"
@@ -812,18 +838,25 @@ export default function Library() {
             >
               {t('library.allCollections')}
             </button>
+            {sortControl}
           </div>
         </div>
       ) : (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={t('library.search')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          {selectControl && <div className="ml-auto flex shrink-0">{selectControl}</div>}
+          {(sortControl || selectControl) && (
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {selectControl}
+              {sortControl}
+            </div>
+          )}
         </div>
       )}
 
@@ -852,9 +885,11 @@ export default function Library() {
             </label>
           )}
           <ul className="flex flex-col gap-3">
-            {recipes.map((recipe) => {
+            {sortLibraryRecipes(recipes, sort, { lastCooked: lastCookedOn, locale }).map((recipe) => {
               const shared = recipeStore.isShared(recipe.id);
               const checked = selectedIds.has(recipe.id);
+              const cookedOn = shared ? undefined : lastCookedOn.get(recipe.id);
+              const cooked = cookedOn === undefined ? undefined : lastCookedLabel(cookedOn, Date.now(), locale);
               return (
                 <li key={recipe.id} className="flex items-start gap-1">
                   {selecting && !shared && (
@@ -869,35 +904,49 @@ export default function Library() {
                     </label>
                   )}
                   <div className="relative min-w-0 flex-1">
-                <Link
-                  to={`/recipe/${recipe.id}`}
-                  state={{ from: libraryHref(collectionId) }}
-                  className="flex gap-3 rounded-2xl border border-line bg-surface p-4 pr-14 shadow-sm hover:border-line-strong hover:bg-surface-muted active:bg-surface-muted"
-                >
+                {/* The card is not one link: its tag chips are buttons, and a
+                    button inside an anchor is invalid. The title link's ::after
+                    covers the card, so a tap anywhere else still opens the
+                    recipe; the chips sit above it. */}
+                <div className="relative flex gap-3 rounded-2xl border border-line bg-surface p-4 pr-14 shadow-sm hover:border-line-strong hover:bg-surface-muted active:bg-surface-muted">
                   {recipe.photoId !== undefined && (
                     <CardThumb photoId={recipe.photoId} />
                   )}
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-lg font-semibold">{recipe.title}</h2>
+                    <h2 className="text-lg font-semibold">
+                      <Link
+                        to={`/recipe/${recipe.id}`}
+                        state={{ from: libraryHref(collectionId) }}
+                        className="after:absolute after:inset-0 after:rounded-2xl"
+                      >
+                        {recipe.title}
+                      </Link>
+                    </h2>
                     {recipe.description && (
                       <p className="mt-1 line-clamp-2 text-sm text-ink-muted">
                         {recipe.description}
                       </p>
                     )}
+                    {cooked !== undefined && (
+                      <p className="mt-1 text-xs text-ink-subtle">{cooked}</p>
+                    )}
                     {recipe.tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {recipe.tags.map((tag) => (
-                          <span
+                          <button
                             key={tag}
-                            className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-ink-muted"
+                            type="button"
+                            aria-label={t('library.filterByTag', { tag })}
+                            onClick={() => setQuery(tag)}
+                            className="relative rounded-full bg-surface-muted px-2 py-0.5 text-xs text-ink-muted hover:bg-line hover:text-ink active:bg-line"
                           >
                             {tag}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     )}
                   </div>
-                </Link>
+                </div>
 
                 {!shared && !selecting && (
                 <button

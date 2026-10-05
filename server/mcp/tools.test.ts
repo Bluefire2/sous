@@ -180,7 +180,7 @@ describe('get_recipes', () => {
     expect(out.data.missingIds).toEqual([R2]);
     const [got] = out.data.recipes as Record<string, unknown>[];
     expect(got).toMatchObject({ id: R1, version: 77, title: 'Soup', collectionName: 'Weeknight' });
-    for (const key of ['photoId', 'galleryPhotoIds', 'createdAt', 'updatedAt', 'importCheck', 'lang']) {
+    for (const key of ['photoId', 'galleryPhotoIds', 'createdAt', 'updatedAt', 'importCheck', 'lang', 'variantOf']) {
       expect(got).not.toHaveProperty(key);
     }
     expect(ctx.directReads).toEqual([]);

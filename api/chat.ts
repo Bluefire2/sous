@@ -201,6 +201,167 @@ export interface ChatRequestBody {
   cookingState?: unknown;
 }
 
+// NOTE: The request limits and checks below follow server/importRoute.ts
+// (MAX_IMPORT_*, IMPORT_IMAGE_TYPES, checkImportImages) and the bounded reader
+// follows readBoundedText in server/membership.ts. They are copied, not
+// imported, for the same Vercel reason as the session gate above.
+
+/**
+ * Photos per message. The client sends photos only on the newest message,
+ * and import takes at most four of one recipe.
+ */
+export const MAX_CHAT_IMAGES = 4;
+/**
+ * Decoded bytes, per photo. The client re-encodes each photo as a JPEG of at
+ * most 1280 px on its long edge (encodeImageForChat), a few hundred KB; import
+ * allows 3 MB for its larger 2048 px photos.
+ */
+export const MAX_CHAT_IMAGE_BYTES = 3 * 1024 * 1024;
+/**
+ * Raw request body, the same as import. Recipe JSON and a text-only history are
+ * tens of KB, so nearly all of it is photos. Four photos at the per-photo cap
+ * exceed it, as with import.
+ */
+export const MAX_CHAT_BODY_BYTES = 12 * 1024 * 1024;
+const CHAT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const ASSISTANT_UNAVAILABLE = 'Assistant is unavailable.';
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/** The body as text, or null when it is longer than `limit` bytes. */
+async function readBoundedBody(req: Request, limit: number): Promise<string | null> {
+  const contentLength = req.headers.get('content-length');
+  if (contentLength !== null) {
+    const len = Number(contentLength);
+    if (Number.isFinite(len) && len > limit) {
+      return null;
+    }
+  }
+  if (req.body === null) {
+    return '';
+  }
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value) {
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  }
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(combined);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function decodedBytes(base64: string): number {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return (base64.length / 4) * 3 - padding;
+}
+
+function parseChatImages(raw: unknown): ChatRequestImage[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_CHAT_IMAGES) {
+    return null;
+  }
+  const images: ChatRequestImage[] = [];
+  for (const item of raw) {
+    if (!isPlainObject(item) || typeof item.mediaType !== 'string' || typeof item.base64 !== 'string') {
+      return null;
+    }
+    const mediaType = item.mediaType.trim().toLowerCase();
+    if (!CHAT_IMAGE_TYPES.has(mediaType)) {
+      return null;
+    }
+    const base64 = item.base64;
+    if (base64 === '' || base64.length % 4 !== 0 || !BASE64.test(base64)) {
+      return null;
+    }
+    if (decodedBytes(base64) > MAX_CHAT_IMAGE_BYTES) {
+      return null;
+    }
+    images.push({ mediaType, base64 });
+  }
+  return images;
+}
+
+/** The request body when its shape is valid, else null. Unknown keys are dropped. */
+export function parseChatRequest(raw: unknown): ChatRequestBody | null {
+  if (!isPlainObject(raw)) {
+    return null;
+  }
+  if (!Array.isArray(raw.messages) || raw.messages.length === 0) {
+    return null;
+  }
+  if (!isPlainObject(raw.recipe)) {
+    return null;
+  }
+  const messages: ChatRequestMessage[] = [];
+  for (const item of raw.messages) {
+    if (!isPlainObject(item)) {
+      return null;
+    }
+    if (item.role !== 'user' && item.role !== 'assistant') {
+      return null;
+    }
+    if (typeof item.content !== 'string') {
+      return null;
+    }
+    const message: ChatRequestMessage = { role: item.role, content: item.content };
+    if (item.images !== undefined) {
+      const images = parseChatImages(item.images);
+      if (images === null) {
+        return null;
+      }
+      message.images = images;
+    }
+    messages.push(message);
+  }
+  return { messages, recipe: raw.recipe, cookingState: raw.cookingState };
+}
+
+/**
+ * A thrown error's class and numeric status, and nothing else. An SDK message
+ * can quote the request, and this one carries the whole recipe and the
+ * conversation. Mirrors sanitizedError in server/importLog.ts.
+ */
+function describeThrown(err: unknown): string {
+  const rawName = err instanceof Error ? err.name : typeof err;
+  const name = /^[A-Za-z]{1,40}$/.test(rawName) ? rawName : 'Error';
+  let status: number | undefined;
+  if (typeof err === 'object' && err !== null) {
+    const raw = (err as { status?: unknown }).status;
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 100 && raw <= 599) {
+      status = raw;
+    }
+  }
+  return `${name}${status === undefined ? '' : ` (status ${status})`}; message withheld`;
+}
+
 // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
 const MODEL = process.env.CHAT_MODEL || 'gemini-3.7-flash';
 
@@ -256,32 +417,57 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const body = (await req.json()) as ChatRequestBody;
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const rawBody = await readBoundedBody(req, MAX_CHAT_BODY_BYTES);
+  if (rawBody === null) {
+    return jsonError('Request too large', 413);
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawBody);
+  } catch {
+    return jsonError('Bad request', 400);
+  }
+  const body = parseChatRequest(parsedJson);
+  if (body === null) {
+    return jsonError('Bad request', 400);
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey === undefined || apiKey.trim() === '') {
+    return jsonError(ASSISTANT_UNAVAILABLE, 503);
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const abort = new AbortController();
 
-  const stream = await ai.models.generateContentStream({
-    model: MODEL,
-    contents: toGeminiContents(body.messages),
-    config: {
-      abortSignal: abort.signal,
-      systemInstruction: systemPrompt(body.recipe, body.cookingState),
-      maxOutputTokens: 4096,
-      tools: [
-        {
-          functionDeclarations: [
-            {
-              name: 'update_recipe',
-              description:
-                'Propose a modified version of the recipe the user is viewing. ' +
-                'Pass the complete updated recipe.',
-              parameters: RECIPE_SCHEMA,
-            },
-          ],
-        },
-      ],
-    },
-  });
+  let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;
+  try {
+    stream = await ai.models.generateContentStream({
+      model: MODEL,
+      contents: toGeminiContents(body.messages),
+      config: {
+        abortSignal: abort.signal,
+        systemInstruction: systemPrompt(body.recipe, body.cookingState),
+        maxOutputTokens: 4096,
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: 'update_recipe',
+                description:
+                  'Propose a modified version of the recipe the user is viewing. ' +
+                  'Pass the complete updated recipe.',
+                parameters: RECIPE_SCHEMA,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  } catch (err) {
+    console.error(`Chat model call failed: ${describeThrown(err)}`);
+    return jsonError(ASSISTANT_UNAVAILABLE, 502);
+  }
 
   // Plain text streams as-is, then a separator (0x1E), then any proposal JSON, then a
   // final separator that marks a clean end. Fewer than three parts means the stream was cut off.
@@ -306,7 +492,9 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
             controller.close();
             return;
           }
-          controller.error(err);
+          // The dispatcher in scripts/server.ts logs a body error it sees, so
+          // pass on a description, never the SDK's error and its message.
+          controller.error(new Error(`Chat stream failed: ${describeThrown(err)}`));
         }
       })();
     },

@@ -279,6 +279,15 @@ export const STATES: Record<string, StateEntry> = {
       await page.locator('[aria-expanded="true"]').waitFor();
     },
   },
+  // Weeknights holds the roast chicken, the one recipe with logged cooks.
+  'library-sort-menu': {
+    persona: 'member',
+    path: weeknights,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('library.sortMenu', { order: ctx.t('library.sortUpdated') }));
+      await page.locator('[aria-expanded="true"]').waitFor();
+    },
+  },
   'import-idle': { persona: 'member', path: '/import' },
   'import-photos': {
     persona: 'member',
@@ -451,6 +460,7 @@ export const STATES: Record<string, StateEntry> = {
   },
   'recipe-view': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}` },
   'recipe-view-import-warnings': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}` },
+  'recipe-view-variants': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.herbRoastChicken}` },
   'recipe-view-import-retry-sheet': {
     persona: 'member',
     path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}`,
@@ -462,6 +472,26 @@ export const STATES: Record<string, StateEntry> = {
   },
   'recipe-view-cook': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   'recipe-view-your-cooks': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
+  'recipe-view-share-copied': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    mocks: ['shareUnavailable', 'clipboardWorks'],
+    pauseClock: true,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByText(ctx.t('recipe.textCopied'), { exact: true }).waitFor();
+    },
+  },
+  'recipe-view-share-copy-failed': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    mocks: ['shareUnavailable', 'clipboardFails'],
+    pauseClock: true,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByText(ctx.t('recipe.textCopyFailed'), { exact: true }).waitFor();
+    },
+  },
   'recipe-edit': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}/edit` },
   'recipe-edit-lang-hint': {
     persona: 'member',

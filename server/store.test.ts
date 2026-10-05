@@ -422,6 +422,14 @@ describe('compactRecipeFields', () => {
     ).not.toHaveProperty('lang');
   });
 
+  it('keeps a variantOf recipe id and drops a malformed one without rejecting the recipe', () => {
+    const original = '22222222-2222-4222-8222-222222222222';
+    expect(compactRecipeFields({ ...required, variantOf: original }).variantOf).toBe(original);
+    const compacted = compactRecipeFields({ ...required, variantOf: 'r0' });
+    expect(compacted).not.toHaveProperty('variantOf');
+    expect(compacted.title).toBe('Soup');
+  });
+
   it('omits an empty gallery and strips the cover id', () => {
     expect(
       compactRecipeFields({ ...required, photoId: 'p1', galleryPhotoIds: [] }),

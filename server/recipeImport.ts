@@ -38,6 +38,14 @@ import {
   type PageScan,
 } from './pageScan.ts';
 import { normalizeLang, sameLanguage, toSupportedLocale, type Locale } from './lang.ts';
+import {
+  pinnedGet,
+  resolveHost,
+  resolvePublicAddress,
+  type PinnedGet,
+  type PinnedResponse,
+  type ResolveHost,
+} from './netGuard.ts';
 import { applyTranslation, recipeSegments, translationExceedsCaps } from './recipeTranslation.ts';
 import {
   TRANSLATE_FAILED,
@@ -180,6 +188,12 @@ export type PageFetchOutcome =
   | { kind: 'invalid_url' }
   | { kind: 'unsupported_scheme' }
   | { kind: 'unreachable' }
+  /**
+   * The host, or a redirect's host, resolves to an address that is not
+   * public (`isPublicAddress`). Nothing was sent to it. Routes answer it as
+   * `unreachable`; the kind exists so the log line can tell them apart.
+   */
+  | { kind: 'blocked' }
   | { kind: 'refused'; status: number };
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
@@ -345,39 +359,187 @@ function sourceFromScan(scan: PageScan): { source: string; read: ImportSourceRea
 export function extractRecipeSource(html: string): string {
   return sourceFromScan(scanPage(html)).source;
 }
-/** Website URL path only. The Chrome extension sends the tab HTML instead. */
+/**
+ * The most page HTML import reads, from a fetch or from the extension
+ * (`server/extensionImport.ts` refuses a larger tab with 413).
+ */
+export const MAX_PAGE_HTML_CHARS = 600_000;
+/** The whole website fetch, every redirect and the body included. */
+export const PAGE_FETCH_TIMEOUT_MS = 15_000;
+export const MAX_PAGE_REDIRECTS = 5;
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+const PAGE_REQUEST_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  Accept: 'text/html',
+};
+
+/** How `fetchPageHtml` resolves and connects. Tests inject fakes. */
+export type PageFetchDeps = {
+  resolve: ResolveHost;
+  get: PinnedGet;
+  timeoutMs: number;
+};
+
+const LIVE_PAGE_FETCH: PageFetchDeps = {
+  resolve: resolveHost,
+  get: pinnedGet,
+  timeoutMs: PAGE_FETCH_TIMEOUT_MS,
+};
+
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === 'http:' || url.protocol === 'https:';
+}
+
+/** `URL.hostname` keeps the brackets of an IPv6 literal; DNS wants it bare. */
+function lookupName(url: URL): string {
+  const host = url.hostname;
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/** Rejects with the abort reason once `signal` fires, whether or not `work` honours it. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+/**
+ * The decoder for a response: the `charset` in Content-Type when Node knows
+ * it, else UTF-8. A `<meta charset>` inside the HTML is not sniffed, so a
+ * non-UTF-8 page that declares its encoding only there still decodes as
+ * UTF-8, as it did when this was `Response.text()`.
+ */
+function pageDecoder(contentType: string | undefined): TextDecoder {
+  const charset = /;\s*charset\s*=\s*"?([^";\s]+)/i.exec(contentType ?? '')?.[1];
+  if (charset !== undefined) {
+    try {
+      return new TextDecoder(charset);
+    } catch {
+      // An unknown label: fall through to UTF-8.
+    }
+  }
+  return new TextDecoder('utf-8');
+}
+
+/** Cuts at `MAX_PAGE_HTML_CHARS` without leaving half a surrogate pair. */
+function capPageHtml(text: string): string {
+  if (text.length <= MAX_PAGE_HTML_CHARS) return text;
+  const end = /[\uD800-\uDBFF]/.test(text[MAX_PAGE_HTML_CHARS - 1]!)
+    ? MAX_PAGE_HTML_CHARS - 1
+    : MAX_PAGE_HTML_CHARS;
+  return text.slice(0, end);
+}
+
+/**
+ * Reads the body up to `MAX_PAGE_HTML_CHARS` and stops there. A longer page
+ * is truncated, not refused: `extractRecipeSource` prefers the Recipe
+ * JSON-LD and the `<main>` / `<article>` region, which usually sit well
+ * inside the first 600 000 characters, and the model input is cut to
+ * `MAX_SOURCE_CHARS` anyway. The extension refuses instead (413) because
+ * there the browser already holds the whole page and the cap bounds the
+ * request body.
+ */
+async function readPageText(
+  body: PinnedResponse['body'],
+  contentType: string | undefined,
+  signal: AbortSignal,
+): Promise<string> {
+  const decoder = pageDecoder(contentType);
+  const onAbort = () =>
+    body.destroy(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    let text = '';
+    for await (const chunk of body) {
+      const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Uint8Array);
+      text += decoder.decode(bytes, { stream: true });
+      if (text.length >= MAX_PAGE_HTML_CHARS) {
+        body.destroy();
+        return capPageHtml(text);
+      }
+    }
+    return capPageHtml(text + decoder.decode());
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
+/**
+ * Website URL path only. The Chrome extension sends the tab HTML instead.
+ *
+ * A member's URL is fetched by the server, so it must not reach anything
+ * the server can reach but the internet cannot. Every hop resolves its host
+ * and goes on only if every address is public (`server/netGuard.ts`); the
+ * connection is pinned to the checked address, so DNS rebinding cannot swap
+ * it. Redirects (301, 302, 303, 307, 308) are followed here, at most
+ * `MAX_PAGE_REDIRECTS`, each with the scheme and address checks again. The
+ * whole fetch has `PAGE_FETCH_TIMEOUT_MS`, and the body stops at
+ * `MAX_PAGE_HTML_CHARS`. Nothing here logs the URL or an address.
+ */
 export async function fetchPageHtml(
   rawUrl: string,
-  fetchImpl: typeof fetch = fetch,
+  deps: PageFetchDeps = LIVE_PAGE_FETCH,
 ): Promise<PageFetchOutcome> {
-  let parsed: URL;
+  let url: URL;
   try {
-    parsed = new URL(rawUrl);
+    url = new URL(rawUrl);
   } catch {
     return { kind: 'invalid_url' };
   }
-  // Scheme check only (matches RecipeView's http/https allowlist); does not block private or link-local destinations.
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+  // Matches RecipeView's http/https allowlist.
+  if (!isHttpUrl(url)) {
     return { kind: 'unsupported_scheme' };
   }
 
-  let page: Response;
+  const signal = AbortSignal.timeout(deps.timeoutMs);
   try {
-    page = await fetchImpl(parsed.href, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        Accept: 'text/html',
-      },
-      redirect: 'follow',
-    });
+    for (let redirects = 0; ; redirects += 1) {
+      const address = await untilAborted(resolvePublicAddress(lookupName(url), deps.resolve), signal);
+      if (address === null) {
+        return { kind: 'blocked' };
+      }
+      const page = await untilAborted(
+        deps.get(url, address, { headers: PAGE_REQUEST_HEADERS, signal }),
+        signal,
+      );
+      const location = firstHeader(page.headers.location);
+      if (REDIRECT_STATUSES.has(page.status) && location !== undefined) {
+        page.body.destroy();
+        if (redirects >= MAX_PAGE_REDIRECTS) {
+          return { kind: 'unreachable' };
+        }
+        let next: URL;
+        try {
+          next = new URL(location, url);
+        } catch {
+          return { kind: 'unreachable' };
+        }
+        if (!isHttpUrl(next)) {
+          return { kind: 'unreachable' };
+        }
+        url = next;
+        continue;
+      }
+      if (page.status < 200 || page.status > 299) {
+        page.body.destroy();
+        return { kind: 'refused', status: page.status };
+      }
+      const html = await readPageText(page.body, firstHeader(page.headers['content-type']), signal);
+      return { kind: 'ok', html };
+    }
   } catch {
+    // DNS failure, connection or TLS error, timeout, or a body that broke off.
     return { kind: 'unreachable' };
   }
-  if (!page.ok) {
-    return { kind: 'refused', status: page.status };
-  }
-  return { kind: 'ok', html: await page.text() };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

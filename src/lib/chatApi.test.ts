@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { recipeForChat, streamChatReply } from './chatApi';
+import { MAX_CHAT_PHOTOS, recipeForChat, streamChatReply } from './chatApi';
 import * as session from './session';
 import type { Recipe } from './types';
 
@@ -31,14 +31,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('MAX_CHAT_PHOTOS', () => {
+  it('matches the server cap in api/chat.ts', () => {
+    expect(MAX_CHAT_PHOTOS).toBe(4);
+  });
+});
+
 describe('recipeForChat', () => {
-  it('strips lang and leaves every other field', () => {
+  it('strips lang and variantOf and leaves every other field', () => {
     expect(recipeForChat({ ...RECIPE, lang: 'it', description: 'Hot.' })).toEqual({
       ...RECIPE,
       description: 'Hot.',
     });
     expect(recipeForChat(RECIPE)).toEqual(RECIPE);
     expect(recipeForChat({ ...RECIPE, lang: 'uk' })).not.toHaveProperty('lang');
+    expect(
+      recipeForChat({ ...RECIPE, variantOf: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+    ).toEqual(RECIPE);
   });
 });
 
