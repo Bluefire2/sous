@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { recipeForChat, streamChatReply } from './chatApi';
+import { MAX_CHAT_PHOTOS, recipeForChat, streamChatReply } from './chatApi';
 import * as session from './session';
 import type { Recipe } from './types';
 
@@ -29,6 +29,12 @@ function streamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('MAX_CHAT_PHOTOS', () => {
+  it('matches the server cap in api/chat.ts', () => {
+    expect(MAX_CHAT_PHOTOS).toBe(4);
+  });
 });
 
 describe('recipeForChat', () => {

@@ -160,7 +160,8 @@ async function discover(page: Page): Promise<Fixture> {
   await openLibrary(page, '/');
   await allCollectionsButton(page).click();
   await firstRecipeLink(page).waitFor({ state: 'visible' });
-  const title = await firstRecipeLink(page).locator('h2').innerText();
+  // The card's link is its title (the tag chips beside it are buttons).
+  const title = await firstRecipeLink(page).innerText();
   const word = /\p{L}{3,}/u.exec(title)?.[0];
   if (word === undefined) {
     throw new Precondition('precondition not met: the first recipe title has no 3-letter word');

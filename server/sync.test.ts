@@ -70,6 +70,59 @@ describe('syncPush ignores body uid', () => {
   });
 });
 
+/** A body that never ends: a route that reads it whole never answers. */
+function endlessBody(): { body: ReadableStream<Uint8Array>; read: () => number; cancelled: () => boolean } {
+  let bytes = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = new Uint8Array(64 * 1024).fill(0x20);
+      bytes += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return { body, read: () => bytes, cancelled: () => cancelled };
+}
+
+describe('syncPush body size', () => {
+  function ownerRequest(body: string | ReadableStream<Uint8Array>): Request {
+    const token = signSession({ sub: 'owner-sub', email: 'allowed@example.com' }, Date.now());
+    return new Request('http://localhost/api/sync/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+  }
+
+  it('answers 413 and stops reading a body over the limit', async () => {
+    const endless = endlessBody();
+    const res = await syncPush(ownerRequest(endless.body));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'Payload too large; batch your ops' });
+    expect(endless.cancelled()).toBe(true);
+    expect(endless.read()).toBeLessThan(4_000_000);
+  });
+
+  it('still answers 413 past a million characters', async () => {
+    const res = await syncPush(ownerRequest(JSON.stringify({ ops: [], pad: 'x'.repeat(1_000_000) })));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'Payload too large; batch your ops' });
+  });
+
+  it('measures the limit in characters, so multibyte text under it is not too large', async () => {
+    // About 1.2 MB of UTF-8 in 600 000 characters; 51 ops stops it before the store.
+    const raw = JSON.stringify({ ops: Array.from({ length: 51 }, () => null), pad: 'ж'.repeat(600_000) });
+    expect(new TextEncoder().encode(raw).byteLength).toBeGreaterThan(1_000_000);
+    const res = await syncPush(ownerRequest(raw));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'Too many ops; batch your requests' });
+  });
+});
+
 describe('applyPushOp unknown kind', () => {
   it('returns unknown', async () => {
     const result = await applyPushOp('sub-1', { kind: 'photo.put', payload: {} });

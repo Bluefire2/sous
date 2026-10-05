@@ -20,7 +20,7 @@
   {
     "id": "library-populated",
     "route": "/",
-    "setup": "Signed in on the Recipes list (/) or an own named collection (/collections/<id>) that already shows at least one recipe card. Prefer / when it has cards. The collections section sits on the page background between the header and search: a Collections label with a folder icon (it links to the index), New collection on the right, and one sideways row of chips starting with Recipes. On an owned named collection, a share icon (three connected nodes) and a vertical ellipsis sit beside New collection; do not open the ellipsis here (that menu is library-collection-menu). There is no card around the section. Do not press New collection, Share, Rename, or Delete, and do not create a recipe. If nothing is listed, mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite. Below the last card, a centered muted line reads \"Missing something?\" followed by a Suggest a feature link; scroll to it and check it fits on one or two lines. Do not open it here.",
+    "setup": "Signed in on the Recipes list (/) or an own named collection (/collections/<id>) that already shows at least one recipe card. Prefer / when it has cards. The collections section sits on the page background between the header and search: a Collections label with a folder icon (it links to the index), New collection on the right, and one sideways row of chips starting with Recipes. On an owned named collection, a share icon (three connected nodes) and a vertical ellipsis sit beside New collection; do not open the ellipsis here (that menu is library-collection-menu). There is no card around the section. Do not press New collection, Share, Rename, or Delete, and do not create a recipe. If nothing is listed, mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite. Beside the search box is a Sort chip with a down chevron (its menu is library-sort-menu; do not open it here). A card for a recipe you have logged a cook of shows a small muted line under the description, \"Last cooked\" with a relative time (\"Last cooked 3 days ago\", or \"Last cooked today\"); a recipe never cooked shows no such line. A card's tags are small chips; each is a button whose aria-label says it filters the list by that tag. Do not tap a tag here. Below the last card, a centered muted line reads \"Missing something?\" followed by a Suggest a feature link; scroll to it and check it fits on one or two lines. Do not open it here.",
     "needsData": true
   },
   {
@@ -130,6 +130,12 @@
     "route": "/",
     "setup": "On the Recipes list, signed in or out. The rightmost header control shows the current UI language's short label (EN, УКР, РУС, or 中文) with a down chevron; its name is an aria-label. Tap it so the menu under it lists every UI language by its own name, with the current one in bold and a check mark. The trigger label is the UI language's own short name, and each menu item names its language in that language, by design; judge them, the aria-label, and the header around it. Choosing a language only writes cook.locale and is allowed.",
     "needsData": false
+  },
+  {
+    "id": "library-sort-menu",
+    "route": "/collections/:collectionId",
+    "setup": "Signed in on one of your own named collections with at least two recipes, one of which you have logged a cook of. Beside the search box, after Select and All collections (wrapped under the search on a narrow screen), is a Sort chip with a down chevron; its aria-label names the current order (\"Sort: Recently updated\"). Tap it so the menu under it lists four orders: Recently updated (the default, in bold with a check mark), Title A–Z, Newest added, and Last cooked; the menu's group label is an aria-label. Judge the four items as a parallel set of list orders, and the chip beside the search. The cooked recipe's card shows a small muted line under its description, \"Last cooked\" with a relative time (\"Last cooked 3 days ago\"); judge it beside the menu's Last cooked item. Choosing an order only reorders the list on this device and is allowed. If no collection has two recipes and a logged cook, mark skipped: needs data.",
+    "needsData": true
   },
   {
     "id": "import-idle",
@@ -266,7 +272,7 @@
   {
     "id": "recipe-view",
     "route": "/recipe/:id",
-    "setup": "An owned recipe as it loads: title, ingredients, and steps. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "setup": "An owned recipe as it loads: title, ingredients, and steps. The top row has the Library back link on the left and Share and Edit on the right. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip or Share. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -297,6 +303,18 @@
     "id": "recipe-view-your-cooks",
     "route": "/recipe/:id",
     "setup": "On an owned recipe, scroll to the \"Your cooks\" section (heading plus Log a cook; cards if this recipe already has logs). This is the RecipeView cook-log state. The section is absent on a shared recipe. Do not log a cook. Do not tap the translate chip. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-share-copied",
+    "route": "/recipe/:id",
+    "setup": "An owned recipe in a browser with no system share sheet: Share in the top row copied the recipe as plain text, and a dark pill near the top says the recipe was copied. Share only reads the recipe; it writes nothing. On a phone Share opens the system share sheet instead, which is not captured. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-share-copy-failed",
+    "route": "/recipe/:id",
+    "setup": "As recipe-view-share-copied, but the clipboard refused the write, so a red pill near the top says the recipe could not be copied. Share writes nothing. If the clipboard accepts the write, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -398,13 +416,13 @@
   {
     "id": "recipe-view-shared",
     "route": "/recipe/:id",
-    "setup": "Open a recipe from a viewer share (no Edit link). Under the Library / Edit row a muted strip says who shared it and \"View only.\" (\"Shared with you by … View only.\", or \"Shared with you. View only.\" when the owner's email is unknown). The translate chip works the same as on an owned recipe. Do not change servings, checks, or steps. Do not tap the translate chip. If there is no viewer share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
+    "setup": "Open a recipe from a viewer share (no Edit link; Share still shows, since it only reads). Under the Library / Edit row a muted strip says who shared it and \"View only.\" (\"Shared with you by … View only.\", or \"Shared with you. View only.\" when the owner's email is unknown). The translate chip works the same as on an owned recipe. Do not change servings, checks, or steps. Do not tap the translate chip. If there is no viewer share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
     "needsData": true
   },
   {
     "id": "recipe-view-shared-editor",
     "route": "/recipe/:id",
-    "setup": "Open a recipe from a collection shared with you as an editor. Under the Library / Edit row the muted strip says who shared it and \"You can edit this recipe.\" (or \"Shared with you. You can edit this recipe.\" when the owner's email is unknown), and the Edit link is showing. Do not tap Edit, do not change servings, checks, or steps, and do not tap the translate chip. If there is no editor share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
+    "setup": "Open a recipe from a collection shared with you as an editor. Under the Library / Edit row the muted strip says who shared it and \"You can edit this recipe.\" (or \"Shared with you. You can edit this recipe.\" when the owner's email is unknown), and Share and the Edit link are showing. Do not tap Edit or Share, do not change servings, checks, or steps, and do not tap the translate chip. If there is no editor share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
     "needsData": true
   },
   {
@@ -542,7 +560,7 @@
   {
     "id": "public-recipe",
     "route": "/p/:token/r/:recipeId",
-    "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe. The top row is a back link with the collection name and \"Sign in\". Below: the photo if any, title, times, Ingredients with the servings stepper, Steps, Notes, and at the bottom right a grayed \"Ask\" pill. Prefer a recipe whose language differs from the UI language (or one with no language set) so a grayed translate chip shows under the title; hover it and capture the tooltip, then hover the Ask pill and capture its tooltip (it opens upward). Changing servings, ticking ingredients, or tapping steps is fine here: it stays in the page and writes nothing.",
+    "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe. The top row is a back link with the collection name, then \"Share\" and \"Sign in\". Below: the photo if any, title, times, Ingredients with the servings stepper, Steps, Notes, and at the bottom right a grayed \"Ask\" pill. Prefer a recipe whose language differs from the UI language (or one with no language set) so a grayed translate chip shows under the title; hover it and capture the tooltip, then hover the Ask pill and capture its tooltip (it opens upward). Changing servings, ticking ingredients, or tapping steps is fine here: it stays in the page and writes nothing.",
     "needsData": true
   },
   {

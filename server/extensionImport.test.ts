@@ -328,6 +328,62 @@ describe('extensionImport log line', () => {
   });
 });
 
+/** A body that never ends: a route that reads it whole never answers. */
+function endlessBody(): { body: ReadableStream<Uint8Array>; read: () => number; cancelled: () => boolean } {
+  let bytes = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = new Uint8Array(64 * 1024).fill(0x20);
+      bytes += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return { body, read: () => bytes, cancelled: () => cancelled };
+}
+
+describe('extensionImport body size', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('answers 413 and stops reading a body over the limit, and logs it as too_large', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(recipeImport.importFromHtml).mockClear();
+    const endless = endlessBody();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const { deps, calls } = fakeImportDeps(undefined);
+    const response = await extensionImport(
+      new Request('http://localhost/api/extension/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [SESSION_HEADER_NAME]: token },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'Page was too large to import.',
+      code: 'import-too-large',
+    });
+    expect(endless.cancelled()).toBe(true);
+    expect(endless.read()).toBeLessThan(5_000_000);
+    expect(recipeImport.importFromHtml).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+    expect(importLogEntries(log)).toEqual([
+      expect.objectContaining({ via: 'extension', outcome: 'too_large', status: 413 }),
+    ]);
+  });
+});
+
 describe('extensionImport warnings', () => {
   const url = 'https://example.com/soup';
 

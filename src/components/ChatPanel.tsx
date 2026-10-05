@@ -6,7 +6,7 @@ import { chatStore, useChatMessages } from '../lib/chatStore';
 import { MemoryBlobImage, StoredPhotoImage } from './BlobImage';
 import { photoStore } from '../lib/photoStore';
 import { recipeStore } from '../lib/recipeStore';
-import { streamChatReply, type CookingState } from '../lib/chatApi';
+import { MAX_CHAT_PHOTOS, streamChatReply, type CookingState } from '../lib/chatApi';
 import { transcribeAudio } from '../lib/sttApi';
 import {
   canRecord,
@@ -332,6 +332,8 @@ export default function ChatPanel({
   };
 
   const attachPhoto = async (file: File) => {
+    // The server refuses a message with more photos than this (400).
+    if (pendingRef.current.length >= MAX_CHAT_PHOTOS) return;
     try {
       // The originals are several megabytes; downscale before attach.
       // and exportLibrary re-encodes every stored blob as base64 — same intent
@@ -575,7 +577,7 @@ export default function ChatPanel({
     <DialogShell
       onClose={onClose}
       backdropLabel={t('chat.closeChat')}
-      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end"
+      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end print:hidden"
       panelClassName="flex h-[75dvh] flex-col rounded-t-3xl bg-surface shadow-2xl md:mx-auto md:w-full md:max-w-xl"
     >
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
@@ -668,8 +670,9 @@ export default function ChatPanel({
           <button
             type="button"
             aria-label={t('chat.attachPhoto')}
+            disabled={pendingPhotos.length >= MAX_CHAT_PHOTOS}
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-muted hover:bg-line-strong active:bg-line-strong"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-muted hover:bg-line-strong active:bg-line-strong disabled:opacity-40"
           >
             <CameraIcon className="block h-5 w-5" />
           </button>

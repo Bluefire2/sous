@@ -17,6 +17,13 @@ export interface CookingState {
 }
 
 /**
+ * Photos per message. Mirrors `MAX_CHAT_IMAGES` in `api/chat.ts`, which stays
+ * authoritative and answers 400 above it; the composer stops attaching at the
+ * cap so a message never fails for a fifth photo.
+ */
+export const MAX_CHAT_PHOTOS = 4;
+
+/**
  * The recipe posted to `/api/chat`. `lang` and `variantOf` are removed so the
  * request stays the same shape it had before those fields existed.
  */

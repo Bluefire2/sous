@@ -47,7 +47,7 @@ export default function SyncToast() {
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-30 flex justify-center px-4 print:hidden"
     >
       {toast !== null && (
         <p

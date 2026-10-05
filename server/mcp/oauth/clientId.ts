@@ -1,9 +1,9 @@
 /**
- * Client ID Metadata Document URLs, redirect URIs, and which addresses Sous
- * may fetch a metadata document from. Pure: `isPublicAddress` decides on an
- * address that `clientMetadata.ts` resolved; nothing here does I/O.
+ * Client ID Metadata Document URLs and redirect URIs. Pure; nothing here does
+ * I/O. Which addresses Sous may fetch a metadata document from is
+ * `isPublicAddress` in `server/netGuard.ts`, applied by `clientMetadata.ts`.
  */
-import { BlockList, isIP } from 'node:net';
+import { isIP } from 'node:net';
 import { MAX_CLIENT_ID_CHARS, MAX_REDIRECT_URI_CHARS } from '../config.ts';
 
 const IPV4_LITERAL_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
@@ -108,64 +108,4 @@ export function redirectUriAllowed(requested: string, registered: readonly strin
       have.search === want.search
     );
   });
-}
-
-/**
- * Everything Sous must never connect to on a client's say-so: loopback,
- * private, link-local (including the metadata server at 169.254.169.254),
- * CGNAT, unique local, multicast, unspecified, documentation and other
- * special ranges, and any IPv6 form that embeds an IPv4 address (mapped,
- * NAT64, 6to4, Teredo), since the embedded address could be any of those.
- */
-// Two lists: BlockList matches an IPv4 address against IPv4-mapped IPv6
-// rules, so `::ffff:0:0/96` in a shared list would block every IPv4 address.
-const BLOCKED_V4 = new BlockList();
-const BLOCKED_V6 = new BlockList();
-for (const [network, prefix] of [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.0.0.0', 24],
-  ['192.0.2.0', 24],
-  ['192.88.99.0', 24],
-  ['192.168.0.0', 16],
-  ['198.18.0.0', 15],
-  ['198.51.100.0', 24],
-  ['203.0.113.0', 24],
-  ['224.0.0.0', 4],
-  ['240.0.0.0', 4],
-] as const) {
-  BLOCKED_V4.addSubnet(network, prefix, 'ipv4');
-}
-for (const [network, prefix] of [
-  ['::', 128],
-  ['::1', 128],
-  ['::', 96],
-  ['::ffff:0:0', 96],
-  ['64:ff9b::', 96],
-  ['64:ff9b:1::', 48],
-  ['100::', 64],
-  ['2001::', 32],
-  ['2001:db8::', 32],
-  ['2002::', 16],
-  ['fc00::', 7],
-  ['fe80::', 10],
-  ['fec0::', 10],
-  ['ff00::', 8],
-] as const) {
-  BLOCKED_V6.addSubnet(network, prefix, 'ipv6');
-}
-
-export function isPublicAddress(address: string): boolean {
-  const family = isIP(address);
-  if (family === 4) {
-    return !BLOCKED_V4.check(address, 'ipv4');
-  }
-  if (family === 6) {
-    return !BLOCKED_V6.check(address, 'ipv6');
-  }
-  return false;
 }
