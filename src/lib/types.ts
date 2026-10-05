@@ -44,6 +44,13 @@ export interface Recipe {
    * must keep working without it (`docs/plans/import-reliability.md`).
    */
   importCheck?: ImportCheck;
+  /**
+   * Id of the original this recipe is a variant of, shared by every variant
+   * of it, so they group as equals. Set only when the variant is created and
+   * never edited. Missing is normal, and the original may be gone or someone
+   * else's (`docs/plans/recipe-variants.md`).
+   */
+  variantOf?: string;
   createdAt: number;
   updatedAt: number;
 }

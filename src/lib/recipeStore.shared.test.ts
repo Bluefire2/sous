@@ -59,7 +59,7 @@ const shared = (access?: 'editor' | 'viewer'): ItemOrigin => ({
   ...(access ? { access } : {}),
 });
 
-function publishShared(editableLang?: string): void {
+function publishShared(editableLang?: string, editableVariantOf?: string): void {
   const collections = new Map([
     [EDIT_COLLECTION, collection(EDIT_COLLECTION, [EDITABLE_ID])],
     [VIEW_COLLECTION, collection(VIEW_COLLECTION, [VIEW_ONLY_ID])],
@@ -79,7 +79,13 @@ function publishShared(editableLang?: string): void {
     },
     {
       recipes: new Map([
-        [EDITABLE_ID, recipe(EDITABLE_ID, editableLang)],
+        [
+          EDITABLE_ID,
+          {
+            ...recipe(EDITABLE_ID, editableLang),
+            ...(editableVariantOf === undefined ? {} : { variantOf: editableVariantOf }),
+          },
+        ],
         [VIEW_ONLY_ID, recipe(VIEW_ONLY_ID)],
       ]),
       collections,
@@ -283,6 +289,18 @@ describe('recipeStore on a shared recipe', () => {
       shared: true,
       payload: { title: 'Zuppa', lang: 'it' },
     });
+  });
+
+  it("keeps the owner's variantOf when an editor saves without it or with another", async () => {
+    publishShared(undefined, VIEW_ONLY_ID);
+    vi.mocked(pushOps).mockResolvedValue('ok');
+    await recipeStore.save({ ...recipe(EDITABLE_ID), title: 'Better soup' });
+    await recipeStore.save({ ...recipe(EDITABLE_ID), title: 'Best soup', variantOf: OTHER_PHOTO });
+    for (const op of pushed()) {
+      expect(op).toMatchObject({ shared: true, payload: { variantOf: VIEW_ONLY_ID } });
+    }
+    expect(pushed()).toHaveLength(2);
+    expect(getRecipe(EDITABLE_ID)).toMatchObject({ title: 'Best soup', variantOf: VIEW_ONLY_ID });
   });
 
   it('keeps photos when an editor applies an Ask draft', async () => {

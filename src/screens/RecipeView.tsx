@@ -6,6 +6,7 @@ import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
 import ImportWarningBanner from '../components/ImportWarningBanner';
 import ShareRecipeButton from '../components/ShareRecipeButton';
+import VariantLinks from '../components/VariantLinks';
 import {
   askButtonClass,
   GallerySection,
@@ -297,6 +298,7 @@ export default function RecipeView() {
             {t('recipe.alreadyInLanguage')}
           </p>
         )}
+        <VariantLinks recipeId={recipe.id} />
         <ImportWarningBanner
           recipe={recipe}
           sections={displayRecipe.ingredientSections}

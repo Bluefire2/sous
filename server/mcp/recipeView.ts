@@ -1,7 +1,7 @@
 /**
  * What an MCP client sees of a recipe. `version` is the stored `updatedAt`;
- * `update_recipe` must send it back. Photo ids, `importCheck`, `lang`, and
- * `createdAt` are never included. Pure.
+ * `update_recipe` must send it back. Photo ids, `importCheck`, `lang`,
+ * `variantOf`, and `createdAt` are never included. Pure.
  */
 import type { AgentRecipe } from '../agent/index.ts';
 

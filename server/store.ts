@@ -11,8 +11,10 @@ import {
 } from './pushReasons.ts';
 import { compactImportCheck } from './importWarnings.ts';
 import { normalizeLang } from './lang.ts';
+import { compactVariantOf } from './recipeVariant.ts';
 import { TRANSLATIONS_COLLECTION, translationCacheDocIds } from './recipeTranslation.ts';
 import { canViewRecipe } from './shareAuth.ts';
+import { isUuid } from './uuid.ts';
 
 export { SHARED_PARENT_OWNER_SUB_FIELD };
 export type { PushRejectReason };
@@ -29,12 +31,7 @@ export type CursorTuple = [number, string];
 
 export type PullCursor = Partial<Record<StoreKind, CursorTuple>>;
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export function isUuid(value: unknown): value is string {
-  return typeof value === 'string' && UUID_RE.test(value);
-}
+export { isUuid };
 
 /** Firestore's ALREADY_EXISTS from `create()`: the Admin SDK's numeric gRPC code 6. */
 export function isAlreadyExists(err: unknown): boolean {
@@ -268,6 +265,10 @@ export function compactRecipeFields(recipe: Record<string, unknown>): Record<str
   const importCheck = compactImportCheck(recipe.importCheck);
   if (importCheck !== undefined) {
     next.importCheck = importCheck;
+  }
+  const variantOf = compactVariantOf(recipe.variantOf, recipe.id);
+  if (variantOf !== undefined) {
+    next.variantOf = variantOf;
   }
   return next;
 }

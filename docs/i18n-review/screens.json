@@ -282,6 +282,12 @@
     "needsData": true
   },
   {
+    "id": "recipe-view-variants",
+    "route": "/recipe/:id",
+    "setup": "A recipe that has other variants (one saved from Ask with Save as variant, or a variant of one), so a Variants row shows under the title with one chip per variant: the original first, labelled as the original, and the open recipe highlighted. Do not tap a chip. If no recipe in the account has a variant, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "recipe-view-import-retry-sheet",
     "route": "/recipe/<id>",
     "setup": "From recipe-view-import-warnings, press Retry import (it calls Gemini and writes nothing) and wait for the \"Replace the ingredients and steps with the new import?\" sheet, with its body, any \"The new import has these issues too:\" list, and Replace and Cancel. Capture it, then press Cancel. Never press Replace: it overwrites the recipe.",

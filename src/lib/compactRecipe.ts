@@ -1,6 +1,7 @@
 import { normalizeLang } from '../i18n/lang';
 import { compactImportCheck } from './importCheck';
 import { compactGalleryPhotoIds } from './recipePhotos';
+import { compactVariantOf } from './recipeVariant';
 import type { Recipe } from './types';
 
 /**
@@ -34,5 +35,7 @@ export function compactRecipe(recipe: Recipe): Recipe {
   if (galleryPhotoIds !== undefined) next.galleryPhotoIds = galleryPhotoIds;
   const importCheck = compactImportCheck(recipe.importCheck);
   if (importCheck !== undefined) next.importCheck = importCheck;
+  const variantOf = compactVariantOf(recipe.variantOf, recipe.id);
+  if (variantOf !== undefined) next.variantOf = variantOf;
   return next;
 }

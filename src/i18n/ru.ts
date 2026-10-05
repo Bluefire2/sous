@@ -204,6 +204,8 @@ export const ru: Messages = {
   'recipe.yourCooks': 'Ваши приготовления',
   'recipe.logACook': 'Записать приготовление',
   'recipe.source': 'Источник: {source}',
+  'recipe.variants': 'Варианты',
+  'recipe.variantOriginal': '{title} (оригинал)',
   'recipe.ask': 'Спросить',
   'recipe.translateLabelled': '{language} · Перевести',
   'recipe.translate': 'Перевести',

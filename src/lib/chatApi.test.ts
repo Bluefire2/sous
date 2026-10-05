@@ -38,13 +38,16 @@ describe('MAX_CHAT_PHOTOS', () => {
 });
 
 describe('recipeForChat', () => {
-  it('strips lang and leaves every other field', () => {
+  it('strips lang and variantOf and leaves every other field', () => {
     expect(recipeForChat({ ...RECIPE, lang: 'it', description: 'Hot.' })).toEqual({
       ...RECIPE,
       description: 'Hot.',
     });
     expect(recipeForChat(RECIPE)).toEqual(RECIPE);
     expect(recipeForChat({ ...RECIPE, lang: 'uk' })).not.toHaveProperty('lang');
+    expect(
+      recipeForChat({ ...RECIPE, variantOf: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+    ).toEqual(RECIPE);
   });
 });
 
