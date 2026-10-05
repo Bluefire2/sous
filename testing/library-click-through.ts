@@ -62,8 +62,22 @@ function firstRecipeLink(page: Page) {
   return page.locator('ul li a[href^="/recipe/"]:not([href$="/edit"])').first();
 }
 
-function renameButton(page: Page) {
-  return page.getByRole('button', { name: 'Rename', exact: true });
+/**
+ * The ⋮ trigger for the open collection's Rename and Delete. CollectionSection
+ * renders it only for a named collection you own; its label is "Actions for
+ * {name}" (library.collectionActions). Recipe cards use the same words for
+ * their own menus, so look only inside the collections section.
+ */
+function collectionActionsButton(page: Page) {
+  return page
+    .locator('section[aria-labelledby="collections-label"]')
+    .getByRole('button', { name: /^Actions for / });
+}
+
+/** Opens the rename sheet through the collection actions menu. */
+async function openRename(page: Page): Promise<void> {
+  await collectionActionsButton(page).click();
+  await page.getByRole('button', { name: 'Rename', exact: true }).click();
 }
 
 function allCollectionsButton(page: Page) {
@@ -131,12 +145,12 @@ async function discover(page: Page): Promise<Fixture> {
   let recipeList: string | undefined = (await hasRecipeCard(page)) ? '/' : undefined;
   for (const href of chips) {
     await openLibrary(page, href);
-    if (a === undefined && (await renameButton(page).count()) > 0) a = href;
+    if (a === undefined && (await collectionActionsButton(page).count()) > 0) a = href;
     if (recipeList === undefined && (await hasRecipeCard(page))) recipeList = href;
     if (a !== undefined && recipeList !== undefined) break;
   }
   if (a === undefined) {
-    throw new Precondition('precondition not met: needs a collection you own (shows Rename)');
+    throw new Precondition('precondition not met: needs a collection you own (shows its actions menu)');
   }
   if (recipeList === undefined) {
     throw new Precondition('precondition not met: needs a recipe in some list');
@@ -225,7 +239,7 @@ async function flowNoSheetCarryOver(page: Page, f: Fixture): Promise<void> {
   await openLibrary(page, f.b);
   await chip(page, f.a).click();
   await waitForPath(page, f.a);
-  await renameButton(page).click();
+  await openRename(page);
   await page.getByRole('dialog').waitFor({ state: 'visible' });
   await page.goBack();
   await waitForPath(page, f.b);
