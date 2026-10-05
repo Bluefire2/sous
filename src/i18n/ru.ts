@@ -170,7 +170,7 @@ export const ru: Messages = {
   'admin.noInvites': 'Неиспользованных ссылок нет.',
   'admin.unusedLink': 'Неиспользованная ссылка',
   'admin.createdAgo': 'Создана {time}',
-  'admin.createdBy': 'Создано аккаунтом {email}',
+  'admin.createdBy': 'Создана аккаунтом {email}',
   'admin.revokeInvite': 'Отозвать эту ссылку-приглашение',
   'admin.revoking': 'Отзыв…',
   'admin.revoke': 'Отозвать',
