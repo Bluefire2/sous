@@ -40,6 +40,7 @@ import {
 import { sortLibraryRecipes } from '../lib/librarySort';
 import { useLastCookedOn } from '../lib/cookLogStore';
 import { lastCookedLabel } from '../lib/relativeTime';
+import { isLibrarySearchShortcut } from '../lib/librarySearchShortcut';
 import { recipeStore, useRecipes } from '../lib/recipeStore';
 import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
@@ -118,6 +119,7 @@ export default function Library() {
   const [inviteQuota, setInviteQuota] = useState<{ id: number; message: string } | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const firstActionRef = useRef<HTMLAnchorElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const scoped =
     allRecipes === undefined || collections === undefined
@@ -557,6 +559,18 @@ export default function Library() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // `/` jumps to the search. Not while a recipe menu or sheet is open,
+      // nor while a disclosure menu (language, collection actions) is: those
+      // keep their open state in their own hook, and their trigger says so.
+      const overlayOpen =
+        menuId !== null ||
+        sheet.kind !== 'closed' ||
+        document.querySelector('[aria-expanded="true"]') !== null;
+      if (isLibrarySearchShortcut(event, overlayOpen)) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       if (menuId !== null) {
         event.preventDefault();
@@ -751,6 +765,7 @@ export default function Library() {
       {showSwitcher ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={
               browseAll
@@ -780,6 +795,7 @@ export default function Library() {
       ) : (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={t('library.search')}
             value={query}

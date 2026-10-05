@@ -153,6 +153,9 @@ function fetchFailure(page: Exclude<PageFetchOutcome, { kind: 'ok' }>): Response
     case 'unsupported_scheme':
       return fail('import-bad-scheme', 'Only http and https URLs are supported.', 422);
     case 'unreachable':
+    // A non-public address gets the same answer as a dead host, so the
+    // response says nothing about what the server's network can reach.
+    case 'blocked':
       return fail('import-unreachable', 'Could not reach that URL.', 422);
     case 'refused':
       return fail(

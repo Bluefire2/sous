@@ -166,7 +166,9 @@ It follows the `/c/<token>` → `/c/join` pattern:
 
 ### Client ID Metadata Documents (any client)
 
-This lives in `server/mcp/oauth/clientMetadata.ts`.
+This lives in `server/mcp/oauth/clientMetadata.ts`. The address check and
+the pinned lookup are in `server/netGuard.ts`, which website URL import
+(`fetchPageHtml`) shares.
 
 What a valid `client_id` looks like:
 - an `https` URL with a non-root path
@@ -306,10 +308,11 @@ Everything except the Firestore and network modules is pure and unit-tested.
   `mergeRecipeChanges`. Strict validation with field-level errors.
 - `recipeView.ts`: `toMcpRecipe`, the projection above.
 - `log.ts`: the `mcp` and `mcp_oauth` log lines and `sanitizedMcpError`.
-- `oauth/clientId.ts`: `parseClientIdUrl`, `redirectUriAllowed`,
-  `isPublicAddress`.
+- `oauth/clientId.ts`: `parseClientIdUrl`, `redirectUriAllowed`.
 - `oauth/clientMetadata.ts`: the SSRF-safe fetch, `validateClientMetadata`,
-  the cache.
+  the cache. The fetch takes `isPublicAddress`, `resolvePublicAddress` and
+  `pinnedLookup` from `server/netGuard.ts` (outside `server/mcp/`, because
+  website URL import uses them too).
 - `oauth/pkce.ts`: `verifyS256`.
 - `oauth/consentPage.ts`: escaped HTML for the consent and error pages.
 - `oauth/authorize.ts`: `/oauth/authorize` and `/oauth/consent`
@@ -471,7 +474,8 @@ email, or the full `redirect_uri`.
   - `redirectUriAllowed` matches `http://localhost:3118/callback` and
     `http://127.0.0.1:5555/callback` against the port-less entries, rejects
     path or scheme changes, and is exact for https.
-  - `isPublicAddress` covers each private, special and IPv6 range.
+  - `isPublicAddress` (`server/netGuard.test.ts`) covers each private,
+    special and IPv6 range.
   - `validateClientMetadata` rejects a `client_id` mismatch or a confidential
     auth method.
 - **Scopes and headers:** write implies read; `invalid_scope` for unknown
