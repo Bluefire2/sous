@@ -249,7 +249,7 @@ export default function Library() {
   // load; Settings can reopen it with router state `{ intro: true }`.
   const askIntro = shouldAskAboutIntro({
     sessionStatus,
-    sync: syncStatus,
+    fullPull,
     hasOwnRecipe,
     sheetClosed: sheet.kind === 'closed',
   });
@@ -274,11 +274,15 @@ export default function Library() {
     navigate(location.pathname, { replace: true, state: null });
   }, [introRequested, location.pathname, navigate]);
 
-  const closeIntro = () => {
-    // Before closing, so the ask effect sees `seen` when the sheet closes.
-    if (userSub !== undefined) markIntroSeen(userSub);
-    closeSheets();
-  };
+  // Every way the intro closes marks it seen: its own buttons, Escape and
+  // the backdrop, a collection change that resets the sheets, Back, or
+  // leaving Library. The cleanup runs before the ask effect re-runs in the
+  // same commit, so the closed intro does not open again.
+  const introOpen = sheet.kind === 'intro';
+  useEffect(() => {
+    if (!introOpen || userSub === undefined) return;
+    return () => markIntroSeen(userSub);
+  }, [introOpen, userSub]);
 
   const submitCreate = () => {
     if (sheet.kind !== 'create') return;
@@ -1020,9 +1024,9 @@ export default function Library() {
         <IntroSheet
           step={sheet.step}
           onStep={(step) => dispatch({ type: 'introStep', step })}
-          onClose={closeIntro}
+          onClose={closeSheets}
           onImport={() => {
-            closeIntro();
+            closeSheets();
             navigate(importHref(addCollectionId));
           }}
         />

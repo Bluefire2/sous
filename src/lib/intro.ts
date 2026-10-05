@@ -1,23 +1,25 @@
 import type { SessionStatus } from './session';
-import type { SyncStatusSnapshot } from './syncEngine';
 
 /**
  * Whether Library should ask the server if this member has seen the
  * new-member intro (`docs/plans/new-member-intro.md`, D1): signed in, the
- * library has been pulled without an error, the member has no live recipe of
- * their own (shared rows don't count), and no other sheet is open. Existing
- * members have recipes, so they never cause a request.
+ * rows on screen come from a full pull (owned and shared), the member has no
+ * live recipe of their own (shared rows don't count), and no other sheet is
+ * open. Existing members have recipes, so they never cause a request.
+ *
+ * `fullPull` rather than the sync status: `clearLibrary` (sign-out, an
+ * expired session) resets it, while the sync status can stay idle with an
+ * old `lastSyncedAt` after the session comes back, over an empty library.
  */
 export function shouldAskAboutIntro(input: {
   sessionStatus: SessionStatus;
-  sync: SyncStatusSnapshot;
+  fullPull: boolean;
   hasOwnRecipe: boolean | undefined;
   sheetClosed: boolean;
 }): boolean {
   return (
     input.sessionStatus === 'signedIn' &&
-    input.sync.status === 'idle' &&
-    input.sync.lastSyncedAt !== null &&
+    input.fullPull &&
     input.hasOwnRecipe === false &&
     input.sheetClosed
   );

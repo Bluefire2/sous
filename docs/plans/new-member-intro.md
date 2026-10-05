@@ -50,7 +50,9 @@ No principle is broken, so no amendment is needed.
 **D1. Who sees it.** The intro opens on Library when all of these are true:
 
 - the session is `signedIn`;
-- the owned pull has finished without an error;
+- the rows on screen come from a full pull, owned and shared (`fullPull`). The
+  sync status alone isn't enough: after an expired session is signed back in,
+  it can still read idle over a cleared library;
 - the member has **no live recipes of their own** (shared rows don't count);
 - the account's profile has no `introSeenAt` (D2);
 - no other Library sheet is open.
@@ -130,7 +132,11 @@ opened while waiting. The fetch is a side effect in an effect, not in the
 reducer or render (client-state principles 5 and 6).
 
 **D7. Every close marks it as seen.** Skip, the backdrop, Escape, Look around,
-and Import a recipe all call `markIntroSeen()`, then close. Import a recipe
+and Import a recipe close the sheet. So do a collection change that resets
+Library's sheets, Back, and leaving Library. Library marks it seen in the
+cleanup of an effect that runs while the intro is open, so every path is
+covered. That cleanup runs before the ask effect re-runs in the same commit,
+so a closed intro never reopens. Import a recipe
 then goes to `importHref(currentCollectionId)`, the same destination as the add
 sheet's first button. Reloading in the middle of the intro shows it again;
 that's fine.

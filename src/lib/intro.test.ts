@@ -3,13 +3,13 @@ import { shouldAskAboutIntro } from './intro';
 
 const ready = {
   sessionStatus: 'signedIn' as const,
-  sync: { status: 'idle' as const, lastSyncedAt: 1 },
+  fullPull: true,
   hasOwnRecipe: false,
   sheetClosed: true,
 };
 
 describe('shouldAskAboutIntro', () => {
-  it('asks for a pulled, signed-in library with no recipe of the member’s own', () => {
+  it('asks for a fully pulled, signed-in library with no recipe of the member’s own', () => {
     expect(shouldAskAboutIntro(ready)).toBe(true);
   });
 
@@ -18,10 +18,9 @@ describe('shouldAskAboutIntro', () => {
     expect(shouldAskAboutIntro({ ...ready, hasOwnRecipe: undefined })).toBe(false);
   });
 
-  it('does not ask before a successful pull, or after a failed one', () => {
-    expect(shouldAskAboutIntro({ ...ready, sync: { status: 'idle', lastSyncedAt: null } })).toBe(false);
-    expect(shouldAskAboutIntro({ ...ready, sync: { status: 'loading', lastSyncedAt: 1 } })).toBe(false);
-    expect(shouldAskAboutIntro({ ...ready, sync: { status: 'error', lastSyncedAt: 1 } })).toBe(false);
+  it('does not ask until a full pull is on screen', () => {
+    // A cleared library (sign-out, expired session) or an owned-only publish.
+    expect(shouldAskAboutIntro({ ...ready, fullPull: false })).toBe(false);
   });
 
   it('does not ask unless signed in', () => {
