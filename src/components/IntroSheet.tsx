@@ -40,8 +40,8 @@ export default function IntroSheet({
   const { Icon, title, body } = STEPS[step] ?? STEPS[0];
   const last = step >= INTRO_STEP_COUNT - 1;
 
-  // On open the dialog focuses its panel and is labelled by this heading.
-  // On a step change, move focus to the new heading so it is read out.
+  // On open the dialog focuses this heading (data-autofocus) and is labelled
+  // by it. On a step change, move focus to the new heading so it is read out.
   useEffect(() => {
     if (shownStep.current === step) return;
     shownStep.current = step;
@@ -55,7 +55,12 @@ export default function IntroSheet({
         <p>{t('intro.stepOf', { n: step + 1, total: INTRO_STEP_COUNT })}</p>
       </div>
       <Icon className="mt-4 block h-8 w-8 text-ink-muted" />
-      <h2 ref={headingRef} tabIndex={-1} className="mt-2 text-lg font-semibold outline-none">
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        data-autofocus
+        className="mt-2 text-lg font-semibold outline-none"
+      >
         {t(title)}
       </h2>
       <p className="mt-1 text-ink-muted">{t(body)}</p>

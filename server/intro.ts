@@ -23,7 +23,7 @@ import { markIntroSeen, readIntroSeen } from './store.ts';
 export type IntroDependencies = {
   requireMember: (req: Request) => Promise<RequireMemberResult>;
   readSeen: (sub: string) => Promise<boolean>;
-  markSeen: (sub: string, now: number) => Promise<void>;
+  markSeen: (sub: string, profile: { email: string }, now: number) => Promise<void>;
   now: () => number;
 };
 
@@ -65,7 +65,7 @@ export async function handleIntroSeenPost(
   if (access.kind === 'denied') return membershipUnauthorized();
   if (access.kind === 'unknown') return membershipUnavailable();
   try {
-    await dependencies.markSeen(access.sub, dependencies.now());
+    await dependencies.markSeen(access.sub, { email: access.email }, dependencies.now());
   } catch (err) {
     console.error('introSeenPost store error:', errorCode(err));
     return storeUnavailable();

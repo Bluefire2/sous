@@ -38,7 +38,7 @@ import {
   writePersistedLibraryView,
 } from '../lib/librarySearchMemory';
 import { recipeStore, useHasOwnRecipe, useRecipes } from '../lib/recipeStore';
-import { shouldAskAboutIntro } from '../lib/intro';
+import { arrivedWithoutOwnRecipe, noteLibraryOnArrival, shouldAskAboutIntro } from '../lib/intro';
 import { introSeenFor, markIntroSeen } from '../lib/introApi';
 import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
@@ -254,8 +254,14 @@ export default function Library() {
     sheetClosed: sheet.kind === 'closed',
   });
   const userSub = user?.sub;
+  // Remember whether the member arrived at an empty library, before the ask
+  // effect below reads it in the same commit.
   useEffect(() => {
-    if (!askIntro || userSub === undefined) return;
+    if (sessionStatus !== 'signedIn' || !fullPull || hasOwnRecipe === undefined) return;
+    if (userSub !== undefined) noteLibraryOnArrival(userSub, hasOwnRecipe);
+  }, [sessionStatus, fullPull, hasOwnRecipe, userSub]);
+  useEffect(() => {
+    if (!askIntro || userSub === undefined || !arrivedWithoutOwnRecipe(userSub)) return;
     let live = true;
     void introSeenFor(userSub).then((seen) => {
       // openIntro is ignored unless every sheet is closed.

@@ -67,6 +67,12 @@ members (who have recipes) never cause a request, and no backfill is needed.
 An existing member whose library is still empty sees the intro once, which is
 what we want.
 
+The check is made on arrival only. Library notes, once per page load and per
+`sub`, whether the first full pull on screen had a recipe of the member's
+own (`noteLibraryOnArrival` in `src/lib/intro.ts`). A member who deletes their
+last recipe mid-session doesn't get the intro; it is for arriving at an empty
+library.
+
 **D2. "Seen" is stored per account, on the profile.** The new optional field
 is `users/{sub}.introSeenAt` (ms since epoch). Closing the intro on any device
 sets it, so the intro doesn't open again on another browser or after clearing
@@ -89,7 +95,7 @@ itself (injected, like `server/grantsHttp.ts`) rather than going through
 | Route | Does | Answers |
 | --- | --- | --- |
 | `GET /api/intro` | Reads `users/{sub}` | `200 { seen: boolean }`, `Cache-Control: no-store`. A missing profile or field means `seen: false`. Firestore failure: `503`. |
-| `POST /api/intro/seen` | In a transaction, sets `introSeenAt` if the profile exists and the field is absent | `204`. A missing profile writes nothing (so it can't create a profile without an email); it is still `204`. Firestore failure: `503`. No body. |
+| `POST /api/intro/seen` | In a transaction, sets `introSeenAt` if the field is absent. A missing profile (sign-in's best-effort `upsertUser` failed) is created with the fields sign-in writes (`userProfileUpsertFields`, from the session's email) plus `introSeenAt`, so closing the intro always sticks | `204`. Firestore failure: `503`. No body. |
 
 We don't put this in `/api/auth/session`, because that would add a Firestore
 read to every session check for every member. The `GET` happens only for
@@ -124,7 +130,8 @@ Escape). A `/welcome` route was rejected: the OAuth `returnTo` flows
 return to the intro.
 
 **D6. Opening is an effect; the reducer stays pure.** When the D1 client
-conditions hold, a Library effect calls `fetchIntroSeen()`. On `false` it
+conditions hold and the member arrived at an empty library, a Library effect
+calls `fetchIntroSeen()`. On `false` it
 dispatches `openIntro`, but only if Library is still mounted and the session's
 `sub` is still the one it asked about. The reducer ignores `openIntro` unless
 the sheet is `closed`, so a late answer never replaces a sheet the person
@@ -162,8 +169,7 @@ translating per locale and nothing grows the bundle.
 
 The draft for `src/i18n/en.ts`. Button and screen names match the existing
 labels: **Ask** (`recipe.ask`; the chat-bubble icon at the top of the
-library is `assistant.ask`), **Log a cook** (`recipe.logACook`), **Invite**
-(`library.inviteLink`), and the import wording of `library.importFromLink` and
+library is `assistant.ask`), **Log a cook** (`recipe.logACook`), and the import wording of `library.importFromLink` and
 `import.photoHint`. Quotes use the curly `“ ”` the catalog already uses.
 
 | Key | Text |
@@ -173,9 +179,9 @@ library is `assistant.ask`), **Log a cook** (`recipe.logACook`), **Invite**
 | `intro.importTitle` | Bring your recipes in |
 | `intro.importBody` | Paste a link or a recipe's text, or add up to 4 photos of handwritten notes. Sous turns it into a clean recipe you can edit. |
 | `intro.cookTitle` | Cook with help |
-| `intro.cookBody` | On any recipe, tap Ask for substitutions, timing, or a second opinion on how it's going. Type or dictate, and when you're done, Log a cook to keep notes for next time. |
+| `intro.cookBody` | Open any recipe and tap Ask for substitutions, timing, or a second opinion on how it's going; you can type or dictate. On your own recipes, Log a cook keeps notes for next time. |
 | `intro.shareTitle` | Plan and share |
-| `intro.shareBody` | The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap Invite to bring a friend to Sous. |
+| `intro.shareBody` | The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap the person icon at the top to invite a friend to Sous. |
 | `intro.back` | Back |
 | `intro.next` | Next |
 | `intro.skip` | Skip |
@@ -186,15 +192,21 @@ library is `assistant.ask`), **Log a cook** (`recipe.logACook`), **Invite**
 `intro.welcome` sits above each step's title as a small label. Clauses to cut
 if their feature isn't in the deploy that ships the intro (D9): "or add up to 4
 photos of handwritten notes" (photo import), the whole first sentence of
-`intro.shareBody` (the library assistant), and "or tap Invite to bring a
-friend to Sous" (member invite links). An owner always has Invite, but most
-people who see the intro are members.
+`intro.shareBody` (the library assistant), and "or tap the person icon at the
+top to invite a friend to Sous" (member invite links). An owner always has the
+invite control, but most people who see the intro are members.
+
+Two wording rules, from review: Log a cook is only on a member's own recipes
+(shared recipes hide it), so the text says so; and the header's invite control
+is an icon with no visible label, so the text names the icon, not the word
+Invite.
 
 ## Steps
 
 1. **[core]** `server/store.ts`: `readIntroSeen(sub)` and
-   `markIntroSeen(sub, now)` (transaction; no write when the profile is
-   missing or the field is already set), plus the pure `introSeenFromProfile`.
+   `markIntroSeen(sub, { email }, now)` (transaction; a no-op when the field is
+   already set, and creates a missing profile as sign-in would), plus the pure
+   `introSeenFromProfile`.
    Unit tests for the pure parts.
 2. **[core]** `server/intro.ts`: `introGet` and `introSeenPost` (D3), and two
    lines in the route table in `scripts/server.ts`. Neither lets the original
@@ -219,8 +231,8 @@ people who see the intro are members.
    moves to the step heading (`tabIndex={-1}`) so screen readers read it. No
    animation.
 7. **[ui]** `src/screens/Library.tsx`: the effect from D6, the router-state
-   handling from D8, render `IntroSheet` for `sheet.kind === 'intro'`, and a
-   close handler that calls `markIntroSeen()` then dispatches `close`.
+   handling from D8, render `IntroSheet` for `sheet.kind === 'intro'`, and the
+   effect from D7 that marks it seen when it closes by any path.
 8. **[ui]** `src/screens/Settings.tsx`: the Show the intro link (D8), shown
    only when signed in.
 9. **[ui]** `intro.*` keys and `settings.showIntro` in `src/i18n/en.ts`, `uk.ts`,

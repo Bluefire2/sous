@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { shouldAskAboutIntro } from './intro';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  arrivedWithoutOwnRecipe,
+  noteLibraryOnArrival,
+  resetIntroArrivalForTests,
+  shouldAskAboutIntro,
+} from './intro';
 
 const ready = {
   sessionStatus: 'signedIn' as const,
@@ -31,5 +36,26 @@ describe('shouldAskAboutIntro', () => {
 
   it('waits while another sheet is open', () => {
     expect(shouldAskAboutIntro({ ...ready, sheetClosed: false })).toBe(false);
+  });
+});
+
+describe('library on arrival', () => {
+  afterEach(() => {
+    resetIntroArrivalForTests();
+  });
+
+  it('keeps the first library each sub arrives at', () => {
+    noteLibraryOnArrival('a', false);
+    noteLibraryOnArrival('a', true);
+    expect(arrivedWithoutOwnRecipe('a')).toBe(true);
+
+    // Deleting the last recipe later does not make an arrival empty.
+    noteLibraryOnArrival('b', true);
+    noteLibraryOnArrival('b', false);
+    expect(arrivedWithoutOwnRecipe('b')).toBe(false);
+  });
+
+  it('is false for a sub not seen yet', () => {
+    expect(arrivedWithoutOwnRecipe('c')).toBe(false);
   });
 });

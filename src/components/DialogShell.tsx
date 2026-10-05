@@ -104,7 +104,9 @@ function DialogFrame({
     event.preventDefault();
     const panel = panelRef.current;
     if (!panel) return;
-    for (const candidate of panel.querySelectorAll('[autofocus]')) {
+    // React focuses an `autoFocus` control itself and never renders the
+    // attribute; `data-autofocus` marks a non-control, such as a heading.
+    for (const candidate of panel.querySelectorAll('[autofocus], [data-autofocus]')) {
       if (candidate instanceof HTMLElement && !candidate.matches(':disabled')) {
         candidate.focus();
         return;

@@ -24,3 +24,26 @@ export function shouldAskAboutIntro(input: {
     input.sheetClosed
   );
 }
+
+/**
+ * Per page load and per sub: whether the first full pull on screen had no
+ * live recipe of the member's own. The intro is for arriving at an empty
+ * library, so a member who deletes their last recipe mid-session never gets
+ * it. Written only from an effect, never read in render.
+ */
+const arrivedEmpty = new Map<string, boolean>();
+
+/** Records the library on arrival; only the first call per sub counts. */
+export function noteLibraryOnArrival(sub: string, hasOwnRecipe: boolean): void {
+  if (!arrivedEmpty.has(sub)) arrivedEmpty.set(sub, !hasOwnRecipe);
+}
+
+/** Whether `sub`'s library had no recipe of their own when it first loaded on this page. */
+export function arrivedWithoutOwnRecipe(sub: string): boolean {
+  return arrivedEmpty.get(sub) === true;
+}
+
+/** Test isolation. */
+export function resetIntroArrivalForTests(): void {
+  arrivedEmpty.clear();
+}

@@ -15,8 +15,8 @@ function dependencies(
       calls.push(`read:${sub}`);
       return false;
     },
-    markSeen: async (sub, now) => {
-      calls.push(`mark:${sub}:${now}`);
+    markSeen: async (sub, profile, now) => {
+      calls.push(`mark:${sub}:${profile.email}:${now}`);
     },
     now: () => 1234,
     ...overrides,
@@ -68,11 +68,11 @@ describe('handleIntroGet', () => {
 });
 
 describe('handleIntroSeenPost', () => {
-  it('marks the session sub as seen and answers 204', async () => {
+  it('marks the session sub as seen, passing the session email for a missing profile, and answers 204', async () => {
     const { deps, calls } = dependencies(member);
     const response = await handleIntroSeenPost(post(), deps);
     expect(response.status).toBe(204);
-    expect(calls).toEqual(['mark:sub-1:1234']);
+    expect(calls).toEqual(['mark:sub-1:a@example.com:1234']);
   });
 
   it('is 401 when denied and 503 when membership is unknown, without writing', async () => {

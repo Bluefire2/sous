@@ -851,17 +851,24 @@ export async function readIntroSeen(uid: string): Promise<boolean> {
 }
 
 /**
- * Records that the member closed the intro. Writes nothing when the profile
- * is missing (a write would create a profile without an email) or the field
- * is already set, so a repeat is a no-op.
+ * Records that the member closed the intro. A repeat is a no-op. A missing
+ * profile (sign-in's best-effort `upsertUser` failed) is created here with
+ * the same fields sign-in writes, from the session's email, so closing the
+ * intro always sticks instead of it reopening on every visit.
  */
-export async function markIntroSeen(uid: string, now: number): Promise<void> {
+export async function markIntroSeen(
+  uid: string,
+  profile: { email: string },
+  now: number,
+): Promise<void> {
   const ref = userRef(uid);
   await getFirestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists || introSeenFromProfile(snap.data() as Record<string, unknown>)) {
+    if (!snap.exists) {
+      tx.set(ref, { ...userProfileUpsertFields(profile, now, true), introSeenAt: now });
       return;
     }
+    if (introSeenFromProfile(snap.data() as Record<string, unknown>)) return;
     tx.update(ref, { introSeenAt: now });
   });
 }

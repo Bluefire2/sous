@@ -96,10 +96,10 @@ export const en = {
     "Paste a link or a recipe's text, or add up to 4 photos of handwritten notes. Sous turns it into a clean recipe you can edit.",
   'intro.cookTitle': 'Cook with help',
   'intro.cookBody':
-    "On any recipe, tap Ask for substitutions, timing, or a second opinion on how it's going. Type or dictate, and when you're done, Log a cook to keep notes for next time.",
+    "Open any recipe and tap Ask for substitutions, timing, or a second opinion on how it's going; you can type or dictate. On your own recipes, Log a cook keeps notes for next time.",
   'intro.shareTitle': 'Plan and share',
   'intro.shareBody':
-    'The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap Invite to bring a friend to Sous.',
+    'The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap the person icon at the top to invite a friend to Sous.',
   'intro.back': 'Back',
   'intro.next': 'Next',
   'intro.skip': 'Skip',
