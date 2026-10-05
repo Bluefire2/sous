@@ -366,9 +366,12 @@ describe('create_recipe', () => {
     const ctx = fakeContext([], [{ id: PUBLIC, name: 'For everyone', recipeIds: [] }], { publicIds: [PUBLIC] });
     expect(await run('create_recipe', { ...EGG, collectionId: PUBLIC }, ctx)).toMatchObject({ ok: false, code: 'not_allowed' });
     expect(await run('create_recipe', { ...EGG, collectionId: SOUPS }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    expect(await run('create_recipe', { ...EGG, collectionId: 'Soups' }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    const blank = await run('create_recipe', { ...EGG, collectionId: ' ' }, ctx);
-    expect(blank).toMatchObject({ ok: false, code: 'invalid' });
+    // A value that is not an id is rejected by shape and never repeated back.
+    for (const collectionId of [' ', 'Soups', 'x'.repeat(300_000), 7]) {
+      const out = await run('create_recipe', { ...EGG, collectionId }, ctx);
+      expect(out).toMatchObject({ ok: false, code: 'invalid', data: { errors: [{ path: 'collectionId' }] } });
+      expect(!out.ok && out.message.length).toBeLessThan(200);
+    }
     expect(ctx.created).toEqual([]);
   });
 });
@@ -447,7 +450,7 @@ describe('move_recipes', () => {
   it('is not_found for an unknown collection and invalid for bad arguments', async () => {
     const ctx = library();
     expect(await run('move_recipes', { ids: [R1], collectionId: NEW_ID }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    for (const args of [{ ids: [], collectionId: OTHER }, { ids: [R1] }, { ids: Array(21).fill(R1), collectionId: OTHER }, { ids: [R1], collectionId: OTHER, x: 1 }]) {
+    for (const args of [{ ids: [], collectionId: OTHER }, { ids: [R1] }, { ids: Array(21).fill(R1), collectionId: OTHER }, { ids: [R1], collectionId: OTHER, x: 1 }, { ids: [R1], collectionId: 'Soups' }]) {
       expect(await run('move_recipes', args, ctx)).toMatchObject({ ok: false, code: 'invalid' });
     }
   });

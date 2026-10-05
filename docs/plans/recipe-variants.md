@@ -51,8 +51,9 @@ and `importCheck`.
 - **A shared editor cannot change it.** `planSharedRecipePut` pins the owner's
   stored value.
 - **Shared pull carries it to viewers and editors.** That is what lets a
-  viewer's "Save as new recipe" on a shared variant join the owner's group,
-  and a shared variant group with its shared original. The id is an opaque
+  viewer's "Save as new recipe" on a shared recipe join the owner's group
+  (while the viewer can see the owner's original; see Client), and a shared
+  variant group with its shared original. The id is an opaque
   recipe id. Every read still rechecks share, collection and listing, so it
   grants no access, though a member can learn the id of an original they
   cannot see.
@@ -73,18 +74,35 @@ and `importCheck`.
 
 ## Client
 
-- `src/lib/variantGroup.ts`: `variantGroup(recipes, id)` returns every recipe
+- `src/lib/variantGroup.ts`: `variantGroup(recipes, origins, id)` returns every recipe
   whose `variantOf ?? id` matches. The original comes first, then the rest
   ordered by `createdAt` and then `id`. A group of one is a shared `EMPTY`
   constant. Owned and shared recipes group together, with one limit (added
   after #149 from review): a recipe someone else owns joins only when it is
-  the group's original or has the same owner as the recipe on screen.
+  the group's original, has the same owner as the recipe on screen, or has
+  the same owner as the group's original.
   Without it, a member who shares a collection with you could set their
   recipe's `variantOf` to one of yours. Their recipe, titled however they
   liked, would then appear in the Variants row on your own recipe's page.
   The legitimate cases still group:
   - your copy of a shared recipe sits with that original;
+  - your copy of a shared variant sits with that variant and the owner's
+    other variants, while you can see the owner's original;
   - an owner's shared variants sit together.
+
+  Two limits are accepted rather than closed with a field that records who
+  owns the original (owner's decision on #150):
+  - **A hidden original.** Your copy of someone's shared variant keys on
+    their original. If they did not share that original with you, nothing
+    says who owns the group, so the copy has no Variants row.
+  - **A forged original.** Ids are unique only within one person's tree. Once
+    a group's original is gone from your library (deleted, or its share
+    revoked), someone who shares with you and knows its id can push a recipe
+    with that id. It would show as "(original)". They can learn the id from
+    shared pull. The cost is a chip on your page, and only after the real
+    original is gone.
+
+  `src/lib/variantGroup.test.ts` pins both limits.
 - `useRecipeVariants(id)` in `recipeStore.ts` subscribes to the recipes and
   recipe-origin maps and derives the group with `useMemo`. Only `VariantLinks` calls it, so a
   change to another recipe re-renders that row and not all of RecipeView.
@@ -109,7 +127,9 @@ the whole changed recipe, as it would for any new recipe.
     MCP sees the caller's own tree only, so a shared recipe cannot be a
     parent.
   - A value that is not a recipe id (not a UUID; the schema caps it at 36
-    characters) is `invalid` before anything is read. That decision depends
+    characters) is `invalid` before anything is read. `collectionId` gets the
+    same shape check on `create_recipe` and `move_recipes`: anything other
+    than "unfiled" or a UUID is `invalid`. That decision depends
     on the input's shape alone, so it reveals nothing about what is stored,
     and `not_found` only ever repeats a recipe id back.
 - **Rule.** `variantFromParent` (`server/mcp/recipeInput.ts`) stores the

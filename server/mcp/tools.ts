@@ -121,13 +121,19 @@ const collectionIdSchema: JsonSchema = {
   description: 'A collection id from list_collections, or "unfiled" (the default) for no collection',
 };
 
-/** The destination argument: a non-empty string. Whether it names a collection is the store's call. */
+/**
+ * The destination argument: "unfiled" or a collection id. Checked by shape
+ * only, so a malformed value is `invalid` and says nothing about what is
+ * stored; whether an id names a collection is the store's call, and
+ * not_found then only ever repeats an id back.
+ */
 function readDestination(value: unknown, errors: FieldError[]): string | null {
-  if (typeof value !== 'string' || value.trim() === '') {
+  const dest = typeof value === 'string' ? value.trim() : '';
+  if (dest !== UNFILED && !isUuid(dest)) {
     errors.push({ path: 'collectionId', message: 'must be a collection id from list_collections, or "unfiled"' });
     return null;
   }
-  return value.trim();
+  return dest;
 }
 
 /** Only the sharing that applies: `public`, `sharedWithMembers` and `joinLinkOpen` are left out when false or 0. */
@@ -504,7 +510,6 @@ const createTool: McpToolSpec = {
       errors.push({ path: 'variantOf', message: 'must be a recipe id from search_recipes or get_recipes' });
     }
     if (errors.length > 0 || !validated.ok || dest === null) return invalid(errors);
-    if (dest !== UNFILED && !isUuid(dest)) return collectionNotFound(dest);
     let recipe = validated.recipe;
     let variant: { key: string; parent: { id: string; title: string } } | undefined;
     if (typeof parentId === 'string') {
@@ -676,7 +681,6 @@ const moveTool: McpToolSpec = {
     const dest = args.collectionId === undefined ? null : readDestination(args.collectionId, errors);
     if (args.collectionId === undefined) errors.push({ path: 'collectionId', message: 'is required' });
     if (errors.length > 0 || ids === undefined || dest === null) return invalid(errors);
-    if (dest !== UNFILED && !isUuid(dest)) return collectionNotFound(dest);
     // Recipe ids are UUIDs; anything else (a shared recipe's id included) is not in this library.
     const unknown = [...new Set(ids.filter((id) => !isUuid(id)))];
     if (unknown.length > 0) return recipesNotFound(unknown);
