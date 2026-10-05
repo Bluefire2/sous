@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { MAX_TRANSLATE_CHARS, MAX_TRANSLATE_SEGMENTS } from './recipeTranslation.ts';
+import { SESSION_COOKIE_NAME, signSession } from './session.ts';
 import {
   TRANSLATE_BAD_REQUEST,
   TRANSLATE_TOO_LARGE,
   classifyTranslateRecipeId,
   parseTranslateRequest,
+  translatePost,
 } from './translateRoute.ts';
 
 const UUID = '550e8400-e29b-41d4-a716-446655440000';
@@ -113,5 +115,49 @@ describe('parseTranslateRequest', () => {
       status: 400,
       code: TRANSLATE_BAD_REQUEST,
     });
+  });
+});
+
+/** A body that never ends: a route that reads it whole never answers. */
+function endlessBody(): { body: ReadableStream<Uint8Array>; read: () => number; cancelled: () => boolean } {
+  let bytes = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = new Uint8Array(64 * 1024).fill(0x20);
+      bytes += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return { body, read: () => bytes, cancelled: () => cancelled };
+}
+
+describe('translatePost body size', () => {
+  beforeEach(() => {
+    process.env.SESSION_SECRET = 'test-secret-for-session-hmac';
+    process.env.ALLOWED_EMAILS = 'allowed@example.com';
+  });
+
+  it('answers 413 and stops reading a body over the limit', async () => {
+    const endless = endlessBody();
+    const token = signSession({ sub: 'owner-sub', email: 'allowed@example.com' }, Date.now());
+    const response = await translatePost(
+      new Request('http://localhost/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'This recipe is too long to translate.',
+      code: TRANSLATE_TOO_LARGE,
+    });
+    expect(endless.cancelled()).toBe(true);
+    expect(endless.read()).toBeLessThan(2_000_000);
   });
 });
