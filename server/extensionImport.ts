@@ -19,6 +19,7 @@ import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
   importFromHtml,
+  MAX_PAGE_HTML_CHARS,
   readImportTranslateTo,
   recipeImportDepsFromEnv,
   type RecipeImportDeps,
@@ -27,8 +28,6 @@ import { applyPushOp } from './sync.ts';
 
 /** Buffered then measured, matching `syncPush`'s `raw.length` convention. */
 const MAX_BODY_CHARS = 1_500_000;
-/** The extension caps itself at 400 000; this is the server refusing to be the one that runs out of memory. */
-const MAX_HTML_CHARS = 600_000;
 const TOO_LARGE = 'Page was too large to import.';
 const UNUSABLE = 'Extraction produced an unusable recipe.';
 
@@ -160,7 +159,9 @@ async function importAndSave(
   Object.assign(entry, loggableUrl(url));
 
   const html = typeof body.html === 'string' ? body.html : '';
-  if (html.length > MAX_HTML_CHARS) {
+  // The extension caps itself at 400 000; this is the server refusing to be
+  // the one that runs out of memory. The website fetch truncates at the same cap.
+  if (html.length > MAX_PAGE_HTML_CHARS) {
     entry.outcome = 'too_large';
     return fail(req, 'import-too-large', TOO_LARGE, 413);
   }

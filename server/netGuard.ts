@@ -10,11 +10,15 @@
  * private address between the check and the connection. TLS still verifies
  * the certificate against the URL's hostname, and SNI still carries it.
  *
- * Node built-ins only; `isPublicAddress` is pure.
+ * Node built-ins only; `isPublicAddress` is pure. `pinnedGet` is that
+ * request for callers that follow redirects themselves.
  */
 import { lookup as dnsLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
+import type { Readable } from 'node:stream';
 
 /**
  * Everything Sous must never connect to on a client's say-so: loopback,
@@ -112,3 +116,42 @@ export function pinnedLookup(address: LookupAddress): LookupFunction {
     }
   };
 }
+
+export type PinnedResponse = {
+  status: number;
+  headers: IncomingHttpHeaders;
+  /** Unread. The caller drains or destroys it. */
+  body: Readable;
+};
+
+/** One GET to `url`, connecting only to `address`. Injected in tests. */
+export type PinnedGet = (
+  url: URL,
+  address: LookupAddress,
+  init: { headers: Record<string, string>; signal: AbortSignal },
+) => Promise<PinnedResponse>;
+
+/**
+ * The live `PinnedGet` over `node:http` / `node:https`. Never follows a
+ * redirect (Node's `request` does not), so the caller re-checks every hop.
+ * `agent: false` gives each request its own connection, so a pooled socket
+ * from another request is never reused. Aborting `signal` destroys the
+ * request and the response body.
+ */
+export const pinnedGet: PinnedGet = (url, address, init) =>
+  new Promise((resolve, reject) => {
+    const request = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const req = request(
+      url,
+      {
+        method: 'GET',
+        headers: init.headers,
+        lookup: pinnedLookup(address),
+        agent: false,
+        signal: init.signal,
+      },
+      (res) => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: res }),
+    );
+    req.on('error', reject);
+    req.end();
+  });
