@@ -5,6 +5,7 @@ import { StoredPhotoImage } from '../components/BlobImage';
 import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
 import ImportWarningBanner from '../components/ImportWarningBanner';
+import ShareRecipeButton from '../components/ShareRecipeButton';
 import {
   askButtonClass,
   GallerySection,
@@ -249,11 +250,15 @@ export default function RecipeView() {
           <Link to={libraryBack} className={backLink}>
             &larr; {t('common.library')}
           </Link>
-          {canEdit && (
-            <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
-              {t('common.edit')}
-            </Link>
-          )}
+          <div className="flex items-center gap-1">
+            {/* The stored recipe: a translation is a view and is never shared (i18n principle 1). */}
+            <ShareRecipeButton recipe={recipe} />
+            {canEdit && (
+              <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
+                {t('common.edit')}
+              </Link>
+            )}
+          </div>
         </div>
         {sharedLine !== undefined && (
           <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted print:hidden">

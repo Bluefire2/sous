@@ -20,6 +20,7 @@ import {
   sourceLink,
   StepsSection,
 } from '../components/RecipeBody';
+import ShareRecipeButton from '../components/ShareRecipeButton';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
@@ -54,11 +55,17 @@ export default function PublicRecipe() {
       <Link to={collectionHref} className={backLink}>
         &larr; {result?.kind === 'ok' ? result.data.collection.name : t('public.backToCollection')}
       </Link>
-      {!member && (
-        <PublicSignInLink token={token} className={ghostBtn}>
-          {t('public.signIn')}
-        </PublicSignInLink>
-      )}
+      <div className="flex items-center gap-1">
+        {/* Read-only, like the rest of this page: it shares the text the visitor already sees. */}
+        {recipe !== undefined && join.state.kind !== 'missing' && (
+          <ShareRecipeButton recipe={recipe} />
+        )}
+        {!member && (
+          <PublicSignInLink token={token} className={ghostBtn}>
+            {t('public.signIn')}
+          </PublicSignInLink>
+        )}
+      </div>
     </div>
   );
 

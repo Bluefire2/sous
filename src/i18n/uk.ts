@@ -214,6 +214,8 @@ export const uk: Messages = {
   'recipe.translatedFrom': 'Переклад з мови: {language} · Оригінал',
   'recipe.translateRetry': 'Не вдалося перекласти · Повторити',
   'recipe.alreadyInLanguage': 'Цей рецепт уже українською.',
+  'recipe.textCopied': 'Рецепт скопійовано',
+  'recipe.textCopyFailed': 'Не вдалося скопіювати рецепт',
 
   'chat.assistant': 'Помічник',
   'chat.clearAll': 'Очистити все?',

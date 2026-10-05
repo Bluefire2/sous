@@ -437,6 +437,26 @@ export const STATES: Record<string, StateEntry> = {
   },
   'recipe-view-cook': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   'recipe-view-your-cooks': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
+  'recipe-view-share-copied': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    mocks: ['shareUnavailable', 'clipboardWorks'],
+    pauseClock: true,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByText(ctx.t('recipe.textCopied'), { exact: true }).waitFor();
+    },
+  },
+  'recipe-view-share-copy-failed': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    mocks: ['shareUnavailable', 'clipboardFails'],
+    pauseClock: true,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByText(ctx.t('recipe.textCopyFailed'), { exact: true }).waitFor();
+    },
+  },
   'recipe-edit': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}/edit` },
   'recipe-edit-lang-hint': {
     persona: 'member',

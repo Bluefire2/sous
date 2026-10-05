@@ -211,6 +211,8 @@ export const ru: Messages = {
   'recipe.translatedFrom': 'Перевод с языка: {language} · Оригинал',
   'recipe.translateRetry': 'Не удалось перевести · Повторить',
   'recipe.alreadyInLanguage': 'Этот рецепт уже на русском.',
+  'recipe.textCopied': 'Рецепт скопирован',
+  'recipe.textCopyFailed': 'Не удалось скопировать рецепт',
 
   'chat.assistant': 'Помощник',
   'chat.clearAll': 'Очистить всё?',

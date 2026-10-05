@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import { useLocale, useT, type Locale } from '../i18n';
-import { unitLabel } from '../i18n/unitLabel';
-import { formatQuantity } from '../lib/quantity';
-import type { Ingredient, Recipe } from '../lib/types';
+import { useLocale, useT } from '../i18n';
+import { ingredientLine } from '../lib/recipeText';
+import type { Recipe } from '../lib/types';
 
 /**
  * The parts of a recipe page that only display: shared by `RecipeView` (your
@@ -10,36 +9,7 @@ import type { Ingredient, Recipe } from '../lib/types';
  * fetches, or knows who is looking; state and photos come in as props.
  */
 
-/**
- * The source is whatever the user pasted on import, so it is only ever linked
- * after it turns out to be an ordinary web address.
- */
-export function sourceLink(url: string | undefined): URL | undefined {
-  if (url === undefined) return undefined;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      ? parsed
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function ingredientLabel(
-  ing: Ingredient,
-  scale: number,
-  locale: Locale,
-  labelUnit: (token: string) => string,
-): string {
-  const parts = [
-    ing.quantity !== undefined ? formatQuantity(ing.quantity * scale, locale) : null,
-    ing.unit ? labelUnit(ing.unit) : null,
-    ing.item,
-  ].filter(Boolean);
-  const base = parts.join(' ');
-  return ing.note ? `${base} (${ing.note})` : base;
-}
+export { sourceLink } from '../lib/recipeText';
 
 /** The floating Ask pill at the bottom right of a recipe. */
 export const askButtonClass =
@@ -201,11 +171,11 @@ export function IngredientsSection({
                       </span>
                       {/* Ticks are cook progress on this screen, not part of the printed recipe. */}
                       <span className={isChecked ? 'line-through print:no-underline' : ''}>
-                        {ingredientLabel(
+                        {ingredientLine(
                           { ...(translatedItem ?? ing), quantity: ing.quantity },
                           scale,
                           locale,
-                          (token) => unitLabel(token, t),
+                          t,
                         )}
                       </span>
                     </button>

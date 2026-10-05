@@ -187,6 +187,8 @@ export const zhHans: Messages = {
   'recipe.translatedFrom': '译自{language} · 原文',
   'recipe.translateRetry': '无法翻译 · 重试',
   'recipe.alreadyInLanguage': '这个食谱已经是简体中文。',
+  'recipe.textCopied': '食谱已复制',
+  'recipe.textCopyFailed': '无法复制食谱',
 
   'chat.assistant': '助手',
   'chat.clearAll': '全部清除？',
