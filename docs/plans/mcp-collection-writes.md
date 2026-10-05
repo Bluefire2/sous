@@ -37,7 +37,8 @@ Unfiled.
 - **All or nothing, in one transaction.** Every id must be a live recipe in
   the member's own tree (else `not_found` with `missingIds`, nothing
   written). The destination must be a live collection of theirs (else
-  `not_found`), with room under the 500-recipe cap (else `invalid` on
+  `not_found`; a value that is neither "unfiled" nor a UUID is `invalid`,
+  added in #150), with room under the 500-recipe cap (else `invalid` on
   `collectionId`). A create into a collection writes the recipe and the
   collection together, so a refusal leaves no Unfiled stray.
 - **Public collections are refused (owner's decision, 2026-10-02).** A
