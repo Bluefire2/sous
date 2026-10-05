@@ -1,5 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { dateFnsLocale, relativeAgoLabel, relativeExpiryLabel } from './relativeTime';
+import {
+  dateFnsLocale,
+  lastCookedLabel,
+  relativeAgoLabel,
+  relativeExpiryLabel,
+} from './relativeTime';
 import { LOCALE_KEY } from './settings';
 
 // The default locale comes from `cook.locale`, then the browser language, so
@@ -97,6 +102,48 @@ describe('relativeExpiryLabel', () => {
     expect(relativeExpiryLabel(sevenDays, now, 'uk')).toBe('закінчується за 7 днів');
     expect(relativeExpiryLabel(sevenDays, now, 'ru')).toBe('истекает через 7 дней');
     expect(relativeExpiryLabel(sevenDays, now, 'zh-Hans')).toBe('7 天内过期');
+  });
+});
+
+describe('lastCookedLabel', () => {
+  // Local wall-clock times, since `cookedOn` is the person's local date.
+  const morning = new Date(2026, 9, 5, 0, 30).getTime();
+  const evening = new Date(2026, 9, 5, 23, 30).getTime();
+
+  it('is "today" for today and for a date after today', () => {
+    expect(lastCookedLabel('2026-10-05', morning, 'en')).toBe('Last cooked today');
+    expect(lastCookedLabel('2026-10-05', evening, 'en')).toBe('Last cooked today');
+    expect(lastCookedLabel('2026-10-07', evening, 'en')).toBe('Last cooked today');
+  });
+
+  it('counts whole local days, whatever the time of day', () => {
+    for (const now of [morning, evening]) {
+      expect(lastCookedLabel('2026-10-04', now, 'en')).toBe('Last cooked 1 day ago');
+      expect(lastCookedLabel('2026-10-02', now, 'en')).toBe('Last cooked 3 days ago');
+      expect(lastCookedLabel('2026-09-14', now, 'en')).toBe('Last cooked 21 days ago');
+    }
+    expect(lastCookedLabel('2026-08-05', morning, 'en')).toBe('Last cooked 2 months ago');
+    expect(lastCookedLabel('2025-09-01', morning, 'en')).toBe('Last cooked about 1 year ago');
+  });
+
+  it('crosses a daylight-saving change as whole days', () => {
+    // The last Sunday of March moves clocks in Europe; the count is still days.
+    const afterSpring = new Date(2026, 2, 30, 12, 0).getTime();
+    expect(lastCookedLabel('2026-03-29', afterSpring, 'en')).toBe('Last cooked 1 day ago');
+    expect(lastCookedLabel('2026-03-28', afterSpring, 'en')).toBe('Last cooked 2 days ago');
+  });
+
+  it('speaks the UI language', () => {
+    expect(lastCookedLabel('2026-09-28', morning, 'uk')).toBe('Востаннє готували 7 днів тому');
+    expect(lastCookedLabel('2026-09-28', morning, 'ru')).toBe('Последний раз готовили 7 дней назад');
+    expect(lastCookedLabel('2026-09-28', morning, 'zh-Hans')).toBe('上次烹饪：7 天前');
+    expect(lastCookedLabel('2026-10-05', morning, 'uk')).toBe('Востаннє готували сьогодні');
+  });
+
+  it('is undefined for a malformed date', () => {
+    expect(lastCookedLabel('2026-10', morning, 'en')).toBeUndefined();
+    expect(lastCookedLabel('yesterday', morning, 'en')).toBeUndefined();
+    expect(lastCookedLabel('2026-10-01', Number.NaN, 'en')).toBeUndefined();
   });
 });
 
