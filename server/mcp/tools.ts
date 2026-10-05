@@ -7,7 +7,7 @@
  */
 import type { AgentLibrary, AgentRecipe } from '../agent/index.ts';
 import { narrowAgentRecipe, searchRecipesPage, winningMembership } from '../agent/index.ts';
-import { isUuid, type OwnRecipeUpdateResult } from '../store.ts';
+import { isLiveDoc, isUuid, type OwnRecipeUpdateResult } from '../store.ts';
 import { UNFILED, type CollectionSharing, type CollectionWriteOutcome } from './collectionMove.ts';
 import type { McpScope } from './config.ts';
 import {
@@ -17,6 +17,7 @@ import {
   RECIPE_LIMITS,
   validateNewRecipe,
   validateRecipeChanges,
+  variantFromParent,
   type FieldError,
 } from './recipeInput.ts';
 import { toMcpRecipe } from './recipeView.ts';
@@ -37,6 +38,13 @@ export interface McpToolContext {
    * `loadLibrary` left out.
    */
   readRecipes(ids: readonly string[]): Promise<Array<AgentRecipe | undefined>>;
+  /**
+   * One of the caller's own recipe documents as stored, deleted or not, with
+   * its id; `undefined` when there is none. For `create_recipe`'s
+   * `variantOf`, which needs fields the agent's narrowed recipe leaves out.
+   * The tool decides liveness, so that rule is tested with the tool.
+   */
+  readOwnRecipeDoc(id: string): Promise<(Record<string, unknown> & { id: string }) | undefined>;
   /** Writes a new recipe into the caller's tree, Unfiled. False when the store refused it. */
   createRecipe(id: string, payload: Record<string, unknown>, now: number): Promise<boolean>;
   /** Writes a new recipe and files it into collection `dest`, in one transaction. */
@@ -137,6 +145,14 @@ function collectionNotFound(dest: string): McpToolOutcome {
     ok: false,
     code: 'not_found',
     message: `No collection ${dest} in this library. Call list_collections for ids, or use "unfiled". Nothing was changed.`,
+  };
+}
+
+function variantParentNotFound(id: string): McpToolOutcome {
+  return {
+    ok: false,
+    code: 'not_found',
+    message: `No recipe ${id} in this library to make a variant of. Call search_recipes for ids. Nothing was changed.`,
   };
 }
 
@@ -450,6 +466,10 @@ const createTool: McpToolSpec = {
     "Save a new recipe to the user's own Sous library. It lands Unfiled unless collectionId names one of their collections " +
     '(from list_collections; not one marked public). The server assigns the id and the time. ' +
     'Fields are validated strictly; an invalid call returns each bad field by path so you can fix it. ' +
+    'To save a variant of one of their recipes (the same dish changed, e.g. potatoes instead of carrots), call get_recipes for the original, ' +
+    "write the whole new recipe with the change, and pass the original's id as variantOf; leave the original unchanged. " +
+    "Sous then shows them together as variants. A variant takes the original's language unless lang is given, " +
+    'so pass lang if you write it in a different language than the original; photos are not copied. ' +
     'Returns the stored recipe with its id and version. ' +
     UNTRUSTED_TEXT_NOTICE,
   inputSchema: {
@@ -459,6 +479,10 @@ const createTool: McpToolSpec = {
       sourceUrl: { type: 'string', maxLength: RECIPE_LIMITS.sourceUrl, description: 'The http(s) page the recipe came from, if any' },
       lang: { type: 'string', description: 'BCP 47 language of the recipe text, e.g. "en", "uk", "zh-Hans"' },
       collectionId: collectionIdSchema,
+      variantOf: {
+        type: 'string',
+        description: "The id of the user's recipe this one is a variant of (from search_recipes or get_recipes). Omit for an unrelated recipe.",
+      },
     },
     required: ['title', 'servings', 'ingredientSections', 'steps'],
     additionalProperties: false,
@@ -468,16 +492,34 @@ const createTool: McpToolSpec = {
   async run(rawArgs, ctx) {
     const args = argsObject(rawArgs);
     if (args === null) return invalid([{ path: '', message: 'arguments must be an object' }]);
-    const { collectionId, ...recipeArgs } = args;
+    const { collectionId, variantOf: parentId, ...recipeArgs } = args;
     const errors: FieldError[] = [];
     const dest = readDestination(collectionId ?? UNFILED, errors);
     const validated = validateNewRecipe(recipeArgs);
     if (!validated.ok) errors.push(...validated.errors);
+    if (parentId !== undefined && typeof parentId !== 'string') {
+      errors.push({ path: 'variantOf', message: 'must be a recipe id' });
+    }
     if (errors.length > 0 || !validated.ok || dest === null) return invalid(errors);
     if (dest !== UNFILED && !isUuid(dest)) return collectionNotFound(dest);
+    let recipe = validated.recipe;
+    let variant: { key: string; parent: { id: string; title: string } } | undefined;
+    if (typeof parentId === 'string') {
+      // Own tree only, like every tool: a shared recipe is not found here.
+      const parent = isUuid(parentId) ? await ctx.readOwnRecipeDoc(parentId) : undefined;
+      if (parent === undefined || !isLiveDoc(parent)) return variantParentNotFound(parentId);
+      const fromParent = variantFromParent(parent);
+      if (recipe.lang === undefined && fromParent.lang !== undefined) {
+        recipe = { ...recipe, lang: fromParent.lang };
+      }
+      variant = {
+        key: fromParent.variantOf,
+        parent: { id: parent.id, title: typeof parent.title === 'string' ? parent.title : '' },
+      };
+    }
     const id = ctx.newId();
     const now = ctx.now();
-    const built = newRecipePayload(validated.recipe, id, now);
+    const built = newRecipePayload(recipe, id, now, variant?.key);
     if (!built.ok) return invalid(built.errors);
     const stored = narrowAgentRecipe(built.payload);
     if (stored === null) {
@@ -487,12 +529,17 @@ const createTool: McpToolSpec = {
       if (!(await ctx.createRecipe(id, built.payload, now))) {
         throw new Error('create_recipe was not applied');
       }
-      return { ok: true, data: { recipe: toMcpRecipe(stored, 'Unfiled') }, recipes: 1 };
+      return {
+        ok: true,
+        data: { recipe: toMcpRecipe(stored, 'Unfiled'), ...(variant ? { variantOf: variant.parent } : {}) },
+        recipes: 1,
+      };
     }
     const outcome = await ctx.createRecipeInCollection(id, built.payload, dest);
     if (outcome.kind !== 'ok') return collectionWriteFailure(outcome, dest);
     const data: Record<string, unknown> = {
       recipe: toMcpRecipe(stored, outcome.collectionName || dest),
+      ...(variant ? { variantOf: variant.parent } : {}),
       ...sharingFields({ public: false, members: outcome.sharedWithMembers, joinLinkOpen: outcome.joinLinkOpen }),
     };
     return { ok: true, data, recipes: 1 };

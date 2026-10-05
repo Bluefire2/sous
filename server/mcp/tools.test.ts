@@ -93,6 +93,10 @@ function fakeContext(
       directReads.push([...ids]);
       return ids.map((id) => recipes.find((r) => r.id === id));
     },
+    async readOwnRecipeDoc(id) {
+      const doc = docs.get(id);
+      return doc === undefined ? undefined : { ...doc, id };
+    },
     async createRecipe(id, payload) {
       docs.set(id, payload);
       created.push(id);
@@ -275,6 +279,65 @@ describe('create_recipe', () => {
     const out = await run('create_recipe', { ...EGG, collectionId: SOUPS }, ctx);
     expect(out).toMatchObject({ ok: true, data: { joinLinkOpen: true } });
     expect(out.ok && out.data).not.toHaveProperty('sharedWithMembers');
+  });
+
+  describe('variantOf', () => {
+    const ORIGINAL = '55555555-5555-4555-8555-555555555555';
+
+    it('saves a variant of a recipe and says which one', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const out = await run('create_recipe', { ...EGG, title: 'Potato stew', variantOf: R1 }, ctx);
+      expect(out).toMatchObject({
+        ok: true,
+        data: { recipe: { id: NEW_ID, title: 'Potato stew' }, variantOf: { id: R1, title: 'Carrot stew' } },
+      });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
+      // The original is left as it was.
+      expect(ctx.docs.get(R1)).not.toHaveProperty('variantOf');
+    });
+
+    it("joins a variant's group instead of nesting under it", async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Spicy stew' })]);
+      ctx.docs.set(R1, { ...ctx.docs.get(R1), variantOf: ORIGINAL });
+      const out = await run('create_recipe', { ...EGG, variantOf: R1 }, ctx);
+      expect(out).toMatchObject({ ok: true, data: { variantOf: { id: R1 } } });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: ORIGINAL });
+    });
+
+    it("takes the original's language unless lang is given", async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Борщ' })]);
+      ctx.docs.set(R1, { ...ctx.docs.get(R1), lang: 'uk' });
+      await run('create_recipe', { ...EGG, variantOf: R1 }, ctx);
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ lang: 'uk' });
+      await run('create_recipe', { ...EGG, variantOf: R1, lang: 'en' }, ctx);
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ lang: 'en' });
+    });
+
+    it('files a variant into a collection', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })], [{ id: SOUPS, name: 'Soups', recipeIds: [R1] }]);
+      const out = await run('create_recipe', { ...EGG, variantOf: R1, collectionId: SOUPS }, ctx);
+      expect(out).toMatchObject({ ok: true, data: { recipe: { collectionName: 'Soups' }, variantOf: { id: R1 } } });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
+    });
+
+    it('refuses a deleted recipe, one not in this library, and a malformed id, without writing', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const DELETED = '66666666-6666-4666-8666-666666666666';
+      ctx.docs.set(DELETED, { id: DELETED, title: 'Old stew', deletedAt: 300, updatedAt: 300 });
+      for (const variantOf of [DELETED, R2, 'not-an-id', '../users/other/recipes/x']) {
+        const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
+        expect(out).toMatchObject({ ok: false, code: 'not_found' });
+      }
+      const bad = await run('create_recipe', { ...EGG, variantOf: 7 }, ctx);
+      expect(bad).toMatchObject({ ok: false, code: 'invalid' });
+      expect(ctx.created).toEqual([]);
+    });
+
+    it('stores no variantOf on an ordinary create', async () => {
+      const ctx = fakeContext([]);
+      await run('create_recipe', EGG, ctx);
+      expect(ctx.docs.get(NEW_ID)).not.toHaveProperty('variantOf');
+    });
   });
 
   it('treats "unfiled" as no collection', async () => {
