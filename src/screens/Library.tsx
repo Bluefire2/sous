@@ -763,8 +763,9 @@ export default function Library() {
             onChange={(e) => setQuery(e.target.value)}
             className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {sortControl}
+          {/* Sort comes last, so its menu, aligned to its right edge, opens
+              inside the page on a phone; the chips wrap rather than overflow. */}
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
             {selectControl}
             <button
               type="button"
@@ -773,6 +774,7 @@ export default function Library() {
             >
               {t('library.allCollections')}
             </button>
+            {sortControl}
           </div>
         </div>
       ) : (
@@ -785,9 +787,9 @@ export default function Library() {
             className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
           {(sortControl || selectControl) && (
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {sortControl}
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
               {selectControl}
+              {sortControl}
             </div>
           )}
         </div>
@@ -850,7 +852,7 @@ export default function Library() {
                       <Link
                         to={`/recipe/${recipe.id}`}
                         state={{ from: libraryHref(collectionId) }}
-                        className="after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ink focus-visible:after:outline-solid"
+                        className="after:absolute after:inset-0 after:rounded-2xl"
                       >
                         {recipe.title}
                       </Link>

@@ -55,7 +55,7 @@ export default function LibrarySortMenu({
             id={panelId}
             role="group"
             aria-label={t('library.sortOptions')}
-            className="absolute top-full right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
+            className="absolute top-full right-0 z-20 mt-1 w-max max-w-[calc(100vw-2rem)] min-w-44 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
           >
             {LIBRARY_SORTS.map((option, index) => {
               const current = option === sort;
