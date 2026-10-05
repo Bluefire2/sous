@@ -492,6 +492,61 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
     toolError(foreign.body) ?? `status ${foreign.status}`,
   );
 
+  // A variant of a variant joins the original's group (docs/plans/recipe-variants.md).
+  const variant = await mcp(
+    baseUrl,
+    toolCall('create_recipe', {
+      title: 'Smoke-test garlic roast chicken',
+      servings: 4,
+      ingredientSections: [{ items: [{ item: 'whole chicken' }, { item: 'garlic' }] }],
+      steps: [{ text: 'Roast the chicken with the garlic.' }],
+      variantOf: FIXTURE_IDS.member.herbRoastChicken,
+    }),
+    token,
+  );
+  const variantResult = toolResult(variant.body)?.structuredContent as
+    | { recipe?: { id?: unknown }; variantOf?: { id?: unknown } }
+    | undefined;
+  const variantId = typeof variantResult?.recipe?.id === 'string' ? variantResult.recipe.id : '';
+  check(
+    'create_recipe saves a variant and names the recipe it was made from',
+    variant.status === 200 &&
+      toolResult(variant.body)?.isError !== true &&
+      variantResult?.variantOf?.id === FIXTURE_IDS.member.herbRoastChicken &&
+      variantId !== '',
+    `status ${variant.status} ${toolError(variant.body) ?? ''}`,
+  );
+  if (variantId !== '') {
+    const pull = await call(baseUrl, '/api/sync/pull?limit=500', { headers: { Cookie: memberCookie } });
+    const row = (
+      ((pull.body as { changes?: { recipes?: { id: string; variantOf?: unknown }[] } }).changes?.recipes ?? []) as {
+        id: string;
+        variantOf?: unknown;
+      }[]
+    ).find((r) => r.id === variantId);
+    check(
+      "the variant is stored in the original's group",
+      pull.status === 200 && row?.variantOf === FIXTURE_IDS.member.roastChicken,
+      `variantOf ${String(row?.variantOf)}`,
+    );
+  }
+  const foreignVariant = await mcp(
+    baseUrl,
+    toolCall('create_recipe', {
+      title: 'Should not save',
+      servings: 1,
+      ingredientSections: [{ items: [{ item: 'egg' }] }],
+      steps: [{ text: 'Boil.' }],
+      variantOf: FIXTURE_IDS.owner.shakshuka,
+    }),
+    token,
+  );
+  check(
+    "create_recipe cannot make a variant of another account's recipe",
+    foreignVariant.status === 200 && toolError(foreignVariant.body) === 'not_found',
+    toolError(foreignVariant.body) ?? `status ${foreignVariant.status}`,
+  );
+
   const invalid = await mcp(baseUrl, toolCall('get_recipes', { ids: [] }), token);
   check(
     'an invalid tool call is a tool error, not an HTTP error',

@@ -83,6 +83,12 @@ function liveToolContext(sub: string): McpToolContext {
         return isLiveDoc(doc) ? (narrowAgentRecipe({ ...doc, id }) ?? undefined) : undefined;
       });
     },
+    readOwnRecipeDoc: async (id) => {
+      // A model-sent id that is not a plain document id would address another path.
+      if (!isSafeFirestoreDocumentId(id)) return undefined;
+      const [doc] = await readDocsData(sub, 'recipes', [id]);
+      return isLiveDoc(doc) ? { ...doc, id } : undefined;
+    },
     createRecipe: async (id, payload, now) => (await putDoc(sub, 'recipes', id, payload, now)).applied,
     createRecipeInCollection: (id, payload, dest) => createOwnRecipeInCollection(sub, id, payload, dest),
     moveRecipes: (ids, dest) => moveOwnRecipes(sub, ids, dest),

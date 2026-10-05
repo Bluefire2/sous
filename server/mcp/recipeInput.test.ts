@@ -4,6 +4,7 @@ import { recipeDocBody, validatePushOp } from '../store.ts';
 import {
   fieldErrorText,
   mergeRecipeChanges,
+  variantFromParent,
   newRecipePayload,
   validateNewRecipe,
   validateRecipeChanges,
@@ -142,6 +143,21 @@ describe('validateRecipeChanges', () => {
     expect(
       errorsOf(validateRecipeChanges({ ingredientSections: [{ items: [{ item: 'a' }] }, { items: [{ qty: 1 }] }] })),
     ).toEqual(['changes.ingredientSections[1].items[0].qty', 'changes.ingredientSections[1].items[0].item']);
+  });
+});
+
+describe('variantFromParent', () => {
+  const PARENT = '66666666-6666-4666-8666-666666666666';
+  const ORIGINAL = '77777777-7777-4777-8777-777777777777';
+
+  it("uses the parent's group original, else the parent, and its language", () => {
+    expect(variantFromParent({ id: PARENT, lang: 'it-IT' })).toEqual({ variantOf: PARENT, lang: 'it' });
+    expect(variantFromParent({ id: PARENT, variantOf: ORIGINAL })).toEqual({ variantOf: ORIGINAL });
+  });
+
+  it('ignores a malformed stored variantOf or lang', () => {
+    expect(variantFromParent({ id: PARENT, variantOf: 'nope', lang: 'garbage!!' })).toEqual({ variantOf: PARENT });
+    expect(variantFromParent({ id: PARENT, variantOf: PARENT })).toEqual({ variantOf: PARENT });
   });
 });
 

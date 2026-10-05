@@ -7,6 +7,7 @@
  */
 import { reconcileImportCheck, type ImportCheck } from '../importWarnings.ts';
 import { normalizeLang } from '../lang.ts';
+import { compactVariantOf } from '../recipeVariant.ts';
 import { compactRecipeFields, MAX_RECIPE_LANG_CHARS } from '../store.ts';
 
 export const RECIPE_LIMITS = {
@@ -455,13 +456,32 @@ export function validateRecipeChanges(
 }
 
 /**
+ * What a new variant takes from the stored recipe it was made from: the
+ * group's original (the parent's own `variantOf`, else the parent), so a
+ * variant of a variant joins the same flat group, and the parent's language.
+ * The same rule as `recipeStore.createFromAsk` (`docs/plans/recipe-variants.md`).
+ */
+export function variantFromParent(parent: Record<string, unknown> & { id: string }): {
+  variantOf: string;
+  lang?: string;
+} {
+  const lang = normalizeLang(parent.lang);
+  return {
+    variantOf: compactVariantOf(parent.variantOf, parent.id) ?? parent.id,
+    ...(lang !== undefined ? { lang } : {}),
+  };
+}
+
+/**
  * The `recipe.put` payload for a new recipe, stamped `createdAt = updatedAt =
- * now`, or an error when it is too large to push.
+ * now`, or an error when it is too large to push. `variantOf` is the group
+ * key from `variantFromParent`, never a model-sent value.
  */
 export function newRecipePayload(
   recipe: NewRecipeInput,
   id: string,
   now: number,
+  variantOf?: string,
 ): { ok: true; payload: Record<string, unknown> } | { ok: false; errors: FieldError[] } {
   // Fields are copied by name so nothing else rides along.
   const payload: Record<string, unknown> = {
@@ -477,6 +497,7 @@ export function newRecipePayload(
   for (const key of ['description', 'notes', 'prepMinutes', 'cookMinutes', 'sourceUrl', 'lang'] as const) {
     if (recipe[key] !== undefined) payload[key] = recipe[key];
   }
+  if (variantOf !== undefined) payload.variantOf = variantOf;
   if (JSON.stringify(payload).length >= MAX_PAYLOAD_CHARS) {
     return { ok: false, errors: [tooLarge()] };
   }
