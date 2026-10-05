@@ -320,16 +320,31 @@ describe('create_recipe', () => {
       expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
     });
 
-    it('refuses a deleted recipe, one not in this library, and a malformed id, without writing', async () => {
+    it('refuses a deleted recipe and one not in this library, without writing', async () => {
       const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
       const DELETED = '66666666-6666-4666-8666-666666666666';
       ctx.docs.set(DELETED, { id: DELETED, title: 'Old stew', deletedAt: 300, updatedAt: 300 });
-      for (const variantOf of [DELETED, R2, 'not-an-id', '../users/other/recipes/x']) {
+      for (const variantOf of [DELETED, R2]) {
         const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
         expect(out).toMatchObject({ ok: false, code: 'not_found' });
       }
-      const bad = await run('create_recipe', { ...EGG, variantOf: 7 }, ctx);
-      expect(bad).toMatchObject({ ok: false, code: 'invalid' });
+      expect(ctx.created).toEqual([]);
+    });
+
+    it('rejects a variantOf that is not a recipe id by its shape, without reading or writing', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const reads: string[] = [];
+      const read = ctx.readOwnRecipeDoc.bind(ctx);
+      ctx.readOwnRecipeDoc = async (id) => {
+        reads.push(id);
+        return read(id);
+      };
+      for (const variantOf of [7, 'not-an-id', '../users/other/recipes/x', R1 + 'x'.repeat(300_000)]) {
+        const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
+        expect(out).toMatchObject({ ok: false, code: 'invalid', data: { errors: [{ path: 'variantOf' }] } });
+        expect(!out.ok && out.message.length).toBeLessThan(200);
+      }
+      expect(reads).toEqual([]);
       expect(ctx.created).toEqual([]);
     });
 

@@ -76,9 +76,17 @@ and `importCheck`.
 - `src/lib/variantGroup.ts`: `variantGroup(recipes, id)` returns every recipe
   whose `variantOf ?? id` matches. The original comes first, then the rest
   ordered by `createdAt` and then `id`. A group of one is a shared `EMPTY`
-  constant. Owned and shared recipes group together.
-- `useRecipeVariants(id)` in `recipeStore.ts` subscribes to the recipes map
-  and derives the group with `useMemo`. Only `VariantLinks` calls it, so a
+  constant. Owned and shared recipes group together, with one limit (added
+  after #149 from review): a recipe someone else owns joins only when it is
+  the group's original or has the same owner as the recipe on screen.
+  Without it, a member who shares a collection with you could set their
+  recipe's `variantOf` to one of yours. Their recipe, titled however they
+  liked, would then appear in the Variants row on your own recipe's page.
+  The legitimate cases still group:
+  - your copy of a shared recipe sits with that original;
+  - an owner's shared variants sit together.
+- `useRecipeVariants(id)` in `recipeStore.ts` subscribes to the recipes and
+  recipe-origin maps and derives the group with `useMemo`. Only `VariantLinks` calls it, so a
   change to another recipe re-renders that row and not all of RecipeView.
 - `src/components/VariantLinks.tsx` is a `nav` with one chip per member:
   - The open recipe's chip is highlighted and is not a link.
@@ -97,10 +105,13 @@ the whole changed recipe, as it would for any new recipe.
 
 - **Input.** `variantOf` is the id of one of the caller's own recipes.
   - The server reads that recipe from `users/{sub}` (`readOwnRecipeDoc`).
-  - A missing, deleted, malformed or foreign id is `not_found`, and nothing is
-    written. MCP sees the caller's own tree only, so a shared recipe cannot
-    be a parent.
-  - A non-string is `invalid`.
+  - A missing, deleted or foreign id is `not_found`, and nothing is written.
+    MCP sees the caller's own tree only, so a shared recipe cannot be a
+    parent.
+  - A value that is not a recipe id (not a UUID; the schema caps it at 36
+    characters) is `invalid` before anything is read. That decision depends
+    on the input's shape alone, so it reveals nothing about what is stored,
+    and `not_found` only ever repeats a recipe id back.
 - **Rule.** `variantFromParent` (`server/mcp/recipeInput.ts`) stores the
   parent's own `variantOf`, else its id, through `compactVariantOf`, so a
   variant of a variant joins the same flat group. The model never supplies

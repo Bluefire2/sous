@@ -481,6 +481,7 @@ const createTool: McpToolSpec = {
       collectionId: collectionIdSchema,
       variantOf: {
         type: 'string',
+        maxLength: 36,
         description: "The id of the user's recipe this one is a variant of (from search_recipes or get_recipes). Omit for an unrelated recipe.",
       },
     },
@@ -497,8 +498,10 @@ const createTool: McpToolSpec = {
     const dest = readDestination(collectionId ?? UNFILED, errors);
     const validated = validateNewRecipe(recipeArgs);
     if (!validated.ok) errors.push(...validated.errors);
-    if (parentId !== undefined && typeof parentId !== 'string') {
-      errors.push({ path: 'variantOf', message: 'must be a recipe id' });
+    // Checked by shape only, so it says nothing about what is stored, and
+    // not_found then only ever repeats a recipe id back.
+    if (parentId !== undefined && !isUuid(parentId)) {
+      errors.push({ path: 'variantOf', message: 'must be a recipe id from search_recipes or get_recipes' });
     }
     if (errors.length > 0 || !validated.ok || dest === null) return invalid(errors);
     if (dest !== UNFILED && !isUuid(dest)) return collectionNotFound(dest);
@@ -506,7 +509,7 @@ const createTool: McpToolSpec = {
     let variant: { key: string; parent: { id: string; title: string } } | undefined;
     if (typeof parentId === 'string') {
       // Own tree only, like every tool: a shared recipe is not found here.
-      const parent = isUuid(parentId) ? await ctx.readOwnRecipeDoc(parentId) : undefined;
+      const parent = await ctx.readOwnRecipeDoc(parentId);
       if (parent === undefined || !isLiveDoc(parent)) return variantParentNotFound(parentId);
       const fromParent = variantFromParent(parent);
       if (recipe.lang === undefined && fromParent.lang !== undefined) {
