@@ -32,7 +32,13 @@ one parse5 pass shared with `extractRecipeSource`); `ok` carries typed
 call is `model_error` (502 `import-model-failed`), not a 500. Retries are the
 code constant `MAX_IMPORT_RETRIES` (0 until phase 3 of
 `docs/plans/import-reliability.md`), never an env var. Photo import runs no
-checks and makes exactly one call.
+checks and makes exactly one call. Website URL import (`fetchPageHtml`)
+connects only to public addresses (`server/netGuard.ts`: every resolved
+address checked, the connection pinned to it), follows at most 5 redirects
+itself with the same checks on each hop, gives up after 15 s, and cuts the
+page at `MAX_PAGE_HTML_CHARS` (600 000, the extension route's cap too). A
+refused address logs `fetch: 'blocked'` and answers the same 422
+`import-unreachable` as a dead host; never log the resolved address.
 
 Both import routes write one `event: 'import'` JSON log line per request
 (`server/importLog.ts`, `withImportLog`): the session `sub`, how the import
@@ -544,7 +550,8 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `sous_mcp_authz` hop cookie, a nonce, `sameOriginPost`, `Referrer-Policy:
   same-origin`, `frame-ancestors 'none'`. Sous fetches a client's metadata
   document only once a member session exists, through the SSRF-safe pinned
-  fetch in `oauth/clientMetadata.ts`.
+  fetch in `oauth/clientMetadata.ts` (address check and pinning in
+  `server/netGuard.ts`).
 - **Tokens.** Opaque `sous_at_` (1 h) and `sous_rt_` (30 days, rotated on
   every use) tokens, stored only as sha256 hashes; they are not HMAC-signed
   and do not depend on `SESSION_SECRET`. `/mcp` reads the bearer from
@@ -681,6 +688,15 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
 | `docs/plans/recipe-variants.md` | Built on `claude/recipe-variant-parent-tracking-8e1908`, not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` on `claude/mcp-create-variant`. |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
+| `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |
+| `docs/plans/ui-polish.md` | Done (`6e158ec`). Hover, focus, overflow menu, and sheet polish. Written against the Dexie-era app; history only. |
+| `docs/plans/dark-mode-default.md` | Done. Persisted light/dark theme, dark by default (`src/lib/theme.ts`, Settings → Appearance). |
+| `docs/plans/unit-enum.md` | Done (all 4 steps). Unit `<select>` with a Custom option in `RecipeForm` (`src/lib/units.ts`); storage stays `unit?: string`. |
+| `docs/plans/gemini-provider.md` | Done (all 5 steps). Replaced Anthropic with Gemini (`@google/genai`) for chat and import. |
+| `docs/plans/recipe-gallery-simplification.md` | Done (#18). Simplified gallery photo saving; `recipe-gallery.md` is the feature plan. |
+| `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
+| `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
+| `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not

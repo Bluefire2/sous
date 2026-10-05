@@ -1,6 +1,6 @@
 # Audit fixes
 
-Implement every finding in [`AUDIT.md`](../../AUDIT.md) — High 1–2, Medium 3–5,
+Implement every finding in [`AUDIT.md`](../audits/2026-08-30.md) — High 1–2, Medium 3–5,
 Low 6–11 — and nothing else. No new product features, no new screens, no new
 npm dependencies, no theme or layout redesign. The working tree already carries
 the uncommitted UI-polish work (`src/lib/uiClasses.ts` plus eight modified

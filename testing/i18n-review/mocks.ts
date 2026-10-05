@@ -339,6 +339,20 @@ export const MOCKS = {
       })();`,
     });
   },
+  /**
+   * No system share sheet, as in most desktop browsers, so a recipe's Share
+   * copies instead. Headless Chromium has one on some platforms; a real one
+   * would open a native dialog the capture cannot see.
+   */
+  shareUnavailable: async (context) => {
+    await context.addInitScript({
+      content: `(() => {
+        for (const name of ['share', 'canShare']) {
+          Object.defineProperty(navigator, name, { value: undefined, configurable: true });
+        }
+      })();`,
+    });
+  },
 
   /**
    * A suggestion is accepted (204, as the server answers). Not sent for real:

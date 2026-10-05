@@ -108,7 +108,7 @@ export default function ImportWarningBanner({
   return (
     <section
       aria-label={t('importWarning.label')}
-      className="mt-3 rounded-2xl border border-amber-600/70 bg-accent-soft px-4 py-3 text-sm text-ink"
+      className="mt-3 rounded-2xl border border-amber-600/70 bg-accent-soft px-4 py-3 text-sm text-ink print:hidden"
     >
       <ImportWarningList warnings={check.warnings} sections={sections} />
       <div className="mt-3 flex flex-wrap gap-2">

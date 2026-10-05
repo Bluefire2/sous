@@ -14,11 +14,13 @@ import {
   GallerySection,
   IngredientsSection,
   NotesSection,
+  recipePageClass,
   RecipeTimes,
   SourceCredit,
   sourceLink,
   StepsSection,
 } from '../components/RecipeBody';
+import ShareRecipeButton from '../components/ShareRecipeButton';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
@@ -53,11 +55,17 @@ export default function PublicRecipe() {
       <Link to={collectionHref} className={backLink}>
         &larr; {result?.kind === 'ok' ? result.data.collection.name : t('public.backToCollection')}
       </Link>
-      {!member && (
-        <PublicSignInLink token={token} className={ghostBtn}>
-          {t('public.signIn')}
-        </PublicSignInLink>
-      )}
+      <div className="flex items-center gap-1">
+        {/* Read-only, like the rest of this page: it shares the text the visitor already sees. */}
+        {recipe !== undefined && join.state.kind !== 'missing' && (
+          <ShareRecipeButton recipe={recipe} />
+        )}
+        {!member && (
+          <PublicSignInLink token={token} className={ghostBtn}>
+            {t('public.signIn')}
+          </PublicSignInLink>
+        )}
+      </div>
     </div>
   );
 
@@ -102,8 +110,8 @@ export default function PublicRecipe() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-24">
-      <header className="pt-4">{topBar}</header>
+    <div className={recipePageClass}>
+      <header className="pt-4 print:hidden">{topBar}</header>
       {content}
       {lockedOpen && (
         <AiLockedSheet
@@ -164,7 +172,7 @@ function PublicRecipeBody({
         <div className="mt-2 text-sm">
           {hasTime && <RecipeTimes recipe={recipe} />}
           {mode !== 'hidden' && (
-            <div className={hasTime ? 'mt-2' : undefined}>
+            <div className={hasTime ? 'mt-2 print:hidden' : 'print:hidden'}>
               <LockedAiButton
                 hint={hint}
                 onOpen={onLocked}
@@ -213,7 +221,7 @@ function PublicRecipeBody({
         hint={hint}
         onOpen={onLocked}
         className={lockedAskBtn}
-        wrapperClassName="fixed right-5 bottom-8 z-10"
+        wrapperClassName="fixed right-5 bottom-8 z-10 print:hidden"
         placement="above-end"
       >
         {t('recipe.ask')}
