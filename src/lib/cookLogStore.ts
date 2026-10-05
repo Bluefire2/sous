@@ -12,6 +12,7 @@ import {
   upsertCookLog,
 } from './libraryMemory';
 import { selectCookLog } from './librarySelectors';
+import { lastCookedByRecipe } from './librarySort';
 import { withLocalWrite } from './localWrite';
 import { useLibrarySelect, useLibrarySlice } from './useLibrary';
 import { postPhoto, pushOps, type RemoteResult } from './remote';
@@ -179,6 +180,16 @@ export function useCookLogs(recipeId?: string): CookLog[] | undefined {
     () => (loaded ? cookLogsFor(cookLogs, recipeId) : undefined),
     [loaded, cookLogs, recipeId],
   );
+}
+
+/**
+ * Reactive latest `cookedOn` per own recipe, derived in memory and never
+ * stored. Recipes shared with you are left out.
+ */
+export function useLastCookedOn(): ReadonlyMap<string, string> {
+  const cookLogs = useLibrarySlice('cookLogs');
+  const origins = useLibrarySlice('recipeOrigins');
+  return useMemo(() => lastCookedByRecipe(cookLogs, origins), [cookLogs, origins]);
 }
 
 /** Reactive single cook log. `undefined` while loading, `null` if not found. */

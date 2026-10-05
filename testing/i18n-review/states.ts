@@ -254,6 +254,15 @@ export const STATES: Record<string, StateEntry> = {
       await page.locator('[aria-expanded="true"]').waitFor();
     },
   },
+  // Weeknights holds the roast chicken, the one recipe with logged cooks.
+  'library-sort-menu': {
+    persona: 'member',
+    path: weeknights,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('library.sortMenu', { order: ctx.t('library.sortUpdated') }));
+      await page.locator('[aria-expanded="true"]').waitFor();
+    },
+  },
   'import-idle': { persona: 'member', path: '/import' },
   'import-photos': {
     persona: 'member',

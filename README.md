@@ -63,13 +63,15 @@ return **401** by design — that deployment has no session cookie.
 
 ## Stack
 
-- Vite 6 + React 19 + TypeScript 5.8, React Router 7
+- Vite 8 + React 19 + TypeScript 5.9, React Router 7
 - Tailwind CSS v4 through `@tailwindcss/vite` — there is no `tailwind.config.js`
 - In-memory library after pull; Firestore/GCS via `server/`
 - `google-auth-library`, `@google-cloud/firestore`, and `@google-cloud/storage`
-  on the Node server; OAuth, sync, and photos live in `server/`. The two
-  `POST(req: Request)` handlers in `api/` call Gemini via `@google/genai` and
-  cannot import siblings on Vercel, so new HTTP routes belong in `server/`.
+  on the Node server; OAuth, sync, photos, and import live in `server/`.
+  `api/chat.ts` is the one live `POST(req: Request)` handler in `api/`: it
+  calls Gemini via `@google/genai` and cannot import siblings on Vercel, so
+  new HTTP routes belong in `server/`. `api/import.ts` is a Vercel-only stub
+  that always returns 401; Cloud Run serves `/api/import` from `server/`.
 - `scripts/server.ts` mounts `server/` routes plus the `api/` handlers in the
   Cloud Run container; Vercel still runs only the `api/` functions.
 - `vite-plugin-pwa` for the service worker and web manifest
@@ -142,21 +144,6 @@ Opt-outs: set `FIRESTORE_EMULATOR_HOST` to use the emulator instead of
 Firestore, or leave `PHOTO_BUCKET` unset in `.env.local` to keep photo upload
 off (`/api/photos` returns 503 until the bucket is set).
 
-### Local development
-
-Local `npm run dev:api` talks to **real** Firestore and the photo bucket by
-default (same Google account ⇒ same `sub` as production — experiments mutate
-live data). Set up ADC once:
-
-```bash
-gcloud auth application-default login
-gcloud auth application-default set-quota-project cooking-assistant-508423
-```
-
-Opt-outs: set `FIRESTORE_EMULATOR_HOST` to use the emulator instead of
-Firestore, or leave `PHOTO_BUCKET` unset in `.env.local` to keep photo upload
-off (`/api/photos` returns 503 and outbox rows stay until the bucket is set).
-
 ### Test mode
 
 To work signed in without touching production, run test mode: the app
@@ -195,41 +182,6 @@ API on `PORT` (8080 by default). That is what the container runs.
 
 `npm run build` type-checks everything, including `api/`, `server/`, and
 `scripts/`, which the running dev servers do not — run it before deploying.
-
-## The Chrome extension
-
-[`extension/`](extension) is an unpacked MV3 extension that imports the recipe
-page you are looking at, straight into your library — one button, no review
-step. It is plain JavaScript with no build step, so nothing in `npm run build`
-or the container image touches it.
-
-**Load it**
-
-1. `chrome://extensions` → turn on **Developer mode** → **Load unpacked** →
-   pick the `extension/` directory.
-2. Sign in to Sous in that browser profile.
-3. Open a recipe page, click the toolbar icon, click **Import to Sous**.
-
-It posts to `POST /api/extension/import`, which extracts with Gemini and writes
-the recipe to Firestore under your account; your devices pick it up on their
-next sync, and the popup links straight to it. **That route has to be deployed
-for the production origin to work** — against a local checkout the extension
-talks to `http://localhost:5173`, which needs both `npm run dev` and
-`npm run dev:api` running.
-
-It tries `localhost` before production and only falls through to the next
-origin when the connection is refused, so a local run never posts your test
-imports into the real library.
-
-| Permission | Why |
-| --- | --- |
-| `cookies` | Reads the `sous_session` cookie for the two Sous origins and sends it as `X-Sous-Session`. The cookie is `SameSite=Lax`, so relying on the browser to attach it to an extension request would be relying on a browser implementation detail. |
-| `activeTab` + `scripting` | Grabs the rendered HTML of the tab you invoked it on, which is what makes it work on sites the server cannot fetch. No `<all_urls>`: access is granted per invocation. |
-| `storage` | Keeps per-tab import state in `chrome.storage.session`, so closing the popup mid-import does not lose the run. |
-| `host_permissions` | `https://sous.kyrylo.lol/*` and `http://localhost/*` — the localhost pattern is port-wide because cookies are not port-scoped and `chrome.cookies.get` has to match it. |
-
-The extension sends the page's HTML to the server, which forwards a trimmed
-version to Gemini, exactly as pasting the page into the import screen would.
 
 ## The Chrome extension
 
