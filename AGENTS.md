@@ -216,9 +216,10 @@ stored recipe and reconciles it with the edit; only `replaceFromImport`
 replaces it. Optional `Recipe.variantOf` (the id of the original a variant
 was made from, shared by all its variants; `server/recipeVariant.ts`) is the
 third (`docs/plans/recipe-variants.md`); code must work when it is missing or
-names a recipe that is gone. Only `createFromAsk` sets it; `saveRecipe`
-forces the stored value, the server pins the owner's value on an editor's
-put, `publicRecipeBody` and `recipeForChat` strip it, and backup import
+names a recipe that is gone. Only `createFromAsk` passes it to `create`;
+`saveRecipe` forces the stored value, the server pins the owner's value on
+an editor's put, shared pull carries it (an opaque id that grants no
+access), `publicRecipeBody` and `recipeForChat` strip it, and backup import
 remaps it.
 Collections are a separate store kind. Grants live under
 `collections/{id}/grants/{viewerSub}` plus a reverse

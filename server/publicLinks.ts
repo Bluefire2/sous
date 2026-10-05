@@ -170,7 +170,9 @@ export function newestLivePublicLink(
 /**
  * What a visitor gets for one recipe: the stored recipe fields, without the
  * import check (the owner's import diagnostics, not recipe content) or
- * `variantOf` (an id that may name a recipe outside the collection).
+ * `variantOf`: a visitor has no library to group variants in, so the id
+ * would only name a recipe they cannot see. Shared pull keeps it, because a
+ * member's variants group with the owner's.
  */
 export function publicRecipeBody(recipe: Record<string, unknown>): Record<string, unknown> {
   const body = compactRecipeFields(recipe);

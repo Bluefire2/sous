@@ -39,14 +39,22 @@ and `importCheck`.
   or that equals the recipe's own id, is dropped by `compactVariantOf` in
   `server/recipeVariant.ts`. Both `compactRecipe` and `compactRecipeFields`
   use it. `validateRecipePut` does not check it.
-- **It is set only at creation**, by `createFromAsk`. `saveRecipe` forces the
+- **It is set only at creation.** `createFromAsk` is the only caller that
+  passes it; `recipeStore.create` keeps whatever it is given, and no other
+  caller can supply it. `saveRecipe` forces the
   stored value on every later save, so no edit path (the edit form, Ask Apply,
   replace from import, dismissing warnings, promoting a lesson) can set or
   clear it.
 - **A shared editor cannot change it.** `planSharedRecipePut` pins the owner's
   stored value.
+- **Shared pull carries it to viewers and editors.** That is what lets a
+  viewer's "Save as new recipe" on a shared variant join the owner's group,
+  and a shared variant group with its shared original. The id is an opaque
+  recipe id. Every read still rechecks share, collection and listing, so it
+  grants no access, though a member can learn the id of an original they
+  cannot see.
 - **It never reaches a visitor or the model.** `publicRecipeBody` strips it,
-  because the id may name a recipe outside the public collection.
+  because a visitor has no library to group variants in.
   `recipeForChat` strips it as well, so the `/api/chat` request keeps its
   shape.
 - **MCP neither shows nor takes it.** `toMcpRecipe` does not show it, and
