@@ -6,13 +6,13 @@
  *
  * The fetch is SSRF-safe: every address the name resolves to must be public
  * (`isPublicAddress`), the connection is pinned to the address that passed
- * (so DNS rebinding cannot swap it), redirects are not followed, and the
- * time, size, and type are capped. Results are cached per URL in memory, and
+ * (so DNS rebinding cannot swap it; both from `server/netGuard.ts`),
+ * redirects are not followed, and the time, size, and type are capped. Results are cached per URL in memory, and
  * uncached fetches are rate-limited per instance.
  */
-import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import type { LookupAddress } from 'node:dns';
+import { pinnedLookup, resolvePublicAddress } from '../../netGuard.ts';
 import { admitTranslateCall } from '../../recipeTranslation.ts';
 import {
   CLIENT_METADATA_CACHE_MS,
@@ -22,7 +22,7 @@ import {
   CLIENT_METADATA_TIMEOUT_MS,
   MAX_CLIENT_NAME_CHARS,
 } from '../config.ts';
-import { isPublicAddress, parseClientIdUrl, redirectUriShapeAllowed } from './clientId.ts';
+import { parseClientIdUrl, redirectUriShapeAllowed } from './clientId.ts';
 
 export type ClientMetadata = {
   clientId: string;
@@ -140,15 +140,6 @@ export function isJsonContentType(raw: string | undefined): boolean {
   return type === 'application/json' || /^application\/[a-z0-9.+-]+\+json$/.test(type);
 }
 
-/** Resolves the host and checks every address; returns the one to connect to. */
-async function resolvePublicAddress(hostname: string): Promise<LookupAddress | null> {
-  const addresses = await dnsLookup(hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || !addresses.every((entry) => isPublicAddress(entry.address))) {
-    return null;
-  }
-  return addresses[0]!;
-}
-
 /** The live fetch: pinned to a checked address, no redirects, 3 s, 5 KB, JSON only. */
 export const fetchClientMetadataDocument: FetchDocument = async (url) => {
   let pinned: LookupAddress | null;
@@ -174,15 +165,8 @@ export const fetchClientMetadataDocument: FetchDocument = async (url) => {
       {
         method: 'GET',
         headers: { Accept: 'application/json', 'User-Agent': 'Sous-MCP/1 (client metadata)' },
-        // Connect only to the address checked above. Node may ask for every
-        // address (`all: true`, for happy eyeballs) or for one.
-        lookup: (_hostname, options, callback) => {
-          if ((options as { all?: boolean }).all) {
-            (callback as unknown as (err: null, addresses: LookupAddress[]) => void)(null, [address]);
-          } else {
-            callback(null, address.address, address.family);
-          }
-        },
+        // Connect only to the address checked above.
+        lookup: pinnedLookup(address),
         signal: AbortSignal.timeout(CLIENT_METADATA_TIMEOUT_MS),
       },
       (res) => {

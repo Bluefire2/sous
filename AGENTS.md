@@ -32,7 +32,13 @@ one parse5 pass shared with `extractRecipeSource`); `ok` carries typed
 call is `model_error` (502 `import-model-failed`), not a 500. Retries are the
 code constant `MAX_IMPORT_RETRIES` (0 until phase 3 of
 `docs/plans/import-reliability.md`), never an env var. Photo import runs no
-checks and makes exactly one call.
+checks and makes exactly one call. Website URL import (`fetchPageHtml`)
+connects only to public addresses (`server/netGuard.ts`: every resolved
+address checked, the connection pinned to it), follows at most 5 redirects
+itself with the same checks on each hop, gives up after 15 s, and cuts the
+page at `MAX_PAGE_HTML_CHARS` (600 000, the extension route's cap too). A
+refused address logs `fetch: 'blocked'` and answers the same 422
+`import-unreachable` as a dead host; never log the resolved address.
 
 Both import routes write one `event: 'import'` JSON log line per request
 (`server/importLog.ts`, `withImportLog`): the session `sub`, how the import
@@ -537,7 +543,8 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `sous_mcp_authz` hop cookie, a nonce, `sameOriginPost`, `Referrer-Policy:
   same-origin`, `frame-ancestors 'none'`. Sous fetches a client's metadata
   document only once a member session exists, through the SSRF-safe pinned
-  fetch in `oauth/clientMetadata.ts`.
+  fetch in `oauth/clientMetadata.ts` (address check and pinning in
+  `server/netGuard.ts`).
 - **Tokens.** Opaque `sous_at_` (1 h) and `sous_rt_` (30 days, rotated on
   every use) tokens, stored only as sha256 hashes; they are not HMAC-signed
   and do not depend on `SESSION_SECRET`. `/mcp` reads the bearer from

@@ -1,6 +1,7 @@
 import type { Content } from '@google/genai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeImportDeps } from '../test/fakeGemini.ts';
+import { fakePageFetch } from '../test/fakePageFetch.ts';
 import {
   IMPORT_IMAGE_TYPES,
   importPost,
@@ -15,6 +16,19 @@ import {
 } from './recipeImport.ts';
 import * as recipeImport from './recipeImport.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+
+// The route fetches pages over the live network; send it through a fake one
+// (`test/fakePageFetch.ts`) so `fetchPageHtml`'s own checks still run.
+const network = vi.hoisted(() => ({
+  deps: undefined as import('./recipeImport.ts').PageFetchDeps | undefined,
+}));
+vi.mock('./recipeImport.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./recipeImport.ts')>();
+  return {
+    ...actual,
+    fetchPageHtml: (url: string) => actual.fetchPageHtml(url, network.deps),
+  };
+});
 
 const RECIPE = {
   title: 'Tomato soup',
@@ -89,15 +103,16 @@ function rejectingDeps(message: string, status?: number): RecipeImportDeps {
   };
 }
 
-function serve(response: Response) {
-  const fetchMock = vi.fn(() => Promise.resolve(response));
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+/** Every URL answers with this page. */
+function serve(body: string, status = 200) {
+  network.deps = fakePageFetch({ pages: () => ({ status, body }) }).deps;
 }
 
 // Every request writes an import log line; keep it out of the test output.
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  // Until a test serves a page, every connection is refused.
+  network.deps = fakePageFetch({ pages: {} }).deps;
 });
 
 afterEach(() => {
@@ -126,7 +141,7 @@ describe('POST /api/import', () => {
   });
 
   it('returns the normalized recipe and sourceUrl for a URL', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup' });
     expect(result).toMatchObject({
       status: 200,
@@ -136,7 +151,7 @@ describe('POST /api/import', () => {
   });
 
   it('prefers the URL when both are given', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup', text: 'Other text' });
     expect(result.calls[0].contents).not.toContain('Other text');
   });
@@ -153,7 +168,7 @@ describe('POST /api/import', () => {
   });
 
   it('rejects a page with no readable text like an empty request', async () => {
-    serve(new Response('<html><body><script>x()</script></body></html>'));
+    serve('<html><body><script>x()</script></body></html>');
     const result = await post({ url: 'https://example.com/soup' });
     expect(result).toMatchObject({
       status: 400,
@@ -172,13 +187,23 @@ describe('POST /api/import', () => {
       body: { error: 'Only http and https URLs are supported.', code: 'import-bad-scheme' },
     });
 
-    vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed')));
+    network.deps = fakePageFetch({ pages: {} }).deps;
     expect(await post({ url: 'https://example.com/soup' })).toMatchObject({
       status: 422,
       body: { error: 'Could not reach that URL.', code: 'import-unreachable' },
     });
 
-    serve(new Response('challenge', { status: 403 }));
+    // A non-public address answers exactly like an unreachable site.
+    serve(PAGE);
+    for (const url of ['http://127.0.0.1:3998/internal', 'http://169.254.169.254/computeMetadata/v1/']) {
+      expect(await post({ url }), url).toEqual({
+        status: 422,
+        body: { error: 'Could not reach that URL.', code: 'import-unreachable' },
+        calls: [],
+      });
+    }
+
+    serve('challenge', 403);
     expect(await post({ url: 'https://example.com/soup' })).toMatchObject({
       status: 422,
       body: {
@@ -240,7 +265,7 @@ describe('POST /api/import', () => {
       });
       expect(source).toHaveBeenCalledWith('Tomato soup', expect.anything(), 'uk');
 
-      serve(new Response(PAGE));
+      serve(PAGE);
       const url = await post(
         { url: 'https://example.com/soup', translateTo: 'uk' },
         JSON.stringify(italian),
@@ -309,7 +334,7 @@ describe('POST /api/import with photos', () => {
   });
 
   it('prefers the URL and ignores photos', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const images = Array.from({ length: 5 }, () => jpeg());
     const result = await post({ url: 'https://example.com/soup', images });
     expect(result.status).toBe(200);
@@ -528,7 +553,7 @@ describe('POST /api/import with photos', () => {
 
 describe('POST /api/import log line', () => {
   it('logs a URL import with the account and the address, never its query or the recipe', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup?user_id=u-77&code=c-88#step-2' });
     expect(result.status).toBe(200);
     const lines = importLogLines();
@@ -555,7 +580,7 @@ describe('POST /api/import log line', () => {
   });
 
   it('logs a site that refused the fetch, with its status', async () => {
-    serve(new Response('blocked', { status: 403 }));
+    serve('blocked', 403);
     expect((await post({ url: 'https://example.com/soup' })).status).toBe(422);
     expect(importLogLines().map((line) => line.entry)).toEqual([
       expect.objectContaining({
@@ -569,14 +594,32 @@ describe('POST /api/import log line', () => {
     ]);
   });
 
+  it('logs a refused address as blocked, without the address it resolved to', async () => {
+    network.deps = fakePageFetch({ dns: { 'intranet.example': ['10.20.30.40'] }, pages: {} }).deps;
+    expect((await post({ url: 'https://intranet.example/admin?token=t-99' })).status).toBe(422);
+    const lines = importLogLines();
+    expect(lines.map((line) => line.entry)).toEqual([
+      expect.objectContaining({
+        via: 'url',
+        url: 'https://intranet.example/admin',
+        fetch: 'blocked',
+        outcome: 'fetch_failed',
+        status: 422,
+      }),
+    ]);
+    for (const leaked of ['10.20.30.40', 't-99']) {
+      expect(lines[0].raw).not.toContain(leaked);
+    }
+  });
+
   it('logs a recipe with no steps as ok with steps 0', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     await post({ url: 'https://example.com/soup' }, JSON.stringify({ ...RECIPE, steps: [] }));
     expect(importLogLines()[0].entry).toMatchObject({ outcome: 'ok', ingredients: 1, steps: 0 });
   });
 
   it('logs a Gemini throw on a URL import as model_error with its status, and answers 502', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup' }, undefined, {
       deps: rejectingDeps('SECRET upstream detail', 429),
     });
@@ -599,7 +642,7 @@ describe('POST /api/import log line', () => {
   });
 
   it('logs the warning codes on a URL import, and sends them to the client', async () => {
-    serve(new Response('<main><h1>Soup</h1><p>You need tomatoes. Watch the video.</p></main>'));
+    serve('<main><h1>Soup</h1><p>You need tomatoes. Watch the video.</p></main>');
     const result = await post(
       { url: 'https://example.com/soup' },
       JSON.stringify({ ...RECIPE, steps: [], instructionsOnPage: false }),

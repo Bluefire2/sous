@@ -1,10 +1,15 @@
 import { MediaResolution, type Content } from '@google/genai';
+import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import type { RecipeDraft } from '../src/lib/types.ts';
 import { fakeImportDeps } from '../test/fakeGemini.ts';
+import { fakePageFetch, PUBLIC_ADDRESS, type FakePage } from '../test/fakePageFetch.ts';
+import { resolveHost } from './netGuard.ts';
 import {
   IMPORT_RETRY_DEADLINE_MS,
   MAX_IMPORT_RETRIES,
+  MAX_PAGE_HTML_CHARS,
+  MAX_PAGE_REDIRECTS,
   extractRecipeSource,
   fetchPageHtml,
   importFromHtml,
@@ -799,42 +804,232 @@ describe('importFromHtml', () => {
 });
 
 describe('fetchPageHtml', () => {
-  const neverCalled: typeof fetch = () => {
-    throw new Error('fetch should not be called');
-  };
+  const redirect = (location: string, status = 302): FakePage => ({
+    status,
+    headers: { Location: location },
+  });
 
   it('rejects what is not a URL', async () => {
-    expect(await fetchPageHtml('soup', neverCalled)).toEqual({ kind: 'invalid_url' });
+    const { deps, lookups, requests } = fakePageFetch();
+    expect(await fetchPageHtml('soup', deps)).toEqual({ kind: 'invalid_url' });
+    expect([lookups, requests]).toEqual([[], []]);
   });
 
   it('rejects schemes other than http and https', async () => {
-    expect(await fetchPageHtml('ftp://example.com/soup', neverCalled)).toEqual({
+    const { deps, lookups, requests } = fakePageFetch();
+    expect(await fetchPageHtml('ftp://example.com/soup', deps)).toEqual({
       kind: 'unsupported_scheme',
     });
+    expect([lookups, requests]).toEqual([[], []]);
   });
 
   it('reports a network failure as unreachable', async () => {
-    const failing: typeof fetch = () => Promise.reject(new TypeError('fetch failed'));
-    expect(await fetchPageHtml('https://example.com/soup', failing)).toEqual({
+    const { deps } = fakePageFetch({ pages: {} });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({
+      kind: 'unreachable',
+    });
+  });
+
+  it('reports a DNS failure as unreachable', async () => {
+    const { deps } = fakePageFetch();
+    deps.resolve = () => Promise.reject(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }));
+    expect(await fetchPageHtml('https://nowhere.example/soup', deps)).toEqual({
       kind: 'unreachable',
     });
   });
 
   it('reports a non-2xx response with its status', async () => {
-    const refusing: typeof fetch = () =>
-      Promise.resolve(new Response('challenge page', { status: 403 }));
-    expect(await fetchPageHtml('https://example.com/soup', refusing)).toEqual({
+    const { deps } = fakePageFetch({
+      pages: { 'https://example.com/soup': { status: 403, body: 'challenge page' } },
+    });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({
       kind: 'refused',
       status: 403,
     });
   });
 
-  it('returns the page body', async () => {
-    const serving: typeof fetch = () => Promise.resolve(new Response('<html>soup</html>'));
-    expect(await fetchPageHtml('https://example.com/soup', serving)).toEqual({
+  it('returns the page body, fetched from the checked address with the browser headers', async () => {
+    const { deps, lookups, requests } = fakePageFetch({
+      pages: { 'https://example.com/soup': { body: '<html>soup</html>' } },
+    });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({
       kind: 'ok',
       html: '<html>soup</html>',
     });
+    expect(lookups).toEqual(['example.com']);
+    expect(requests).toEqual([
+      {
+        url: 'https://example.com/soup',
+        address: PUBLIC_ADDRESS,
+        headers: {
+          'User-Agent': expect.stringContaining('iPhone'),
+          Accept: 'text/html',
+        },
+      },
+    ]);
+  });
+
+  it('refuses loopback, private and metadata literals before any connection', async () => {
+    // The live resolver: an IP literal resolves to itself without a DNS query.
+    const { deps, requests } = fakePageFetch({ pages: () => ({ body: 'internal' }) });
+    deps.resolve = resolveHost;
+    for (const url of [
+      'http://127.0.0.1:3998/internal',
+      'http://[::1]:3998/internal',
+      'http://169.254.169.254/computeMetadata/v1/',
+      'http://10.0.0.5/',
+      'http://0x7f.1/',
+      'http://[::ffff:127.0.0.1]/',
+    ]) {
+      expect(await fetchPageHtml(url, deps), url).toEqual({ kind: 'blocked' });
+    }
+    expect(requests).toEqual([]);
+  });
+
+  it('refuses a name with any non-public address before any connection', async () => {
+    const { deps, requests } = fakePageFetch({
+      dns: {
+        'intranet.example': ['10.0.0.5'],
+        'localhost': ['127.0.0.1', '::1'],
+        'mixed.example': [PUBLIC_ADDRESS, '192.168.1.1'],
+      },
+      pages: () => ({ body: 'internal' }),
+    });
+    for (const url of ['http://intranet.example/', 'http://localhost:3001/api', 'https://mixed.example/soup']) {
+      expect(await fetchPageHtml(url, deps), url).toEqual({ kind: 'blocked' });
+    }
+    expect(requests).toEqual([]);
+  });
+
+  it('refuses a public page that redirects to a non-public address', async () => {
+    const { deps, requests } = fakePageFetch({
+      dns: { 'rebind.example': ['127.0.0.1'] },
+      pages: {
+        'https://example.com/a': redirect('http://169.254.169.254/latest/meta-data/'),
+        'https://example.com/b': redirect('https://rebind.example/admin', 307),
+      },
+    });
+    expect(await fetchPageHtml('https://example.com/a', deps)).toEqual({ kind: 'blocked' });
+    expect(await fetchPageHtml('https://example.com/b', deps)).toEqual({ kind: 'blocked' });
+    expect(requests.map((request) => request.url)).toEqual([
+      'https://example.com/a',
+      'https://example.com/b',
+    ]);
+  });
+
+  it('follows a redirect chain that stays public, resolving relative locations', async () => {
+    const { deps, lookups, requests } = fakePageFetch({
+      pages: {
+        'http://example.com/soup': redirect('https://example.com/soup', 301),
+        'https://example.com/soup': redirect('/recipes/soup?ref=1', 308),
+        'https://example.com/recipes/soup?ref=1': redirect('https://cdn.example.org/soup.html', 303),
+        'https://cdn.example.org/soup.html': { body: '<main>soup</main>' },
+      },
+    });
+    expect(await fetchPageHtml('http://example.com/soup', deps)).toEqual({
+      kind: 'ok',
+      html: '<main>soup</main>',
+    });
+    expect(requests.map((request) => request.url)).toEqual([
+      'http://example.com/soup',
+      'https://example.com/soup',
+      'https://example.com/recipes/soup?ref=1',
+      'https://cdn.example.org/soup.html',
+    ]);
+    // Every hop is resolved and checked again.
+    expect(lookups).toEqual(['example.com', 'example.com', 'example.com', 'cdn.example.org']);
+  });
+
+  it(`follows at most ${MAX_PAGE_REDIRECTS} redirects`, async () => {
+    const chain = (hops: number) =>
+      fakePageFetch({
+        pages: (url) => {
+          const n = Number(url.pathname.slice(1));
+          return n < hops ? redirect(`/${n + 1}`) : { body: 'end' };
+        },
+      });
+    const enough = chain(MAX_PAGE_REDIRECTS);
+    expect(await fetchPageHtml('https://example.com/0', enough.deps)).toEqual({ kind: 'ok', html: 'end' });
+    expect(enough.requests).toHaveLength(MAX_PAGE_REDIRECTS + 1);
+    const tooMany = chain(MAX_PAGE_REDIRECTS + 1);
+    expect(await fetchPageHtml('https://example.com/0', tooMany.deps)).toEqual({ kind: 'unreachable' });
+    expect(tooMany.requests).toHaveLength(MAX_PAGE_REDIRECTS + 1);
+  });
+
+  it('does not follow a redirect to another scheme', async () => {
+    const { deps, requests } = fakePageFetch({
+      pages: { 'https://example.com/soup': redirect('file:///etc/passwd') },
+    });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({ kind: 'unreachable' });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('treats a redirect status without a Location as a refusal', async () => {
+    const { deps } = fakePageFetch({ pages: { 'https://example.com/soup': { status: 302 } } });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({
+      kind: 'refused',
+      status: 302,
+    });
+  });
+
+  it('gives up when the site does not answer in time', async () => {
+    const { deps } = fakePageFetch({ pages: () => new Promise<FakePage>(() => {}), timeoutMs: 20 });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({ kind: 'unreachable' });
+  });
+
+  it('gives up when the body stalls past the timeout', async () => {
+    const stalled = new Readable({ read() {} });
+    stalled.push('<html>the start');
+    const { deps } = fakePageFetch({ pages: () => ({ body: stalled }), timeoutMs: 20 });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({ kind: 'unreachable' });
+    expect(stalled.destroyed).toBe(true);
+  });
+
+  it(`stops reading at ${MAX_PAGE_HTML_CHARS} characters and keeps the start of the page`, async () => {
+    let pushed = 0;
+    const endless = new Readable({
+      read() {
+        pushed += 1;
+        this.push(Buffer.alloc(64 * 1024, pushed === 1 ? 'a' : 'b'));
+      },
+    });
+    const { deps } = fakePageFetch({ pages: () => ({ body: endless }) });
+    const outcome = await fetchPageHtml('https://example.com/soup', deps);
+    expect(outcome.kind).toBe('ok');
+    const html = outcome.kind === 'ok' ? outcome.html : '';
+    expect(html).toHaveLength(MAX_PAGE_HTML_CHARS);
+    expect(html.startsWith('a'.repeat(64 * 1024))).toBe(true);
+    expect(endless.destroyed).toBe(true);
+    expect(pushed).toBeLessThan(MAX_PAGE_HTML_CHARS / (64 * 1024) + 4);
+  });
+
+  it('does not end a capped page on half a surrogate pair', async () => {
+    const body = 'a'.repeat(MAX_PAGE_HTML_CHARS - 1) + '🍅' + 'b'.repeat(10);
+    const { deps } = fakePageFetch({ pages: () => ({ body }) });
+    expect(await fetchPageHtml('https://example.com/soup', deps)).toEqual({
+      kind: 'ok',
+      html: 'a'.repeat(MAX_PAGE_HTML_CHARS - 1),
+    });
+  });
+
+  it('decodes UTF-8, or the charset the response declares', async () => {
+    const borshch = Buffer.from([0xc1, 0xee, 0xf0, 0xf9]); // "Борщ" in windows-1251
+    const { deps } = fakePageFetch({
+      pages: {
+        'https://example.com/utf8': { body: Buffer.from('Борщ 🍅', 'utf8') },
+        'https://example.com/cp1251': {
+          headers: { 'Content-Type': 'text/html; charset=windows-1251' },
+          body: borshch,
+        },
+        'https://example.com/unknown': {
+          headers: { 'Content-Type': 'text/html; charset=x-made-up' },
+          body: Buffer.from('Борщ', 'utf8'),
+        },
+      },
+    });
+    expect(await fetchPageHtml('https://example.com/utf8', deps)).toEqual({ kind: 'ok', html: 'Борщ 🍅' });
+    expect(await fetchPageHtml('https://example.com/cp1251', deps)).toEqual({ kind: 'ok', html: 'Борщ' });
+    expect(await fetchPageHtml('https://example.com/unknown', deps)).toEqual({ kind: 'ok', html: 'Борщ' });
   });
 });
 
