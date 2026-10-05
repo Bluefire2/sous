@@ -569,10 +569,10 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   delete, no collection create, rename or delete, no photos, sharing, cook
   log, chat, translation, or import. `create_recipe` takes an optional
   `variantOf`, the id of one of the caller's recipes. The server stores that
-  recipe's group (its `variantOf`, else its id) and its `lang`, the rule Ask
-  uses (`docs/plans/recipe-variants.md`, MCP). An unknown or foreign id is
-  `not_found`. `create_recipe` also takes an optional
-  `collectionId`; it and `move_recipes` file recipes with the app's
+  recipe's group (its `variantOf`, else its id; Ask's rule) and, unless the
+  call gives `lang`, its `lang` (`docs/plans/recipe-variants.md`, MCP). An
+  unknown, deleted or foreign id is `not_found`. `create_recipe` also takes
+  an optional `collectionId`; it and `move_recipes` file recipes with the app's
   membership rule in one transaction (`server/mcp/collectionMove.ts`,
   `docs/plans/mcp-collection-writes.md`) and refuse a collection with a live
   public link (`not_allowed`); member-shared collections are allowed. Results

@@ -320,9 +320,11 @@ describe('create_recipe', () => {
       expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
     });
 
-    it('refuses a recipe that is not in this library, and a malformed id, without writing', async () => {
+    it('refuses a deleted recipe, one not in this library, and a malformed id, without writing', async () => {
       const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
-      for (const variantOf of [R2, 'not-an-id', '../users/other/recipes/x']) {
+      const DELETED = '66666666-6666-4666-8666-666666666666';
+      ctx.docs.set(DELETED, { id: DELETED, title: 'Old stew', deletedAt: 300, updatedAt: 300 });
+      for (const variantOf of [DELETED, R2, 'not-an-id', '../users/other/recipes/x']) {
         const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
         expect(out).toMatchObject({ ok: false, code: 'not_found' });
       }

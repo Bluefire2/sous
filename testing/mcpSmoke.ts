@@ -496,6 +496,12 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
   );
 
   // A variant of a variant joins the original's group (docs/plans/recipe-variants.md).
+  const herbId = FIXTURE_IDS.member.herbRoastChicken;
+  const herbVersion = async (): Promise<unknown> => {
+    const read = await mcp(baseUrl, toolCall('get_recipes', { ids: [herbId] }), token);
+    return ((toolResult(read.body)?.structuredContent?.recipes ?? []) as { version?: unknown }[])[0]?.version;
+  };
+  const herbBefore = await herbVersion();
   const variant = await mcp(
     baseUrl,
     toolCall('create_recipe', {
@@ -503,7 +509,7 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
       servings: 4,
       ingredientSections: [{ items: [{ item: 'whole chicken' }, { item: 'garlic' }] }],
       steps: [{ text: 'Roast the chicken with the garlic.' }],
-      variantOf: FIXTURE_IDS.member.herbRoastChicken,
+      variantOf: herbId,
     }),
     token,
   );
@@ -515,22 +521,30 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
     'create_recipe saves a variant and names the recipe it was made from',
     variant.status === 200 &&
       toolResult(variant.body)?.isError !== true &&
-      variantResult?.variantOf?.id === FIXTURE_IDS.member.herbRoastChicken &&
+      variantResult?.variantOf?.id === herbId &&
       variantId !== '',
     `status ${variant.status} ${toolError(variant.body) ?? ''}`,
   );
   if (variantId !== '') {
     const pull = await call(baseUrl, '/api/sync/pull?limit=500', { headers: { Cookie: memberCookie } });
     const row = (
-      ((pull.body as { changes?: { recipes?: { id: string; variantOf?: unknown }[] } }).changes?.recipes ?? []) as {
-        id: string;
-        variantOf?: unknown;
-      }[]
+      ((pull.body as { changes?: { recipes?: { id: string; variantOf?: unknown; lang?: unknown }[] } }).changes
+        ?.recipes ?? []) as { id: string; variantOf?: unknown; lang?: unknown }[]
     ).find((r) => r.id === variantId);
+    const herbLang = member.recipes.find((r) => r.id === herbId)?.lang;
     check(
-      "the variant is stored in the original's group",
-      pull.status === 200 && row?.variantOf === FIXTURE_IDS.member.roastChicken,
-      `variantOf ${String(row?.variantOf)}`,
+      "the variant is stored in the original's group with the parent's language",
+      pull.status === 200 &&
+        row?.variantOf === FIXTURE_IDS.member.roastChicken &&
+        herbLang !== undefined &&
+        row.lang === herbLang,
+      `variantOf ${String(row?.variantOf)} lang ${String(row?.lang)}`,
+    );
+    const herbAfter = await herbVersion();
+    check(
+      'making a variant leaves the recipe it was made from unchanged',
+      typeof herbBefore === 'number' && herbAfter === herbBefore,
+      `version ${String(herbBefore)} -> ${String(herbAfter)}`,
     );
   }
   const foreignVariant = await mcp(

@@ -7,7 +7,7 @@
  */
 import type { AgentLibrary, AgentRecipe } from '../agent/index.ts';
 import { narrowAgentRecipe, searchRecipesPage, winningMembership } from '../agent/index.ts';
-import { isUuid, type OwnRecipeUpdateResult } from '../store.ts';
+import { isLiveDoc, isUuid, type OwnRecipeUpdateResult } from '../store.ts';
 import { UNFILED, type CollectionSharing, type CollectionWriteOutcome } from './collectionMove.ts';
 import type { McpScope } from './config.ts';
 import {
@@ -39,9 +39,10 @@ export interface McpToolContext {
    */
   readRecipes(ids: readonly string[]): Promise<Array<AgentRecipe | undefined>>;
   /**
-   * One of the caller's own live recipes as stored, with its id; `undefined`
-   * for a missing, deleted, or unreadable one. For `create_recipe`'s
+   * One of the caller's own recipe documents as stored, deleted or not, with
+   * its id; `undefined` when there is none. For `create_recipe`'s
    * `variantOf`, which needs fields the agent's narrowed recipe leaves out.
+   * The tool decides liveness, so that rule is tested with the tool.
    */
   readOwnRecipeDoc(id: string): Promise<(Record<string, unknown> & { id: string }) | undefined>;
   /** Writes a new recipe into the caller's tree, Unfiled. False when the store refused it. */
@@ -467,7 +468,8 @@ const createTool: McpToolSpec = {
     'Fields are validated strictly; an invalid call returns each bad field by path so you can fix it. ' +
     'To save a variant of one of their recipes (the same dish changed, e.g. potatoes instead of carrots), call get_recipes for the original, ' +
     "write the whole new recipe with the change, and pass the original's id as variantOf; leave the original unchanged. " +
-    "Sous then shows them together as variants. A variant takes the original's language unless lang is given; photos are not copied. " +
+    "Sous then shows them together as variants. A variant takes the original's language unless lang is given, " +
+    'so pass lang if you write it in a different language than the original; photos are not copied. ' +
     'Returns the stored recipe with its id and version. ' +
     UNTRUSTED_TEXT_NOTICE,
   inputSchema: {
@@ -505,7 +507,7 @@ const createTool: McpToolSpec = {
     if (typeof parentId === 'string') {
       // Own tree only, like every tool: a shared recipe is not found here.
       const parent = isUuid(parentId) ? await ctx.readOwnRecipeDoc(parentId) : undefined;
-      if (parent === undefined) return variantParentNotFound(parentId);
+      if (parent === undefined || !isLiveDoc(parent)) return variantParentNotFound(parentId);
       const fromParent = variantFromParent(parent);
       if (recipe.lang === undefined && fromParent.lang !== undefined) {
         recipe = { ...recipe, lang: fromParent.lang };

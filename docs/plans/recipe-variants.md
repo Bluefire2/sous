@@ -5,7 +5,8 @@ Status: merged (#148), not deployed. The MCP section is #149, built on
 
 Constitutions applied: client-state (a new list hook, written to principles 4
 and 5 as they stand; only `scope` changed), i18n (new copy in every catalog,
-two glossary rows, a review state).
+two glossary rows, a review state; the MCP path writes `Recipe.lang` under
+principle 6).
 
 ## Goal
 
@@ -103,8 +104,16 @@ the whole changed recipe, as it would for any new recipe.
 - **Rule.** `variantFromParent` (`server/mcp/recipeInput.ts`) stores the
   parent's own `variantOf`, else its id, through `compactVariantOf`, so a
   variant of a variant joins the same flat group. The model never supplies
-  the stored key. The new recipe takes the parent's `lang` unless the call
-  gives `lang`. This is the same rule as `createFromAsk`.
+  the stored key. That is the same group-key rule as `createFromAsk`. The
+  language differs from Ask: the new recipe takes the parent's `lang` unless
+  the call gives one, and an explicit `lang` wins (Ask always copies the
+  parent's). The tool description asks the model to pass `lang` when it
+  writes in another language. A wrong label is tolerated, because
+  `Recipe.lang` is best-effort metadata (i18n principle 6).
+- **Deleted parents.** A tombstoned parent is `not_found`. The tool checks
+  liveness (`isLiveDoc`) itself, so the rule is tested with the tool, as
+  `update_recipe`'s is. `readOwnRecipeDoc` returns the stored document as it
+  is.
 - **No photos.** MCP has no photos, so a variant made here has none. This
   differs from Ask, which copies the parent's photos.
 - **Placement.** The variant lands Unfiled unless `collectionId` is given, the
@@ -117,9 +126,11 @@ the whole changed recipe, as it would for any new recipe.
 - **Logging.** The `mcp` log line holds no arguments, so nothing changes
   there.
 - **Tests.** `server/mcp/tools.test.ts` and `server/mcp/recipeInput.test.ts`
-  hold the unit tests. In `testing/mcpSmoke.ts`, the test-mode job checks that
-  a variant of the Herb roast chicken fixture is stored in Lemon garlic roast
-  chicken's group, and that another account's recipe is `not_found`.
+  hold the unit tests. In `testing/mcpSmoke.ts`, the test-mode job checks,
+  against the real store, that a variant of the Herb roast chicken fixture
+  is stored in Lemon garlic roast chicken's group with the parent's `lang`,
+  that the parent's version is unchanged, and that another account's recipe
+  is `not_found`.
 
 ## Test mode
 
