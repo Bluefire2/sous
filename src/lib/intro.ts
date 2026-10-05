@@ -27,18 +27,24 @@ export function shouldAskAboutIntro(input: {
 
 /**
  * Per page load and per sub: whether the first full pull on screen had no
- * live recipe of the member's own. The intro is for arriving at an empty
- * library, so a member who deletes their last recipe mid-session never gets
- * it. Written only from an effect, never read in render.
+ * live recipe of the member's own, and none has appeared since. The intro is
+ * for arriving at an empty library, so a member who deletes their last
+ * recipe mid-session never gets it. Written only from an effect, never read
+ * in render.
  */
 const arrivedEmpty = new Map<string, boolean>();
 
-/** Records the library on arrival; only the first call per sub counts. */
+/**
+ * Records the library Library sees. The first call per sub sets the arrival;
+ * a later recipe of their own ends an empty arrival for good, so importing
+ * one and deleting it can't open the intro.
+ */
 export function noteLibraryOnArrival(sub: string, hasOwnRecipe: boolean): void {
-  if (!arrivedEmpty.has(sub)) arrivedEmpty.set(sub, !hasOwnRecipe);
+  if (hasOwnRecipe) arrivedEmpty.set(sub, false);
+  else if (!arrivedEmpty.has(sub)) arrivedEmpty.set(sub, true);
 }
 
-/** Whether `sub`'s library had no recipe of their own when it first loaded on this page. */
+/** Whether `sub`'s library had no recipe of their own when it first loaded on this page, and has had none since. */
 export function arrivedWithoutOwnRecipe(sub: string): boolean {
   return arrivedEmpty.get(sub) === true;
 }

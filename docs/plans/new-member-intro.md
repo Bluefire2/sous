@@ -69,9 +69,11 @@ what we want.
 
 The check is made on arrival only. Library notes, once per page load and per
 `sub`, whether the first full pull on screen had a recipe of the member's
-own (`noteLibraryOnArrival` in `src/lib/intro.ts`). A member who deletes their
-last recipe mid-session doesn't get the intro; it is for arriving at an empty
-library.
+own (`noteLibraryOnArrival` in `src/lib/intro.ts`), and a recipe of their own
+seen later ends an empty arrival for good. A member who deletes their last
+recipe mid-session doesn't get the intro, even one who arrived empty and got
+past it unseen (another sheet open, or off to Import before the answer); it
+is for arriving at an empty library.
 
 **D2. "Seen" is stored per account, on the profile.** The new optional field
 is `users/{sub}.introSeenAt` (ms since epoch). Closing the intro on any device
@@ -228,7 +230,8 @@ Invite.
 6. **[ui]** `src/components/IntroSheet.tsx`: one step at a time (icon, heading,
    body), "Step {n} of {total}", Back / Next, and Skip; the last step shows
    Import a recipe and Look around instead of Next. On a step change, focus
-   moves to the step heading (`tabIndex={-1}`) so screen readers read it. No
+   moves to the step heading (`tabIndex={-1}`) so screen readers read it,
+   with "Step {n} of {total}" as its description (`aria-describedby`). No
    animation.
 7. **[ui]** `src/screens/Library.tsx`: the effect from D6, the router-state
    handling from D8, render `IntroSheet` for `sheet.kind === 'intro'`, and the
@@ -282,7 +285,12 @@ two empty-library states use the `introSeen` mock, so they still show the
 empty library and nothing closes the intro. Task run on 2026-10-04 over
 `intro-step-1..3`, `settings`, `library-empty` and
 `library-collections-empty`: 18 judged, 0 blockers, 0 nits; `--repeat 2`
-found every capture deterministic.
+found every capture deterministic. Re-runs after rewording, 2026-10-05: all
+three non-English languages over `intro-step-1..3` and the two empty-library
+states (15 judged, 0 issues); `uk` and `ru` over the intro steps and
+`settings` after their line-by-line review (8 judged, 0 issues); `zh-Hans`
+over the same states after its step 3 rewording (4 judged, 0 issues,
+`--repeat 2` deterministic).
 
 No check here needs `dev:api` or a real Google sign-in.
 

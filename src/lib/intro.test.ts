@@ -44,18 +44,28 @@ describe('library on arrival', () => {
     resetIntroArrivalForTests();
   });
 
-  it('keeps the first library each sub arrives at', () => {
+  it('keeps an empty arrival while the library stays empty', () => {
     noteLibraryOnArrival('a', false);
-    noteLibraryOnArrival('a', true);
+    noteLibraryOnArrival('a', false);
     expect(arrivedWithoutOwnRecipe('a')).toBe(true);
+  });
 
-    // Deleting the last recipe later does not make an arrival empty.
+  it('deleting the last recipe later does not make an arrival empty', () => {
     noteLibraryOnArrival('b', true);
     noteLibraryOnArrival('b', false);
     expect(arrivedWithoutOwnRecipe('b')).toBe(false);
   });
 
-  it('is false for a sub not seen yet', () => {
+  it('an empty arrival ends once the member has a recipe of their own', () => {
+    // Arrived empty, dodged the intro (another sheet, or left Library before
+    // the answer), imported a recipe, then deleted it.
+    noteLibraryOnArrival('c', false);
+    noteLibraryOnArrival('c', true);
+    noteLibraryOnArrival('c', false);
     expect(arrivedWithoutOwnRecipe('c')).toBe(false);
+  });
+
+  it('is false for a sub not seen yet', () => {
+    expect(arrivedWithoutOwnRecipe('d')).toBe(false);
   });
 });

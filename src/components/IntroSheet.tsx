@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentType } from 'react';
+import { useEffect, useId, useRef, type ComponentType } from 'react';
 import { useT, type TextKey } from '../i18n';
 import { CameraIcon, ChatBubbleIcon, FolderIcon } from '../lib/icons';
 import { INTRO_STEP_COUNT } from '../lib/libraryFlow';
@@ -36,12 +36,14 @@ export default function IntroSheet({
 }) {
   const t = useT();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const counterId = useId();
   const shownStep = useRef(step);
   const { Icon, title, body } = STEPS[step] ?? STEPS[0];
   const last = step >= INTRO_STEP_COUNT - 1;
 
   // On open the dialog focuses this heading (data-autofocus) and is labelled
-  // by it. On a step change, move focus to the new heading so it is read out.
+  // by it. On a step change, move focus to the new heading so it is read out,
+  // with the step counter as its description.
   useEffect(() => {
     if (shownStep.current === step) return;
     shownStep.current = step;
@@ -52,13 +54,14 @@ export default function IntroSheet({
     <Sheet onClose={onClose}>
       <div className="flex items-baseline justify-between gap-3 text-sm text-ink-muted">
         <p>{t('intro.welcome')}</p>
-        <p>{t('intro.stepOf', { n: step + 1, total: INTRO_STEP_COUNT })}</p>
+        <p id={counterId}>{t('intro.stepOf', { n: step + 1, total: INTRO_STEP_COUNT })}</p>
       </div>
       <Icon className="mt-4 block h-8 w-8 text-ink-muted" />
       <h2
         ref={headingRef}
         tabIndex={-1}
         data-autofocus
+        aria-describedby={counterId}
         className="mt-2 text-lg font-semibold outline-none"
       >
         {t(title)}
