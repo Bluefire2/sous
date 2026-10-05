@@ -43,16 +43,26 @@ function ingredientLabel(
 
 /** The floating Ask pill at the bottom right of a recipe. */
 export const askButtonClass =
-  'fixed right-5 bottom-8 z-10 flex h-14 items-center gap-2 rounded-full bg-amber-500 px-5 font-medium text-white shadow-lg hover:bg-amber-600 active:bg-amber-600';
+  'fixed right-5 bottom-8 z-10 flex h-14 items-center gap-2 rounded-full bg-amber-500 px-5 font-medium text-white shadow-lg hover:bg-amber-600 active:bg-amber-600 print:hidden';
 
 /** The recipe's one translate / original control (`docs/constitutions/i18n.md` principle 3). */
 export const translateChipClass =
-  'inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-600/70 bg-accent-soft px-3 py-1.5 text-left text-sm font-medium text-ink shadow-sm hover:enabled:opacity-90 active:enabled:opacity-80 disabled:opacity-60';
+  'inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-600/70 bg-accent-soft px-3 py-1.5 text-left text-sm font-medium text-ink shadow-sm hover:enabled:opacity-90 active:enabled:opacity-80 disabled:opacity-60 print:hidden';
+
+/**
+ * A recipe page's outer column. On paper it takes the page width, and the
+ * room kept clear of the floating Ask pill goes.
+ */
+export const recipePageClass = 'mx-auto max-w-xl px-4 pb-24 print:max-w-none print:px-0 print:pb-0';
 
 export function SourceCredit({ source }: { source: URL }) {
   const t = useT();
   const label = t('recipe.source', { source: source.hostname });
   const at = label.indexOf(source.hostname);
+  // On paper a link is only its text, so the full address prints after it.
+  const printedHref = (
+    <span className="hidden break-all print:inline"> ({source.href})</span>
+  );
   const link = (
     <a
       href={source.href}
@@ -74,6 +84,7 @@ export function SourceCredit({ source }: { source: URL }) {
         >
           {label}
         </a>
+        {printedHref}
       </p>
     );
   }
@@ -82,6 +93,7 @@ export function SourceCredit({ source }: { source: URL }) {
       {label.slice(0, at)}
       {link}
       {label.slice(at + source.hostname.length)}
+      {printedHref}
     </p>
   );
 }
@@ -126,13 +138,13 @@ export function IngredientsSection({
     <section>
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{t('common.ingredients')}</h2>
-        <div className="flex items-center gap-1 rounded-full border border-line bg-surface">
+        <div className="flex items-center gap-1 rounded-full border border-line bg-surface print:border-0">
           <button
             type="button"
             aria-label={t('recipe.fewerServings')}
             disabled={servings <= 1}
             onClick={() => onServings(servings - 1)}
-            className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted disabled:opacity-30"
+            className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted disabled:opacity-30 print:hidden"
           >
             −
           </button>
@@ -143,7 +155,7 @@ export function IngredientsSection({
             type="button"
             aria-label={t('recipe.moreServings')}
             onClick={() => onServings(servings + 1)}
-            className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted"
+            className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted print:hidden"
           >
             +
           </button>
@@ -171,7 +183,7 @@ export function IngredientsSection({
                     <button
                       type="button"
                       onClick={() => onToggle(key)}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors print:p-0 print:text-ink ${
                         isChecked
                           ? 'bg-surface-muted text-ink-subtle hover:bg-surface active:bg-surface'
                           : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
@@ -179,7 +191,7 @@ export function IngredientsSection({
                     >
                       <span
                         aria-hidden
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs print:hidden ${
                           isChecked
                             ? 'border-line-strong bg-ink-subtle text-page'
                             : 'border-line-strong'
@@ -187,7 +199,8 @@ export function IngredientsSection({
                       >
                         {isChecked ? '✓' : ''}
                       </span>
-                      <span className={isChecked ? 'line-through' : ''}>
+                      {/* Ticks are cook progress on this screen, not part of the printed recipe. */}
+                      <span className={isChecked ? 'line-through print:no-underline' : ''}>
                         {ingredientLabel(
                           { ...(translatedItem ?? ing), quantity: ing.quantity },
                           scale,
@@ -235,7 +248,7 @@ export function StepsSection({
               <button
                 type="button"
                 onClick={() => onStep(i === currentStep ? i + 1 : i)}
-                className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors ${
+                className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors print:px-0 print:py-1 print:text-ink ${
                   isCurrent
                     ? 'bg-surface ring-2 ring-amber-400'
                     : isDone
@@ -244,20 +257,28 @@ export function StepsSection({
                 }`}
               >
                 <span
-                  className={`font-semibold ${
+                  className={`font-semibold print:text-ink ${
                     isCurrent ? 'text-amber-500' : 'text-ink-subtle'
                   }`}
                 >
-                  {isDone ? '✓' : i + 1}
+                  {/* Paper shows every step's number, whatever the cook progress. */}
+                  {isDone ? (
+                    <>
+                      <span className="print:hidden">✓</span>
+                      <span className="hidden print:inline">{i + 1}</span>
+                    </>
+                  ) : (
+                    i + 1
+                  )}
                 </span>
-                <span className={isCurrent ? 'text-lg' : ''}>{text}</span>
+                <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
               </button>
             </li>
           );
         })}
       </ol>
       {currentStep >= recipe.steps.length && (
-        <div className="mt-4 text-center">
+        <div className="mt-4 text-center print:hidden">
           <p className="font-medium text-amber-600">{t('recipe.doneEnjoy')}</p>
           {afterDone}
         </div>
@@ -271,7 +292,7 @@ export function NotesSection({ notes }: { notes: string }) {
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.notes')}</h2>
-      <p className="mt-2 rounded-lg bg-surface px-3 py-3 whitespace-pre-line text-ink-muted shadow-sm">
+      <p className="mt-2 rounded-lg bg-surface px-3 py-3 whitespace-pre-line text-ink-muted shadow-sm print:p-0">
         {notes}
       </p>
     </section>
@@ -288,7 +309,7 @@ export function GalleryFrame({ url }: { url: string | undefined }) {
 }
 
 export function GallerySection({ children }: { children: ReactNode }) {
-  return <section className="mt-6 grid grid-cols-2 gap-2">{children}</section>;
+  return <section className="mt-6 grid grid-cols-2 gap-2 print:hidden">{children}</section>;
 }
 
 export function CoverPhoto({ url }: { url: string | undefined }) {

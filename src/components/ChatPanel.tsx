@@ -575,7 +575,7 @@ export default function ChatPanel({
     <DialogShell
       onClose={onClose}
       backdropLabel={t('chat.closeChat')}
-      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end"
+      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end print:hidden"
       panelClassName="flex h-[75dvh] flex-col rounded-t-3xl bg-surface shadow-2xl md:mx-auto md:w-full md:max-w-xl"
     >
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
