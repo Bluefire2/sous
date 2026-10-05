@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react';
 
-export type LibraryInviteNotice = {
+export type Notice = {
   id: number;
   kind: 'success' | 'error';
   message: string;
 };
 
 /**
- * Invite result pill for the library header. Timers and pill classes match
- * SyncToast. The parent bumps `notice.id` for each new message; this
- * component keeps the live region mounted and clears the pill on its own
- * timer so a faded toast does not clear the revealed URL.
+ * Result pill for a screen's own action: the library's invite link, a
+ * recipe copied as text. Timers and pill classes match SyncToast, and it
+ * sits one pill below it. The parent bumps `notice.id` for each new
+ * message; this component keeps the live region mounted and clears the
+ * pill on its own timer so a faded toast does not clear the screen's state
+ * (such as the library's revealed URL).
  */
-export default function LibraryInviteToast({ notice }: { notice: LibraryInviteNotice | null }) {
-  const [toast, setToast] = useState<LibraryInviteNotice | null>(null);
+export default function NoticeToast({ notice }: { notice: Notice | null }) {
+  const [toast, setToast] = useState<Notice | null>(null);
   const [shown, setShown] = useState(false);
   const [seenId, setSeenId] = useState<number | null>(null);
 
@@ -47,7 +49,7 @@ export default function LibraryInviteToast({ notice }: { notice: LibraryInviteNo
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="pointer-events-none fixed inset-x-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+2.75rem)] z-30 flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+2.75rem)] z-30 flex justify-center px-4 print:hidden"
     >
       {toast !== null && (
         <p

@@ -4,10 +4,8 @@ import { useLocale, useT } from '../i18n';
 import CollectionSection from '../components/CollectionSection';
 import CreateCollectionSheet from '../components/CreateCollectionSheet';
 import LanguageMenu from '../components/LanguageMenu';
+import NoticeToast, { type Notice } from '../components/NoticeToast';
 import LibrarySortMenu from '../components/LibrarySortMenu';
-import LibraryInviteToast, {
-  type LibraryInviteNotice,
-} from '../components/LibraryInviteToast';
 import ShareCollectionSheet from '../components/ShareCollectionSheet';
 import Sheet from '../components/Sheet';
 import { createInvite } from '../lib/adminApi';
@@ -115,7 +113,7 @@ export default function Library() {
   const [invitePending, setInvitePending] = useState(false);
   const [revealedUrl, setRevealedUrl] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [inviteNotice, setInviteNotice] = useState<LibraryInviteNotice | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<Notice | null>(null);
   const [inviteQuota, setInviteQuota] = useState<{ id: number; message: string } | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const firstActionRef = useRef<HTMLAnchorElement>(null);
@@ -630,7 +628,7 @@ export default function Library() {
 
   return (
     <div className={`mx-auto max-w-xl px-4 ${selecting ? 'pb-40' : 'pb-24'}`}>
-      <LibraryInviteToast notice={inviteNotice} />
+      <NoticeToast notice={inviteNotice} />
       <header className="flex items-center justify-between py-4">
         <h1 className="text-2xl font-bold">Sous</h1>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">

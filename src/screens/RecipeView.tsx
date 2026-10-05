@@ -5,11 +5,13 @@ import { StoredPhotoImage } from '../components/BlobImage';
 import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
 import ImportWarningBanner from '../components/ImportWarningBanner';
+import ShareRecipeButton from '../components/ShareRecipeButton';
 import {
   askButtonClass,
   GallerySection,
   IngredientsSection,
   NotesSection,
+  recipePageClass,
   RecipeTimes,
   SourceCredit,
   sourceLink,
@@ -242,20 +244,24 @@ export default function RecipeView() {
               : '';
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-24">
+    <div className={recipePageClass}>
       <header className="py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between print:hidden">
           <Link to={libraryBack} className={backLink}>
             &larr; {t('common.library')}
           </Link>
-          {canEdit && (
-            <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
-              {t('common.edit')}
-            </Link>
-          )}
+          <div className="flex items-center gap-1">
+            {/* The stored recipe: a translation is a view and is never shared (i18n principle 1). */}
+            <ShareRecipeButton recipe={recipe} />
+            {canEdit && (
+              <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
+                {t('common.edit')}
+              </Link>
+            )}
+          </div>
         </div>
         {sharedLine !== undefined && (
-          <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted">
+          <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted print:hidden">
             {sharedLine}
           </p>
         )}
@@ -285,7 +291,7 @@ export default function RecipeView() {
         )}
         {showAlready && (
           <p
-            className="mt-3 rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm text-ink"
+            className="mt-3 rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm text-ink print:hidden"
             role="status"
           >
             {t('recipe.alreadyInLanguage')}
@@ -336,7 +342,7 @@ export default function RecipeView() {
       )}
 
       {!shared && (
-        <section className="mt-6">
+        <section className="mt-6 print:hidden">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">
               {t('recipe.yourCooks')}

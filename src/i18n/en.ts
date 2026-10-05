@@ -216,6 +216,8 @@ export const en = {
   'recipe.translatedFrom': 'Translated from {language} · Original',
   'recipe.translateRetry': "Couldn't translate · Retry",
   'recipe.alreadyInLanguage': 'This recipe is already in English.',
+  'recipe.textCopied': 'Recipe copied',
+  'recipe.textCopyFailed': "Couldn't copy the recipe",
 
   'chat.assistant': 'Assistant',
   'chat.clearAll': 'Clear all?',
