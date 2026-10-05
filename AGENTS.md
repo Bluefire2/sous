@@ -669,6 +669,15 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
+| `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |
+| `docs/plans/ui-polish.md` | Done (`6e158ec`). Hover, focus, overflow menu, and sheet polish. Written against the Dexie-era app; history only. |
+| `docs/plans/dark-mode-default.md` | Done. Persisted light/dark theme, dark by default (`src/lib/theme.ts`, Settings → Appearance). |
+| `docs/plans/unit-enum.md` | Done (all 4 steps). Unit `<select>` with a Custom option in `RecipeForm` (`src/lib/units.ts`); storage stays `unit?: string`. |
+| `docs/plans/gemini-provider.md` | Done (all 5 steps). Replaced Anthropic with Gemini (`@google/genai`) for chat and import. |
+| `docs/plans/recipe-gallery-simplification.md` | Done (#18). Simplified gallery photo saving; `recipe-gallery.md` is the feature plan. |
+| `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
+| `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
+| `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
