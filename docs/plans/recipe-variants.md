@@ -39,9 +39,10 @@ and `importCheck`.
   or that equals the recipe's own id, is dropped by `compactVariantOf` in
   `server/recipeVariant.ts`. Both `compactRecipe` and `compactRecipeFields`
   use it. `validateRecipePut` does not check it.
-- **It is set only at creation.** `createFromAsk` is the only caller that
-  passes it; `recipeStore.create` keeps whatever it is given, and no other
-  caller can supply it. `saveRecipe` forces the
+- **It is set only at creation**, by two paths with one rule: Ask's
+  `createFromAsk` on the client, and MCP `create_recipe` with `variantOf` on
+  the server (see MCP below). `recipeStore.create` keeps whatever it is
+  given, and no other caller can supply it. `saveRecipe` forces the
   stored value on every later save, so no edit path (the edit form, Ask Apply,
   replace from import, dismissing warnings, promoting a lesson) can set or
   clear it.
@@ -57,9 +58,10 @@ and `importCheck`.
   because a visitor has no library to group variants in.
   `recipeForChat` strips it as well, so the `/api/chat` request keeps its
   shape.
-- **MCP neither shows nor takes it.** `toMcpRecipe` does not show it, and
-  `create_recipe` refuses it. `update_recipe` keeps it, because
-  `mergeRecipeChanges` starts from the compacted stored recipe.
+- **MCP takes a parent, never the key.** `create_recipe` accepts the id of a
+  parent recipe and the server derives the key (see MCP below).
+  `toMcpRecipe` does not show the field, and `update_recipe` keeps it,
+  because `mergeRecipeChanges` starts from the compacted stored recipe.
 - **Backup import remaps it** through the recipe id map when the id is in the
   map, and keeps it raw otherwise. It is not part of the backup graph,
   because an original that is a shared recipe is never exported. Every
@@ -82,6 +84,41 @@ and `importCheck`.
     returns to the list the person came from.
   - Chips show stored titles, which are not translated.
 - Copy: `recipe.variants` and `recipe.variantOriginal`, in all four catalogs.
+
+## MCP
+
+A member's AI app can save a variant, for prompts like "make a variant of my
+carrot stew with potatoes instead of carrots". The extension is optional
+`variantOf` on `create_recipe`, not a new tool. The model already finds the
+recipe with `search_recipes` and reads it with `get_recipes`. Then it writes
+the whole changed recipe, as it would for any new recipe.
+
+- **Input.** `variantOf` is the id of one of the caller's own recipes.
+  - The server reads that recipe from `users/{sub}` (`readOwnRecipeDoc`).
+  - A missing, deleted, malformed or foreign id is `not_found`, and nothing is
+    written. MCP sees the caller's own tree only, so a shared recipe cannot
+    be a parent.
+  - A non-string is `invalid`.
+- **Rule.** `variantFromParent` (`server/mcp/recipeInput.ts`) stores the
+  parent's own `variantOf`, else its id, through `compactVariantOf`, so a
+  variant of a variant joins the same flat group. The model never supplies
+  the stored key. The new recipe takes the parent's `lang` unless the call
+  gives `lang`. This is the same rule as `createFromAsk`.
+- **No photos.** MCP has no photos, so a variant made here has none. This
+  differs from Ask, which copies the parent's photos.
+- **Placement.** The variant lands Unfiled unless `collectionId` is given, the
+  same as Ask's variant.
+- **Result.** The response includes `variantOf: { id, title }` for the
+  recipe it was made from, so the model can tell the person what it saved.
+- **Tool description.** It tells the model how to make a variant: read the
+  original, write the whole new recipe, pass the original's id, and leave
+  the original unchanged.
+- **Logging.** The `mcp` log line holds no arguments, so nothing changes
+  there.
+- **Tests.** `server/mcp/tools.test.ts` and `server/mcp/recipeInput.test.ts`
+  hold the unit tests. In `testing/mcpSmoke.ts`, the test-mode job checks that
+  a variant of the Herb roast chicken fixture is stored in Lemon garlic roast
+  chicken's group, and that another account's recipe is `not_found`.
 
 ## Test mode
 

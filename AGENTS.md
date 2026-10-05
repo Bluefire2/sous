@@ -216,8 +216,8 @@ stored recipe and reconciles it with the edit; only `replaceFromImport`
 replaces it. Optional `Recipe.variantOf` (the id of the original a variant
 was made from, shared by all its variants; `server/recipeVariant.ts`) is the
 third (`docs/plans/recipe-variants.md`); code must work when it is missing or
-names a recipe that is gone. Only `createFromAsk` passes it to `create`;
-`saveRecipe` forces the stored value, the server pins the owner's value on
+names a recipe that is gone. Only `createFromAsk` and MCP `create_recipe`
+(from a parent id, never the key itself) set it; `saveRecipe` forces the stored value, the server pins the owner's value on
 an editor's put, shared pull carries it (an opaque id that grants no
 access), `publicRecipeBody` and `recipeForChat` strip it, and backup import
 remaps it.
@@ -561,6 +561,10 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   (`recipes:write`), own tree only, via the agent's `loadAgentLibrary`. No
   delete, no collection create, rename or delete, no photos, sharing, cook
   log, chat, translation, or import. `create_recipe` takes an optional
+  `variantOf`, the id of one of the caller's recipes. The server stores that
+  recipe's group (its `variantOf`, else its id) and its `lang`, the rule Ask
+  uses (`docs/plans/recipe-variants.md`, MCP). An unknown or foreign id is
+  `not_found`. `create_recipe` also takes an optional
   `collectionId`; it and `move_recipes` file recipes with the app's
   membership rule in one transaction (`server/mcp/collectionMove.ts`,
   `docs/plans/mcp-collection-writes.md`) and refuse a collection with a live
@@ -675,7 +679,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/mcp-collection-writes.md` | Built on `claude/mcp-collection-writes`, not deployed. `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
 | `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
-| `docs/plans/recipe-variants.md` | Built on `claude/recipe-variant-parent-tracking-8e1908`, not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. |
+| `docs/plans/recipe-variants.md` | Built on `claude/recipe-variant-parent-tracking-8e1908`, not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` on `claude/mcp-create-variant`. |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
