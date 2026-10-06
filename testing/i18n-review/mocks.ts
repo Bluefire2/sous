@@ -288,7 +288,7 @@ export const MOCKS = {
   })),
   /** No recipe on the page: 422 `import-no-recipe`. */
   importNoRecipe: importMock(() => NO_RECIPE),
-  /** A recipe written from a brief with Search the web on: clean, in the UI language, with two grounding sources. */
+  /** A recipe generated from a brief with Search the web on: clean, in the UI language, with three grounding sources, one untitled. */
   importGenerated: importMock((request) => {
     const outcome = importOutcome(request, { lang: 'ui' });
     return {
@@ -299,6 +299,7 @@ export const MOCKS = {
           sources: [
             { title: 'Spring pea soup, the classic way', url: 'https://example.com/spring-pea-soup' },
             { title: 'Pea soup in a pressure cooker', url: 'https://example.org/pressure-cooker-pea-soup' },
+            { title: '', url: 'https://example.net/pea-soup-notes' },
           ],
         },
       },
@@ -319,12 +320,12 @@ export const MOCKS = {
     status: 429,
     body: { error: 'Too many web searches. Try again later, or turn Search the web off.', code: 'import-search-rate-limited' },
   })),
-  /** The model call failed while writing: 502 `import-generate-failed`. */
+  /** Generation failed (a thrown call, or output that was not a usable recipe): 502 `import-generate-failed`. */
   importGenerateFailed: importMock(() => ({
     status: 502,
-    body: { error: "Couldn't write that recipe — try again.", code: 'import-generate-failed' },
+    body: { error: "Couldn't generate that recipe — try again.", code: 'import-generate-failed' },
   })),
-  /** `POST /api/import` never answers: the Writing… state stays on screen. */
+  /** `POST /api/import` never answers: the Generating… state stays on screen. */
   importHangs: async (context) => {
     await context.route('**/api/import', () => new Promise<void>(() => {}));
   },

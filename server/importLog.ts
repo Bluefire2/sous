@@ -64,7 +64,7 @@ export interface ImportLogEntry {
   bytes?: number;
   /** Generated recipes: whether Google Search grounding was requested. */
   search?: boolean;
-  /** Generated recipes with search: how many searches Google reported. Never the queries. */
+  /** Generated recipes with search: how many searches Google reported, on any outcome after the research call. Never the queries. */
   searchQueries?: number;
   /** A numeric HTTP status on a thrown provider error (429, 503, …), when it has one. */
   errorStatus?: number;
@@ -104,10 +104,10 @@ export function noteImportOutcome(entry: ImportLogEntry, outcome: ImportOutcome)
     if (log.source !== undefined) entry.source = log.source;
     entry.attempts = log.attempts.map((attempt) => attempt.result);
     if (log.errorStatus !== undefined) entry.errorStatus = log.errorStatus;
+    if (log.searchQueries !== undefined) entry.searchQueries = log.searchQueries;
   }
   if (outcome.kind !== 'ok') return;
   if (outcome.warnings.length > 0) entry.codes = outcome.warnings.map((w) => w.code);
-  if (outcome.grounding !== undefined) entry.searchQueries = outcome.grounding.queries;
   entry.ingredients = outcome.recipe.ingredientSections.reduce(
     (n, section) => n + section.items.length,
     0,

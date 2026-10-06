@@ -74,18 +74,23 @@ normal import preview.
   them over memory where they disagree. `server/recipeImport.test.ts` pins
   the phrases.
 - The reply goes through `readModelText`. No `checkImport` (nothing to
-  compare against); a recipe with no ingredients or fewer than `MIN_STEPS`
-  steps is `unusable`. `warnings` is always `[]`. A throw is `model_error`
+  compare against); a recipe with no ingredients or no steps is `unusable`.
+  One step is allowed, unlike import's `MIN_STEPS` warning: a drink or a
+  dressing is one step, and the model was asked for the method, not quoted.
+  `warnings` is always `[]`. A throw is `model_error`
   with the numeric status only (`noteThrow`, shared with `extractOnce`).
 - Grounding (`readGrounding`): `groundingChunks[].web` → http(s) only,
-  de-duplicated, at most `MAX_GENERATE_SOURCES` (10), title defaulting to the
-  hostname; `searchEntryPoint.renderedContent` as `searchSuggestions`;
-  `webSearchQueries.length` as `queries`. `grounding` is set only with
-  search on and only when something came back. The queries themselves are
+  de-duplicated, at most `MAX_GENERATE_SOURCES` (10), an untitled page kept
+  with `title: ''` (the client labels it "Untitled page"; the host would only
+  ever be Google's redirect host); `searchEntryPoint.renderedContent` as
+  `searchSuggestions`. `grounding` is set only with search on and only when a
+  page or the chip came back. `webSearchQueries.length` goes on the outcome's
+  log as `searchQueries` as soon as the research call answers, so a searched
+  run that then fails still logs how many searches ran. The queries themselves are
   never a JSON field and never logged (they paraphrase the brief); the member
   who typed the brief still sees them inside Google's chip, which is shown as
-  provided. Sources are de-duplicated by redirect URL and by title, because
-  Google issues one redirect URL per chunk.
+  provided. Sources are de-duplicated by redirect URL and by title (titled
+  pages only), because Google issues one redirect URL per chunk.
 - `finishImport` runs as for paste, so translation works the same.
 
 `POST /api/import` (`server/importRoute.ts`): body gains `brief` and
@@ -98,8 +103,7 @@ normal import preview.
 | brief over `MAX_GENERATE_BRIEF_CHARS` (2000) | 400 `import-brief-too-long` |
 | searched call over `MAX_IMPORT_SEARCHES_PER_HOUR` (20) per member per instance | 429 `import-search-rate-limited` |
 | `not_a_recipe` | 422 `import-no-recipe-brief` |
-| `parse_error` / `unusable` | 502, existing codes |
-| `model_error` | 502 `import-generate-failed` |
+| `parse_error` / `unusable` / `model_error` | 502 `import-generate-failed` ("Couldn't generate that recipe — try again.") |
 | `ok` | 200 `{ recipe, translation?, translationFailed?, grounding? }`, no `sourceUrl` |
 
 The rate limit reuses `admitTranslateCall` from `server/recipeTranslation.ts`
@@ -126,20 +130,27 @@ for the dish (… characters), starting …". The schema table in
   photos and bulk and keeps the typed text.
 - `ImportPreview`: a sources block (heading, one link per page labelled with
   Google's title, which is usually the site, because the links themselves
-  are redirects on Google's host; and the chip in `<iframe
-  sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc>`, no scripts)
+  are redirects on Google's host, or "Untitled page"; and the chip in `<iframe
+  sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc>`, no scripts,
+  with `<meta name="color-scheme" content="light dark"><base target="_blank">`
+  put before Google's unchanged snippet so its links open a new tab, since
+  google.com refuses to be framed, and the frame is not a white box on the
+  dark theme)
   between the translate-failed notice and the language line. Everything else
   is the paste behaviour.
 - `importHref(collectionId, 'create')`; the Library add sheet's third link.
 - Catalog keys in all four languages: `import.mode*`, `import.placeholderCreate`,
   `import.createHint`, `import.searchWeb(Hint)`, `import.generateRecipe`,
-  `import.generating(Hint)`, `import.sources`, `import.searchSuggestions`,
+  `import.generating(Hint)`, `import.sources`, `import.untitledSource`, `import.searchSuggestions`,
   `importFeedback.includedBrief`, `library.generateFromIdea`, and the four
   `error.import*` keys.
 - Review states `import-create-idle`, `import-create-preview`,
-  `import-create-no-recipe` (`docs/i18n-review/screens.json`,
-  `testing/i18n-review/states.ts`, mocks `importGenerated` and
-  `importBriefNoRecipe`).
+  `import-create-no-recipe`, `import-create-writing`,
+  `import-create-too-long`, `import-create-rate-limited`, and
+  `import-create-failed` (`docs/i18n-review/screens.json`,
+  `testing/i18n-review/states.ts`, mocks `importGenerated`,
+  `importBriefNoRecipe`, `importHangs`, `importBriefTooLong`,
+  `importSearchRateLimited`, and `importGenerateFailed`).
 
 ## Legal
 
@@ -170,5 +181,5 @@ golden, no judge. First run recorded in `evals/EXPERIMENTS.md`.
   `via: 'generate'` and `pastedText`; `/import?mode=create` from the add
   sheet; the `event: 'import'` line shows `via`, `search`, `searchQueries`
   and no brief.
-- `npm run test:i18n -- --states import-create-idle,import-create-preview,import-create-no-recipe,library-add-sheet`
+- `npm run test:i18n -- --states import-create-idle,import-create-preview,import-create-no-recipe,import-create-writing,import-create-too-long,import-create-rate-limited,import-create-failed,library-add-sheet`
   before the PR.

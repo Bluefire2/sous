@@ -1362,7 +1362,7 @@ describe('generateFromBrief', () => {
     expect(await promptFor(true)).toContain('Notes from a web search');
   });
 
-  it('maps the model reply, and refuses a recipe it did not finish', async () => {
+  it('maps the model reply, and refuses a recipe with no ingredients or no steps', async () => {
     for (const reply of [undefined, '', 'Sure!', '42', 'null']) {
       const { deps } = fakeImportDeps(reply);
       expect(await generateFromBrief(BRIEF, deps, { search: false }), String(reply)).toEqual({
@@ -1374,7 +1374,9 @@ describe('generateFromBrief', () => {
       [{ ...GENERATED, title: 'NOT_A_RECIPE' }, 'not_a_recipe'],
       [{ ...GENERATED, title: ' ' }, 'unusable'],
       [{ ...GENERATED, ingredientSections: [] }, 'unusable'],
-      [{ ...GENERATED, steps: [{ text: 'Cook.' }] }, 'unusable'],
+      [{ ...GENERATED, steps: [] }, 'unusable'],
+      // One step is a whole method for a drink or a dressing; import's MIN_STEPS warning does not apply.
+      [{ ...GENERATED, steps: [{ text: 'Shake everything with ice and strain.' }] }, 'ok'],
     ];
     for (const [reply, kind] of cases) {
       const { deps } = fakeImportDeps(JSON.stringify(reply));
@@ -1419,7 +1421,7 @@ describe('generateFromBrief', () => {
     }
   });
 
-  it('reads the grounding sources, de-duplicated and capped, without the queries', async () => {
+  it('reads the grounding sources, de-duplicated and capped, and only counts the queries', async () => {
     const chunks = Array.from({ length: 14 }, (_, i) => ({
       web: { uri: `https://example.com/gumbo-${i % 12}`, title: i === 0 ? '  ' : `Gumbo ${i % 12}` },
     }));
@@ -1439,11 +1441,12 @@ describe('generateFromBrief', () => {
     expect(outcome.kind).toBe('ok');
     if (outcome.kind !== 'ok') return;
     expect(outcome.grounding?.sources).toHaveLength(MAX_GENERATE_SOURCES);
-    expect(outcome.grounding?.sources[0]).toEqual({ title: 'example.com', url: 'https://example.com/gumbo-0' });
+    expect(outcome.grounding?.sources[0]).toEqual({ title: '', url: 'https://example.com/gumbo-0' });
     expect(outcome.grounding?.sources[1]).toEqual({ title: 'Gumbo 1', url: 'https://example.com/gumbo-1' });
     expect(new Set(outcome.grounding?.sources.map((s) => s.url)).size).toBe(MAX_GENERATE_SOURCES);
     expect(outcome.grounding?.searchSuggestions).toBe('<div class="chip">gumbo</div>');
-    expect(outcome.grounding?.queries).toBe(2);
+    expect(outcome.grounding).not.toHaveProperty('queries');
+    expect(outcome.log?.searchQueries).toBe(2);
     expect(JSON.stringify(outcome)).not.toContain('pressure cooker shrimp gumbo recipe');
   });
 
@@ -1462,6 +1465,39 @@ describe('generateFromBrief', () => {
       { title: 'gumbo.example', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa' },
       { title: 'roux.example', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/ccc' },
     ]);
+  });
+
+  it('keeps every untitled page, since their redirect host names no site', async () => {
+    const { deps } = fakeImportDeps(JSON.stringify(GENERATED), undefined, {
+      groundingMetadata: {
+        groundingChunks: [
+          { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa' } },
+          { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/bbb', title: ' ' } },
+        ],
+      },
+    });
+    const outcome = await generateFromBrief(BRIEF, deps, { search: true });
+    expect(outcome.kind === 'ok' && outcome.grounding?.sources).toEqual([
+      { title: '', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa' },
+      { title: '', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/bbb' },
+    ]);
+  });
+
+  it('counts the searches when the structured call then fails', async () => {
+    const metadata = { webSearchQueries: ['a', 'b', 'c'] };
+    for (const [reply, kind] of [
+      [JSON.stringify({ ...GENERATED, title: 'NOT_A_RECIPE' }), 'not_a_recipe'],
+      [JSON.stringify({ ...GENERATED, steps: [] }), 'unusable'],
+    ] as const) {
+      const { deps } = fakeImportDeps(reply, undefined, { groundingMetadata: metadata });
+      const outcome = await generateFromBrief(BRIEF, deps, { search: true });
+      expect(outcome.kind).toBe(kind);
+      expect(outcome.log?.searchQueries, kind).toBe(3);
+    }
+    const unsearched = fakeImportDeps(JSON.stringify(GENERATED), undefined, { groundingMetadata: metadata });
+    expect((await generateFromBrief(BRIEF, unsearched.deps, { search: false })).log).not.toHaveProperty(
+      'searchQueries',
+    );
   });
 
   it('reports no grounding without search, or when Google reported nothing', async () => {

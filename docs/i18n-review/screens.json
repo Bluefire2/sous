@@ -158,7 +158,7 @@
   {
     "id": "import-create-preview",
     "route": "/import",
-    "setup": "Generate mode, a brief typed, Search the web checked, Generate recipe pressed with the model call mocked: the preview shows the pages Gemini used (two links) above the language line and the editable recipe form, with the thumbs up / down rating row at the bottom.",
+    "setup": "Generate mode, a brief typed, Search the web checked, Generate recipe pressed with the model call mocked: the preview shows the pages Gemini used (three links, the last one labelled as an untitled page) above the language line and the editable recipe form, with the thumbs up / down rating row at the bottom.",
     "needsData": false
   },
   {

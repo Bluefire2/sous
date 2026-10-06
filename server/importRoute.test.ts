@@ -50,6 +50,8 @@ interface PostOptions {
   /** Replaces the fake built from `reply`. */
   deps?: RecipeImportDeps;
   translator?: (input: TranslateInput) => Promise<TranslateOutcome>;
+  /** The member the gate admitted; `sub-1` by default. */
+  sub?: string;
 }
 
 async function post(
@@ -63,7 +65,7 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.rawBody ?? JSON.stringify(body),
   });
-  const response = await importPost(req, { authorizedSub: 'sub-1' }, options.deps ?? deps);
+  const response = await importPost(req, { authorizedSub: options.sub ?? 'sub-1' }, options.deps ?? deps);
   return { status: response.status, body: (await response.json()) as unknown, calls };
 }
 
@@ -784,29 +786,30 @@ describe('POST /api/import with a brief', () => {
     expect(refused.calls).toHaveLength(0);
     expect((await post({ brief: BRIEF })).status).toBe(200);
     expect((await post({ brief: BRIEF, search: false })).status).toBe(200);
-    expect(importLogLines().at(-3)?.entry).toEqual(
+    // Each member has their own bucket.
+    expect((await post({ brief: BRIEF, search: true }, undefined, { sub: 'sub-2' })).status).toBe(200);
+    expect((await post({ brief: BRIEF, search: true })).status).toBe(429);
+    expect(importLogLines().at(-5)?.entry).toEqual(
       expect.objectContaining({ via: 'generate', search: true, outcome: 'rate_limited', status: 429 }),
     );
   });
 
-  it('maps brief outcomes to brief copy', async () => {
+  it('maps brief outcomes to brief copy, never the extraction wording', async () => {
     expect(await post({ brief: 'the weather' }, JSON.stringify({ title: 'NOT_A_RECIPE' }))).toMatchObject({
       status: 422,
       body: { code: 'import-no-recipe-brief', error: "Couldn't make a recipe from that — describe a dish." },
     });
+    const generateFailed = { code: 'import-generate-failed', error: "Couldn't generate that recipe — try again." };
     expect(await post({ brief: BRIEF }, JSON.stringify({ ...RECIPE, steps: [] }))).toMatchObject({
       status: 502,
-      body: { code: 'import-unusable' },
+      body: generateFailed,
     });
     expect(await post({ brief: BRIEF }, 'not json')).toMatchObject({
       status: 502,
-      body: { code: 'import-extract-failed' },
+      body: generateFailed,
     });
     const failed = await post({ brief: BRIEF }, undefined, { deps: rejectingDeps('SECRET-UPSTREAM', 503) });
-    expect(failed).toMatchObject({
-      status: 502,
-      body: { code: 'import-generate-failed', error: "Couldn't write that recipe — try again." },
-    });
+    expect(failed).toMatchObject({ status: 502, body: generateFailed });
     expect(JSON.stringify(failed.body)).not.toContain('SECRET');
   });
 
@@ -849,5 +852,14 @@ describe('POST /api/import with a brief', () => {
       expect(line.raw).not.toContain('SECRET');
       expect(line.raw).not.toContain('gumbo');
     }
+  });
+
+  it('logs the search count when the searched brief then fails', async () => {
+    const grounded = groundedDeps(JSON.stringify({ title: 'NOT_A_RECIPE' }));
+    const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
+    expect(status).toBe(422);
+    expect(importLogLines().at(-1)?.entry).toEqual(
+      expect.objectContaining({ via: 'generate', search: true, outcome: 'not_a_recipe', searchQueries: 1 }),
+    );
   });
 });

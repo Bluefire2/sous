@@ -34,7 +34,6 @@ import {
 } from './importChecks.ts';
 import { thrownStatus } from './importLog.ts';
 import {
-  MIN_STEPS,
   isBlockingWarning,
   type ImportWarning,
   type ImportWarningCode,
@@ -176,10 +175,16 @@ export interface ImportOutcomeLog {
   attempts: ImportAttempt[];
   /** A numeric status from the last thrown provider error, when it had one. */
   errorStatus?: number;
+  /**
+   * `generateFromBrief` with search on: how many searches the research call
+   * ran, whatever the outcome. Never the queries themselves.
+   */
+  searchQueries?: number;
 }
 
 /** A page Gemini grounded a generated recipe on. */
 export interface GenerateSource {
+  /** Google's title for the page, usually the site name; `''` when Google gave none. */
   title: string;
   url: string;
 }
@@ -193,8 +198,6 @@ export interface GenerateGrounding {
    * Google's terms require it to be shown with the result, as provided.
    */
   searchSuggestions?: string;
-  /** How many searches the model ran. For the log line; never the queries themselves. */
-  queries: number;
 }
 
 export type ImportOutcome =
@@ -950,13 +953,13 @@ function httpUrl(value: unknown): URL | undefined {
 }
 
 /**
- * The grounding Google reported, reduced to what the client shows and the log
- * counts. `webSearchQueries` is reduced to a count: the queries paraphrase the
- * brief, so they never reach a JSON field or the log line. They are still
- * visible to the person inside Google's chip, which is shown as provided.
+ * The grounding Google reported, reduced to what the client shows.
  * Google issues one redirect URL per chunk, so a page can appear several
  * times with the same title; the title is the second de-duplication key.
- * `undefined` when nothing usable was reported.
+ * An untitled page keeps `title: ''` (the client labels it) and is never
+ * merged by title: every link is a redirect on Google's host, so a host name
+ * would neither tell pages apart nor name the site.
+ * `undefined` when no page and no chip came back.
  */
 function readGrounding(metadata: GroundingMetadata | undefined): GenerateGrounding | undefined {
   if (metadata === undefined) return undefined;
@@ -964,26 +967,19 @@ function readGrounding(metadata: GroundingMetadata | undefined): GenerateGroundi
   const seen = new Set<string>();
   for (const chunk of metadata.groundingChunks ?? []) {
     const uri = chunk.web?.uri;
-    const url = httpUrl(uri);
-    if (url === undefined || typeof uri !== 'string' || seen.has(uri)) continue;
-    const rawTitle = typeof chunk.web?.title === 'string' ? chunk.web.title.trim() : '';
-    const title = rawTitle === '' ? url.hostname : rawTitle;
-    if (seen.has(`title:${title}`)) continue;
+    if (httpUrl(uri) === undefined || typeof uri !== 'string' || seen.has(uri)) continue;
+    const title = typeof chunk.web?.title === 'string' ? chunk.web.title.trim() : '';
+    if (title !== '' && seen.has(`title:${title}`)) continue;
     seen.add(uri);
-    seen.add(`title:${title}`);
+    if (title !== '') seen.add(`title:${title}`);
     sources.push({ title, url: uri });
     if (sources.length >= MAX_GENERATE_SOURCES) break;
   }
   const rendered = metadata.searchEntryPoint?.renderedContent;
   const searchSuggestions =
     typeof rendered === 'string' && rendered.trim() !== '' ? rendered : undefined;
-  const queries = metadata.webSearchQueries?.length ?? 0;
-  if (sources.length === 0 && searchSuggestions === undefined && queries === 0) return undefined;
-  return {
-    sources,
-    ...(searchSuggestions !== undefined ? { searchSuggestions } : {}),
-    queries,
-  };
+  if (sources.length === 0 && searchSuggestions === undefined) return undefined;
+  return { sources, ...(searchSuggestions !== undefined ? { searchSuggestions } : {}) };
 }
 
 /**
@@ -992,8 +988,9 @@ function readGrounding(metadata: GroundingMetadata | undefined): GenerateGroundi
  * a research call with the Google Search tool runs first (`researchPrompt`);
  * its notes go into the structured call and the pages it used come back as
  * `grounding`. No import checks run, because there is no source to compare
- * against: instead a recipe with no ingredients or fewer than `MIN_STEPS`
- * steps is `unusable`. A throw from either call is `model_error`, as for
+ * against: instead a recipe with no ingredients or no steps is `unusable`
+ * (one step is fine here: a drink or a dressing can be written that way, and
+ * the model was asked for the method, not quoted). A throw from either call is `model_error`, as for
  * pasted text. `translateTo` works as for every other import.
  */
 export async function generateFromBrief(
@@ -1018,7 +1015,10 @@ export async function generateFromBrief(
       });
       const found = research.text?.trim() ?? '';
       if (found !== '') notes = found.slice(0, MAX_RESEARCH_NOTE_CHARS);
-      grounding = readGrounding(research.candidates?.[0]?.groundingMetadata);
+      const metadata = research.candidates?.[0]?.groundingMetadata;
+      // Counted whatever the structured call does next: the searches ran either way.
+      log.searchQueries = metadata?.webSearchQueries?.length ?? 0;
+      grounding = readGrounding(metadata);
     } catch (err) {
       return { ...noteThrow(err, log), log };
     }
@@ -1045,7 +1045,7 @@ export async function generateFromBrief(
   }
   const recipe = read.recipe;
   const ingredients = recipe.ingredientSections.reduce((n, section) => n + section.items.length, 0);
-  if (ingredients === 0 || recipe.steps.length < MIN_STEPS) {
+  if (ingredients === 0 || recipe.steps.length === 0) {
     log.attempts.push({ result: 'unusable', codes: [] });
     return { kind: 'unusable', log };
   }

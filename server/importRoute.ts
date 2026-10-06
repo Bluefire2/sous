@@ -96,7 +96,7 @@ const MODEL_FAILED = "Couldn't read that recipe — try again.";
 const BRIEF_TOO_LONG = "That's too long — keep the idea under 2,000 characters.";
 const SEARCH_RATE_LIMITED = 'Too many web searches. Try again later, or turn Search the web off.';
 const BRIEF_NOT_A_RECIPE = "Couldn't make a recipe from that — describe a dish.";
-const GENERATE_FAILED = "Couldn't write that recipe — try again.";
+const GENERATE_FAILED = "Couldn't generate that recipe — try again.";
 
 const NOT_A_RECIPE_DEFAULT = { code: 'import-no-recipe', error: "Couldn't find a recipe in that content." };
 const MODEL_FAILED_DEFAULT = { code: 'import-model-failed', error: MODEL_FAILED };
@@ -206,6 +206,8 @@ function outcomeResponse(
   copy: {
     notARecipe?: { code: string; error: string };
     modelFailed?: { code: string; error: string };
+    /** Replaces the extraction wording for `parse_error` and `unusable` (a generated recipe). */
+    noRecipe?: { code: string; error: string };
   } = {},
 ): Response {
   const notARecipe = copy.notARecipe ?? NOT_A_RECIPE_DEFAULT;
@@ -215,7 +217,7 @@ function outcomeResponse(
       const recipe = { ...outcome.recipe, sourceUrl };
       // Codes only; the client owns the words (i18n principle 10).
       const warnings = outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {};
-      // The pages a generated recipe was grounded on, and Google's chip. `queries` is log-only.
+      // The pages a generated recipe was grounded on, and Google's chip.
       const grounding =
         outcome.grounding !== undefined
           ? {
@@ -249,8 +251,10 @@ function outcomeResponse(
     case 'not_a_recipe':
       return fail(notARecipe.code, notARecipe.error, 422);
     case 'parse_error':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-extract-failed', 'Extraction failed — no structured result.', 502);
     case 'unusable':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-unusable', 'Extraction produced an unusable recipe.', 502);
     case 'model_error':
       return fail(modelFailed.code, modelFailed.error, 502);
@@ -383,6 +387,7 @@ async function handleImport(
     return outcomeResponse(outcome, undefined, {
       notARecipe: { code: 'import-no-recipe-brief', error: BRIEF_NOT_A_RECIPE },
       modelFailed: { code: 'import-generate-failed', error: GENERATE_FAILED },
+      noRecipe: { code: 'import-generate-failed', error: GENERATE_FAILED },
     });
   }
 

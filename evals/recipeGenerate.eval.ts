@@ -75,8 +75,9 @@ describe('write a recipe from a brief (live Gemini)', () => {
     expect(outcome.grounding.sources.length).toBeGreaterThan(0);
     for (const source of outcome.grounding.sources) {
       expect(source.url).toMatch(/^https?:\/\//);
-      expect(source.title).not.toBe('');
     }
-    expect(outcome.grounding.queries).toBeGreaterThan(0);
+    // An untitled page is allowed (the preview labels it), but Google normally names the site.
+    expect(outcome.grounding.sources.some((source) => source.title !== '')).toBe(true);
+    expect(outcome.log?.searchQueries).toBeGreaterThan(0);
   }, 90_000);
 });

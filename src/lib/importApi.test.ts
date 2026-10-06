@@ -231,6 +231,12 @@ describe('importRecipe from a brief', () => {
     expect(await importRecipe({ brief: 'gumbo', search: true })).not.toHaveProperty('grounding');
   });
 
+  it('keeps an untitled source for the preview to label', () => {
+    expect(readImportGrounding({ sources: [{ title: '', url: 'https://example.com/a' }] })).toEqual({
+      sources: [{ title: '', url: 'https://example.com/a' }],
+    });
+  });
+
   it('caps the sources at ten', () => {
     const sources = Array.from({ length: 12 }, (_, i) => ({ title: `S${i}`, url: `https://example.com/${i}` }));
     expect(readImportGrounding({ sources })?.sources).toHaveLength(10);
