@@ -185,8 +185,8 @@ describe('authStart', () => {
     expect(options.code_challenge_method).toBe('S256');
     expect(options.include_granted_scopes).toBe(false);
 
-    const oauthLine = cookieNamed(res, OAUTH_COOKIE_NAME);
-    const token = oauthLine?.slice(OAUTH_COOKIE_NAME.length + 1).split(';')[0] ?? '';
+    const txCookieLine = cookieNamed(res, OAUTH_COOKIE_NAME);
+    const token = txCookieLine?.slice(OAUTH_COOKIE_NAME.length + 1).split(';')[0] ?? '';
     const tx = verifyAuthTx(token, Date.now());
     expect(tx?.returnTo).toBe('/settings');
     expect(tx?.state).toBe(options.state);
@@ -194,8 +194,8 @@ describe('authStart', () => {
     expect(tx?.invite).toBeUndefined();
     const challenge = createHash('sha256').update(tx?.verifier ?? '').digest('base64url');
     expect(options.code_challenge).toBe(challenge);
-    expect(oauthLine).toContain('HttpOnly');
-    expect(oauthLine).toContain('Secure');
+    expect(txCookieLine).toContain('HttpOnly');
+    expect(txCookieLine).toContain('Secure');
     expect(cookieNamed(res, INVITE_COOKIE_NAME)).toContain('Max-Age=0');
   });
 
