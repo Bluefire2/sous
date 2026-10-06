@@ -430,6 +430,20 @@ describe('normalizeImportedRecipe', () => {
     expect('prepMinutes' in (recipe ?? {})).toBe(false);
     expect(recipe).toMatchObject({ cookMinutes: 0 });
   });
+
+  it('rounds durations to whole minutes, so a number that ran on reads as the time it meant', () => {
+    const cases: [number, number][] = [
+      [20.000000000000004, 20],
+      [5.000000000000001e-5, 0],
+      [12.5, 13],
+      [7.4, 7],
+      [45, 45],
+    ];
+    for (const [raw, minutes] of cases) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).toMatchObject({ prepMinutes: minutes, cookMinutes: minutes });
+    }
+  });
 });
 
 describe('importFromSource', () => {
@@ -1298,6 +1312,27 @@ describe('generateFromBrief', () => {
     expect(config.responseSchema).toBe(photo.calls[0].config?.responseSchema);
     expect('tools' in config).toBe(false);
     expect('mediaResolution' in config).toBe(false);
+  });
+
+  it('orders every field of its schema, times before the lists and no number last', async () => {
+    const generate = fakeImportDeps(JSON.stringify(GENERATED));
+    await generateFromBrief(BRIEF, generate.deps, { search: false });
+    const page = fakeImportDeps(JSON.stringify(MINIMAL));
+    await importFromSource('soup', page.deps);
+    type OrderedSchema = {
+      properties: Record<string, { type: string }>;
+      propertyOrdering: string[];
+    };
+    const schema = generate.calls[0].config?.responseSchema as OrderedSchema;
+    const order = schema.propertyOrdering;
+    expect([...order].sort()).toEqual(Object.keys(schema.properties).sort());
+    expect(order.indexOf('description')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(order.indexOf('prepMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(order.indexOf('cookMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(schema.properties[order[order.length - 1]].type).toBe('STRING');
+    // The page schema keeps the same order and only appends its two booleans.
+    const pageOrder = (page.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering;
+    expect(pageOrder).toEqual([...order, 'instructionsOnPage', 'ingredientsOnPage']);
   });
 
   it('with search, researches with the Google Search tool first, then writes from the notes', async () => {

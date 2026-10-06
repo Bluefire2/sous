@@ -22,6 +22,60 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-06 — RECIPE_SCHEMA property order (times early), whole-minute rounding
+
+- Change: `RECIPE_SCHEMA` (photo import and `generateFromBrief`) gets a
+  `propertyOrdering`: title, description, servings, prepMinutes,
+  cookMinutes, ingredientSections, steps, tags, notes, lang.
+  `PAGE_RECIPE_SCHEMA` now builds its order from it plus its two booleans;
+  the resulting list is the same as before, so the page and paste request
+  is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
+  `cookMinutes` to whole minutes for every import path (negative values are
+  still dropped before rounding). Prompts, model settings, retries and
+  goldens are unchanged.
+- Reason (not fixture-specific): the 2026-10-01 rule that no free-form
+  number should be the last token of the object, which only the page schema
+  followed. Without an order the model writes the required fields, then
+  the optional ones alphabetically, so `prepMinutes` comes last. Rounding
+  is a backstop for a number that runs on but still parses. A recipe time
+  is whole minutes, whatever the source.
+- Reported: a live Generate run ("shrimp gumbo in a pressure cooker for 6",
+  search on) showed prepMinutes as 20.000… in the preview and had no
+  description.
+- Probe: `generateFromBrief` on that brief, 8 runs without search and 8
+  with, on the real code path. The structured call was wrapped to record its
+  finish reason, key order, and the raw time literals.
+  - Before (`33c0c16`): key order always ended `…,tags,cookMinutes,[description,lang,notes,]prepMinutes`.
+    2/16 runaways, both with search: one `prepMinutes`
+    20.000000000000004 (parsed, shown as a float) and one run of zeros to
+    `MAX_TOKENS` (3,241 output tokens, `parse_error`). 5/16 had no
+    `description`, `notes` or `lang` (2 without search, 3 with), including
+    the parsed runaway.
+  - After: 16/16 `STOP` in the schema order, raw times all integers, and
+    `description`, `notes` and `lang` present in 16/16.
+- Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per side
+- Before (`33c0c16`): dev 11/15 (blueberry-muffins 3/3, choc-pie-tea-towel
+  3/3, hundred-good-cookies 3/3, lemon-tea-bread 2/3, sweet-sour-pork 0/3),
+  holdout 15/15; every A run `STOP`, calls 1.
+- After: dev 14/15 (blueberry-muffins 3/3, choc-pie-tea-towel 3/3,
+  hundred-good-cookies 3/3, lemon-tea-bread 3/3, sweet-sour-pork 2/3),
+  holdout 15/15; every A run `STOP`, calls 1. Approach B sends the page
+  schema, whose request did not change: dev 9/15 → 9/15, holdout
+  10/15 → 9/15.
+- `npm run test:import` (31 tests, once per side): before 30/31 (failure:
+  translate judge, marmiton-boeuf-bourguignon → uk, which does not use the
+  import schema); after 30/31 (failure: dev sweet-sour-pork photo,
+  ingredient count 1 vs golden 9, the same derailment as its baseline runs,
+  `STOP` and not a runaway). `recipeGenerate.eval.ts` was 4/4 on both sides.
+  Summed photo runs, ocrCompare A plus test:import: dev 16/20 → 18/20,
+  holdout 20/20 → 20/20.
+- Decision: kept. Holdout did not drop and dev rose, which passes the
+  acceptance rule. The dev gain is mostly sweet-sour-pork, a card that
+  varies between runs (2/3 in the 2026-09-27 entry, 0/3 here before the
+  change), so the photo result is read as "no regression", not as a fix.
+  The generate probe is the evidence for the change.
+- Run by: agent, default model (`gemini-3.7-flash`).
+
 ## 2026-10-05 — Recipe from a brief: search as a research call, not on the structured call
 
 - Change: `generateFromBrief` (new, `docs/plans/recipe-generation.md`). With

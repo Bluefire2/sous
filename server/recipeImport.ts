@@ -241,7 +241,8 @@ const MAX_SOURCE_CHARS = 60000;
 
 // NOTE: `api/chat.ts` still carries its own copy of this schema for
 // `update_recipe`. Keep the two in sync until chat gets the same treatment,
-// except `lang`: it is import-only and must not be copied into `api/chat.ts`.
+// except `lang` and `propertyOrdering`: they are import-only and must not be
+// copied into `api/chat.ts`, whose Gemini request shape is frozen (AGENTS.md).
 const RECIPE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -300,6 +301,24 @@ const RECIPE_SCHEMA: Schema = {
     },
   },
   required: ['title', 'servings', 'ingredientSections', 'steps', 'tags'],
+  // Times early and a string last. Left to itself the model writes the
+  // required fields first and the optional ones after them, so `prepMinutes`
+  // came last and sometimes ran on (20.000000000000004, or zeros until
+  // MAX_TOKENS, which is a `parse_error`), and some runs dropped
+  // `description`, `notes` and `lang` (evals/EXPERIMENTS.md, 2026-10-06).
+  // `PAGE_RECIPE_SCHEMA` appends its two booleans to this order.
+  propertyOrdering: [
+    'title',
+    'description',
+    'servings',
+    'prepMinutes',
+    'cookMinutes',
+    'ingredientSections',
+    'steps',
+    'tags',
+    'notes',
+    'lang',
+  ],
 };
 
 const RECIPE_OUTPUT_CONFIG = {
@@ -327,24 +346,11 @@ const PAGE_RECIPE_SCHEMA: Schema = {
     },
   },
   required: [...(RECIPE_SCHEMA.required ?? []), 'instructionsOnPage', 'ingredientsOnPage'],
-  // Times early and the two booleans last. Left to itself the model wrote
+  // The recipe order, then the two booleans. Without an order the model wrote
   // `prepMinutes` last, and a trailing number sometimes ran on until
   // MAX_TOKENS (`parse_error`) or came back as 5.000000000000001e-05;
   // a boolean cannot run on (evals/EXPERIMENTS.md, 2026-10-01).
-  propertyOrdering: [
-    'title',
-    'description',
-    'servings',
-    'prepMinutes',
-    'cookMinutes',
-    'ingredientSections',
-    'steps',
-    'tags',
-    'notes',
-    'lang',
-    'instructionsOnPage',
-    'ingredientsOnPage',
-  ],
+  propertyOrdering: [...(RECIPE_SCHEMA.propertyOrdering ?? []), 'instructionsOnPage', 'ingredientsOnPage'],
 };
 
 const PAGE_RECIPE_OUTPUT_CONFIG = { ...RECIPE_OUTPUT_CONFIG, responseSchema: PAGE_RECIPE_SCHEMA };
@@ -679,11 +685,14 @@ export function normalizeImportedRecipe(raw: unknown): ImportedRecipe | null {
   const notes = nonEmptyString(raw.notes);
   if (notes !== undefined) recipe.notes = notes;
 
+  // Whole minutes: a number the model let run on (20.000000000000004,
+  // 5.000000000000001e-05) reads as the time it meant, not as a float in the
+  // preview (evals/EXPERIMENTS.md, 2026-10-06).
   const prepMinutes = finiteNumber(raw.prepMinutes);
-  if (prepMinutes !== undefined && prepMinutes >= 0) recipe.prepMinutes = prepMinutes;
+  if (prepMinutes !== undefined && prepMinutes >= 0) recipe.prepMinutes = Math.round(prepMinutes);
 
   const cookMinutes = finiteNumber(raw.cookMinutes);
-  if (cookMinutes !== undefined && cookMinutes >= 0) recipe.cookMinutes = cookMinutes;
+  if (cookMinutes !== undefined && cookMinutes >= 0) recipe.cookMinutes = Math.round(cookMinutes);
 
   const lang = normalizeLang(raw.lang);
   if (lang !== undefined) recipe.lang = lang;
