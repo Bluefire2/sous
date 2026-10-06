@@ -10,18 +10,25 @@
  * tokens have fixed prefixes, and link tokens follow fixed paths. A hit
  * prints the pattern's name and the line number, never the line itself.
  *
+ * It sees only what the app writes (its console.log and console.error
+ * lines). No server here logs request lines, so the link-token pattern
+ * guards app text, not Cloud Run's request log (`scripts/logExclusions.ts`
+ * covers that). The smoke run makes no website import, so the logged-URL
+ * pattern guards against a regression rather than today's output.
+ *
  * `findLeaks` is pure, so `testing/logSweep.test.ts` checks the patterns.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
 
 export const LEAK_PATTERNS: readonly { name: string; pattern: RegExp }[] = [
-  { name: 'a persona email', pattern: /@sous\.invalid\b/i },
+  // Plain or percent-encoded (an address inside a logged URL).
+  { name: 'a persona email', pattern: /(?:@|%40)sous\.invalid\b/i },
   { name: 'an MCP access or refresh token', pattern: /\bsous_(?:at|rt)_[A-Za-z0-9_-]{8,}/ },
   { name: 'a session cookie', pattern: /\bsous_session=[A-Za-z0-9_-]/ },
   { name: 'an invite, collection, or public link token', pattern: /\/(?:invite|c|p|api\/public)\/[A-Za-z0-9_-]{20,}/ },
-  { name: 'a query string in a logged url', pattern: /"url"\s*:\s*"[^"]*\?/ },
+  // Any quoted http(s) URL with a query, whatever the JSON key.
+  { name: 'a query string in a logged url', pattern: /"[^"]*https?:\/\/[^"\s]*\?[^"]*"/ },
 ];
 
 export function findLeaks(log: string): { line: number; name: string }[] {
@@ -34,9 +41,15 @@ export function findLeaks(log: string): { line: number; name: string }[] {
   return leaks;
 }
 
+/** Real paths on both sides, as in scripts/delete-account-data.ts: a symlinked run must not silently pass. */
 function isDirectRun(): boolean {
   const entry = process.argv[1];
-  return entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url);
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
 
 if (isDirectRun()) {

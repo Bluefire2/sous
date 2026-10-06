@@ -86,20 +86,33 @@ async function main(): Promise<void> {
   const owner = await signIn('owner');
   const member = await signIn('member');
   const viewerCookie = await signIn('viewer');
+  // Not admitted alongside: `empty` has its own rows and joined shares by now (writeSmoke.ts).
+  const emptyCookie = await signIn('empty');
 
   const before = {
     member: await pullSnapshot(member),
     owner: await pullSnapshot(owner),
     weeknights: await grantSubs(member, FIXTURE_IDS.member.weeknights),
     picks: await grantSubs(owner, FIXTURE_IDS.owner.picks),
+    baking: await grantSubs(member, FIXTURE_IDS.member.baking),
+    empty: await pullSnapshot(emptyCookie),
   };
   check('the viewer starts with grants on Weeknights and on Owner’s picks', before.weeknights.includes(viewer.sub) && before.picks.includes(viewer.sub));
 
   // README step 1: deny access first, or a signed-in client could push its library back.
   const dryWhileMember = runScript([viewer.sub]);
-  check('a dry run while still a member exits 0 and notes the refusal', dryWhileMember.status === 0 && dryWhileMember.out.includes('--apply would refuse'), dryWhileMember.out);
+  const stillActive = 'members/{sub} is still active';
+  check(
+    'a dry run while still a member exits 0 and notes that --apply would refuse',
+    dryWhileMember.status === 0 && dryWhileMember.out.includes(`--apply would refuse. ${stillActive}`),
+    dryWhileMember.out,
+  );
   const applyWhileMember = runScript([viewer.sub, '--apply']);
-  check('--apply refuses while the viewer is still a member', applyWhileMember.status === 1, applyWhileMember.out);
+  check(
+    '--apply refuses while the viewer is still a member',
+    applyWhileMember.status === 1 && applyWhileMember.out.includes(`Refusing to apply. ${stillActive}`),
+    applyWhileMember.out,
+  );
 
   const revoke = await request('POST', '/api/admin/decision', owner, { sub: viewer.sub, action: 'revoke' });
   check('the owner revokes the viewer', revoke.status === 200, `status ${revoke.status}`);
@@ -110,13 +123,19 @@ async function main(): Promise<void> {
     if (status === 401) break;
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
-  check('the viewer is refused within the cache bound', status === 401, `status ${status}`);
+  // The decision clears this server's cache, so this is the next request; the poll only bounds it.
+  check('the viewer is refused on their next request', status === 401, `status ${status}`);
 
   const dry = runScript([viewer.sub]);
   const pending = toChange(dry.out);
   check('the dry run finds the viewer’s data', dry.status === 0 && pending !== undefined && pending > 0, dry.out);
-  const afterDry = await pullSnapshot(member);
-  check('the dry run changed nothing', afterDry === before.member);
+  const dryAgain = runScript([viewer.sub]);
+  check('a second dry run finds the same amount', toChange(dryAgain.out) === pending, dryAgain.out);
+  check(
+    "the dry run left the viewer's grants in place",
+    (await grantSubs(member, FIXTURE_IDS.member.weeknights)).includes(viewer.sub) &&
+      (await grantSubs(owner, FIXTURE_IDS.owner.picks)).includes(viewer.sub),
+  );
 
   const apply = runScript([viewer.sub, '--apply']);
   check('--apply deletes and finds none left', apply.status === 0 && apply.out.includes('none remains'), apply.out);
@@ -125,6 +144,8 @@ async function main(): Promise<void> {
 
   check("the member's library is untouched", (await pullSnapshot(member)) === before.member);
   check("the owner's library is untouched", (await pullSnapshot(owner)) === before.owner);
+  check("the empty persona's library is untouched", (await pullSnapshot(emptyCookie)) === before.empty);
+  check('Baking’s grants are untouched', JSON.stringify(await grantSubs(member, FIXTURE_IDS.member.baking)) === JSON.stringify(before.baking));
   const weeknights = await grantSubs(member, FIXTURE_IDS.member.weeknights);
   const picks = await grantSubs(owner, FIXTURE_IDS.owner.picks);
   check('Weeknights lost only the viewer’s grant', JSON.stringify(weeknights) === JSON.stringify(before.weeknights.filter((s) => s !== viewer.sub)), JSON.stringify(weeknights));

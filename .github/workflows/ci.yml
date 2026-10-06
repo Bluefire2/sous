@@ -104,7 +104,9 @@ jobs:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
         run: node testing/deletionCheck.ts http://localhost:4173
       # No server log line may hold an email, a token, or a query string.
+      # Also after a failed check: that run's log is the one most worth sweeping.
       - name: Log sweep
+        if: ${{ !cancelled() }}
         run: node testing/logSweep.ts test-server.log
       - name: Logs
         if: always()

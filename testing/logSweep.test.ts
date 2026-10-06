@@ -28,6 +28,8 @@ describe('findLeaks', () => {
       `GET /api/public/${TOKEN}/recipes/x`,
       `referer https://sous.example/p/${TOKEN}`,
       '{"event":"import","url":"https://example.com/soup?utm=1"}',
+      'approval email to member%40sous.invalid',
+      '{"event":"mcp_oauth","redirect":"https://client.example/cb?code=abc"}',
     ].join('\n');
     expect(findLeaks(log)).toEqual([
       { line: 2, name: 'a persona email' },
@@ -39,6 +41,8 @@ describe('findLeaks', () => {
       { line: 8, name: 'an invite, collection, or public link token' },
       { line: 9, name: 'an invite, collection, or public link token' },
       { line: 10, name: 'a query string in a logged url' },
+      { line: 11, name: 'a persona email' },
+      { line: 12, name: 'a query string in a logged url' },
     ]);
   });
 

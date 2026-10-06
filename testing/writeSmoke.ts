@@ -91,14 +91,15 @@ function client(baseUrl: string) {
       return (res.body as { changes: PullChanges }).changes;
     },
     /** Every page of the shared pull: collection name to role, and the shared recipe ids. */
-    async shared(cookie: string): Promise<{ roles: Map<string, string>; recipes: Row[]; status: number }> {
+    /** Throws on any status but 200, so a failed read never looks like "no shares". */
+    async shared(cookie: string): Promise<{ roles: Map<string, string>; recipes: Row[] }> {
       const roles = new Map<string, string>();
       const recipes: Row[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < 10; page++) {
         const query = cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`;
         const res = await send('GET', `/api/sync/shared${query}`, { cookie });
-        if (res.status !== 200) return { roles, recipes, status: res.status };
+        if (res.status !== 200) throw new Error(`shared pull answered ${res.status}`);
         const body = res.body as {
           changes: { collections: { name: string; role: string }[]; recipes: Row[] };
           hasMore: boolean;
@@ -109,7 +110,7 @@ function client(baseUrl: string) {
         cursor = body.hasMore ? body.cursorToken : undefined;
         if (cursor === undefined) break;
       }
-      return { roles, recipes, status: 200 };
+      return { roles, recipes };
     },
   };
 }
@@ -167,12 +168,16 @@ async function lastWriteWins(http: Http, cookieOf: (name: string) => string, che
     JSON.stringify({ applied: stale.applied, reason: stale.reason }),
   );
   check('a newer put applies', (await one(put(t + 1, 'newer'))).applied === true);
-  check('a delete at the same stamp wins over the put', (await one(del(t + 1))).applied === true);
+  // A recipe.delete always answers applied; the pull says whether it won.
+  await one(del(t + 1));
+  check('a delete at the same stamp wins over the put', isTombstone(byId((await http.pull(empty)).recipes, recipe.id as string)));
   check('a put at the tombstone stamp does not revive it', (await one(put(t + 1, 'zombie'))).applied === false);
   check('a strictly newer put revives it', (await one(put(t + 2, 'revived'))).applied === true);
-  check('a final delete applies', (await one(del(t + 3))).applied === true);
-  const changes = await http.pull(empty);
-  check('the pull shows the recipe as a tombstone', isTombstone(byId(changes.recipes, recipe.id as string)));
+  check('the revived recipe is live', !isTombstone(byId((await http.pull(empty)).recipes, recipe.id as string)));
+  await one(del(t + 1));
+  check('an older delete does not bury the revived recipe', !isTombstone(byId((await http.pull(empty)).recipes, recipe.id as string)));
+  await one(del(t + 3));
+  check('a newer delete tombstones it again', isTombstone(byId((await http.pull(empty)).recipes, recipe.id as string)));
 
   const foreign = newRecipe('Not yours', t);
   const result = await http.push(empty, [
@@ -208,8 +213,9 @@ async function cascade(http: Http, cookieOf: (name: string) => string, check: Ch
   check('a recipe with chat, cook progress, a cook log, and a collection is stored', applied, JSON.stringify(rest.results));
 
   const deleted = await http.push(empty, [{ kind: 'recipe.delete', payload: { id: recipeId, updatedAt: t + 1 } }]);
-  check('the recipe delete applies', deleted.results[0]?.applied === true);
+  check('the recipe delete is accepted', deleted.results[0]?.applied === true);
   const after = await http.pull(empty);
+  check('the recipe is a tombstone', isTombstone(byId(after.recipes, recipeId)));
   check('its chat message is tombstoned', isTombstone(byId(after.chatMessages, chat.id)));
   check('its cook log is tombstoned', isTombstone(byId(after.cookLogs, log.id)));
   check(
@@ -243,6 +249,8 @@ async function sharedWrites(http: Http, cookieOf: (name: string) => string, chec
   const now = Date.now();
 
   const pasta = byId((await http.pull(memberCookie)).recipes, FIXTURE_IDS.member.tomatoPasta);
+  check("the member's pasta is in the pull", pasta !== undefined);
+  if (pasta === undefined) return;
   const viewerPut = await http.push(viewer, [
     { kind: 'recipe.put', shared: true, payload: { ...pasta, title: 'Viewer edit', updatedAt: now } },
   ]);
@@ -252,6 +260,8 @@ async function sharedWrites(http: Http, cookieOf: (name: string) => string, chec
 
   const ownerRow = () => http.pull(ownerCookie).then((c) => byId(c.recipes, FIXTURE_IDS.owner.shakshuka));
   const shakshuka = await ownerRow();
+  check("the owner's shakshuka is in the pull", shakshuka !== undefined);
+  if (shakshuka === undefined) return;
   const yearAhead = now + 365 * 24 * 60 * 60 * 1000;
   const editorPut = await http.push(viewer, [
     {
@@ -403,7 +413,9 @@ async function adminFlow(http: Http, cookieOf: (name: string) => string, check: 
   const started = Date.now();
   const refused = await waitUntil(async () => (await http.get('/api/sync/pull', outsider)).status === 401, REVOCATION_BOUND_MS);
   check(
-    'the revoked person is refused within the 60-second cache bound',
+    // The decision clears this server's cache, so this is the next request;
+    // the poll only bounds it at the documented 60 s.
+    'the revoked person is refused on their next request',
     refused,
     `still admitted after ${Math.round((Date.now() - started) / 1000)} s`,
   );
