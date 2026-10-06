@@ -876,3 +876,9 @@ sends rendered page HTML, possibly from a page behind a login, to the server
 and on to Gemini; `/privacy` and `/terms` must describe that before the
 extension is offered beyond the owner. Photos sent for import go to Gemini and
 are not stored; `/privacy` and `/terms` say so.
+
+UI copy never names the model or its maker, because the model can change:
+an AI feature is Sous ("Sous generates…", "Pages Sous used"), never Gemini
+(owner, 2026-10-05). Google Search may be named, since the search really is
+Google's and its chip is shown. `/privacy` and `/terms` are the exception:
+they name Google's Gemini API as the provider that receives the data.

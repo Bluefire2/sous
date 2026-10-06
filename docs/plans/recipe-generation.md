@@ -44,6 +44,10 @@ normal import preview.
   Suggestions chip to be shown as provided, so the preview shows the chip (in
   a sandboxed frame) and the pages it used. Searches are billed per query and
   the path is two calls (about 20 s), so searched calls are rate-limited.
+- **The UI says Sous, never Gemini** (owner, 2026-10-05): the search hint is
+  "Lets Sous run Google searches for your idea" and the sources heading is
+  "Pages Sous used", because the model can change. AGENTS.md (Product copy)
+  holds the rule for every screen.
 - **No provenance marker** on the saved recipe: no tag, no note, no `Recipe`
   field. The schema lock holds. The import log line records
   `via: 'generate'`.
