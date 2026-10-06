@@ -1,6 +1,7 @@
 # Test coverage for CI
 
-Status: PR 1 (steps 1 to 4) built 2026-10-05 on `claude/test-coverage-ci-3b2c68`; steps 5 to 12 not started. Written from a survey of the suite
+Status: PR 1 (steps 1 to 4) and PR 2 (steps 5 to 7) built 2026-10-05; steps
+8 to 12 not started. Written from a survey of the suite
 (149 test files, 2593 cases, about 13 s under `npm test`) and of
 `.github/workflows/ci.yml`. Every feature PR in the last eight commits shipped
 with tests; the gaps below are structural, not per-feature.
@@ -257,6 +258,9 @@ All steps are `[core]`; nothing touches a screen or catalog.
    - `scripts/devPorts.test.ts`: `--port 3101`, `--port=3101`, the env
      fallback, the default, a bare `--port` throwing, and `0`, `70000`, and
      `abc` throwing with the flag or variable name.
+     **Found while building:** a bare `--port` at the end of argv was read as
+     no flag and fell back to the default port; it now throws "needs a port
+     number", like `--port=`.
    - `src/i18n/unitLabel.test.ts`: every `COMMON_UNITS` token maps to its
      key; a custom unit returns as typed.
    - `src/lib/inviteApi.test.ts`: 401 invalidates the session and throws the

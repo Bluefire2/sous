@@ -9,7 +9,13 @@
  * permission to update sinks (`roles/logging.configWriter` or owner). This
  * changes production logging; run `--apply` only with the owner's approval,
  * and before deploying the `/privacy` text that relies on it.
+ *
+ * `runApplyLogExclusions` is the whole program with the API client passed in,
+ * so `scripts/apply-log-exclusions.test.ts` can run it against a fake sink.
+ * The ADC client is created only when the file is run directly.
  */
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GoogleAuth } from 'google-auth-library';
 import {
   LINK_TOKEN_EXCLUSION,
@@ -19,9 +25,9 @@ import {
 } from './logExclusions.ts';
 
 const PROJECT = 'cooking-assistant-508423';
-const SINK_URL = `https://logging.googleapis.com/v2/projects/${PROJECT}/sinks/_Default`;
+export const SINK_URL = `https://logging.googleapis.com/v2/projects/${PROJECT}/sinks/_Default`;
 
-interface Sink {
+export interface Sink {
   name: string;
   destination: string;
   filter?: string;
@@ -29,54 +35,72 @@ interface Sink {
   exclusions?: LogExclusion[];
 }
 
-const apply = process.argv.includes('--apply');
-const client = await new GoogleAuth({
-  scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  projectId: PROJECT,
-}).getClient();
-
-async function readSink(): Promise<Sink> {
-  const response = await client.request<Sink>({ url: SINK_URL });
-  return response.data;
+/** The slice of the google-auth-library client this script uses. */
+export interface SinkClient {
+  request<T>(options: { url: string; method?: string; data?: unknown }): Promise<{ data: T }>;
 }
 
-function describe(sink: Sink): string {
+function describeSink(sink: Sink): string {
   const names = (sink.exclusions ?? []).map(
     (exclusion) => `${exclusion.name}${exclusion.disabled === true ? ' (disabled)' : ''}`,
   );
   return `_Default -> ${sink.destination}; exclusions: ${names.length === 0 ? '(none)' : names.join(', ')}`;
 }
 
-const before = await readSink();
-console.log(`Before: ${describe(before)}`);
+/** The program. `argv` is the arguments after the script path. Returns the exit code. */
+export async function runApplyLogExclusions(
+  argv: readonly string[],
+  client: SinkClient,
+  output: { log: (line: string) => void; error: (line: string) => void } = console,
+): Promise<number> {
+  const apply = argv.includes('--apply');
+  const readSink = async (): Promise<Sink> => (await client.request<Sink>({ url: SINK_URL })).data;
 
-const plan = planExclusions(before.exclusions ?? []);
-if (plan.kind === 'in_place') {
-  console.log(`${LINK_TOKEN_EXCLUSION.name} is already in place. Nothing to do.`);
-  process.exit(0);
+  const before = await readSink();
+  output.log(`Before: ${describeSink(before)}`);
+
+  const plan = planExclusions(before.exclusions ?? []);
+  if (plan.kind === 'in_place') {
+    output.log(`${LINK_TOKEN_EXCLUSION.name} is already in place. Nothing to do.`);
+    return 0;
+  }
+
+  output.log(`Plan: ${plan.kind} ${LINK_TOKEN_EXCLUSION.name}`);
+  output.log(`  filter: ${LINK_TOKEN_EXCLUSION.filter}`);
+  if (!apply) {
+    output.log('Dry run; pass --apply to write.');
+    return 0;
+  }
+
+  await client.request({
+    url: `${SINK_URL}?updateMask=exclusions`,
+    method: 'PATCH',
+    data: { exclusions: plan.next },
+  });
+
+  const after = await readSink();
+  output.log(`After:  ${describeSink(after)}`);
+  const sinkUnchanged =
+    after.destination === before.destination &&
+    (after.filter ?? '') === (before.filter ?? '') &&
+    (after.disabled === true) === (before.disabled === true);
+  if (!sinkUnchanged || !exclusionsApplied(before.exclusions ?? [], after.exclusions ?? [])) {
+    output.error('The sink does not have the expected shape after the update. Check it by hand.');
+    return 1;
+  }
+  output.log('Verified: the exclusion is present and enabled, and the sink is otherwise unchanged.');
+  return 0;
 }
 
-console.log(`Plan: ${plan.kind} ${LINK_TOKEN_EXCLUSION.name}`);
-console.log(`  filter: ${LINK_TOKEN_EXCLUSION.filter}`);
-if (!apply) {
-  console.log('Dry run; pass --apply to write.');
-  process.exit(0);
+function isDirectRun(): boolean {
+  const entry = process.argv[1];
+  return entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url);
 }
 
-await client.request({
-  url: `${SINK_URL}?updateMask=exclusions`,
-  method: 'PATCH',
-  data: { exclusions: plan.next },
-});
-
-const after = await readSink();
-console.log(`After:  ${describe(after)}`);
-const sinkUnchanged =
-  after.destination === before.destination &&
-  (after.filter ?? '') === (before.filter ?? '') &&
-  (after.disabled === true) === (before.disabled === true);
-if (!sinkUnchanged || !exclusionsApplied(before.exclusions ?? [], after.exclusions ?? [])) {
-  console.error('The sink does not have the expected shape after the update. Check it by hand.');
-  process.exit(1);
+if (isDirectRun()) {
+  const client = await new GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    projectId: PROJECT,
+  }).getClient();
+  process.exit(await runApplyLogExclusions(process.argv.slice(2), client as unknown as SinkClient));
 }
-console.log('Verified: the exclusion is present and enabled, and the sink is otherwise unchanged.');
