@@ -571,7 +571,9 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `variantOf`, the id of one of the caller's recipes. The server stores that
   recipe's group (its `variantOf`, else its id; Ask's rule) and, unless the
   call gives `lang`, its `lang` (`docs/plans/recipe-variants.md`, MCP). An
-  unknown, deleted or foreign id is `not_found`. `create_recipe` also takes
+  unknown, deleted or foreign id is `not_found`; a value that is not a
+  recipe id is `invalid` (so is a `collectionId` that is neither "unfiled"
+  nor a collection id). `create_recipe` also takes
   an optional `collectionId`; it and `move_recipes` file recipes with the app's
   membership rule in one transaction (`server/mcp/collectionMove.ts`,
   `docs/plans/mcp-collection-writes.md`) and refuse a collection with a live
@@ -697,7 +699,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
 | `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
-| `docs/plans/test-coverage.md` | PR 1 (steps 1–4, #151), PR 2 (steps 5–7, #152), and PR 3 (steps 8–11) built; step 12 is the owner's call. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/test-coverage.md` | PR 1 (steps 1–4) merged (#151); PR 2 (steps 5–7, #152) and PR 3 (steps 8–11, #154) built; step 12 is the owner's call. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
