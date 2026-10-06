@@ -2,7 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import * as mcpConfig from '../server/mcp/config.ts';
+import { LINK_TOKEN_URL } from './logExclusions.ts';
 import {
   ACCOUNT_DELETION_ORDER,
   ACCOUNT_DELETION_STEPS,
@@ -518,5 +521,234 @@ describe('extension/', () => {
       }),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// docs/plans/test-coverage.md, step 4.
+// ---------------------------------------------------------------------------
+
+/** Paths the production dispatcher answers itself, read from its source. */
+function serverRenderedSamples(): { path: string; viteServesItself: boolean }[] {
+  const dispatcher = read('scripts/server.ts');
+  const samples: { path: string; viteServesItself: boolean }[] = [];
+  const literals = [...dispatcher.matchAll(/decodedPath(?:\.startsWith\(|\s*===\s*)'([^']+)'/g)].map((m) => m[1]);
+  for (const literal of new Set(literals)) {
+    if (literal === '/') continue; // the "starts with a slash" check, not a route
+    if (literals.includes(`${literal}/`)) continue; // the bare form of a prefix below
+    const path = literal.endsWith('/') ? `${literal}sometoken` : literal;
+    // The public collection pages are SPA routes the dispatcher only adds headers to.
+    samples.push({ path, viteServesItself: literal === '/p/' });
+  }
+  samples.push({ path: '/c/join', viteServesItself: false });
+  const publicHtml = /const PUBLIC_HTML[^{]*\{([^}]*)\}/.exec(dispatcher)?.[1] ?? '';
+  for (const m of publicHtml.matchAll(/'(\/[a-z]+)':/g)) {
+    samples.push({ path: m[1], viteServesItself: true });
+  }
+  for (const value of Object.values(mcpConfig)) {
+    if (typeof value === 'string' && value.startsWith('/')) {
+      samples.push({ path: value, viteServesItself: false });
+    }
+  }
+  // Test mode's routes (testing/test-server.ts), proxied in dev and denied to the service worker.
+  samples.push({ path: '/__test/sign-in', viteServesItself: false });
+  return samples;
+}
+
+function viteProxyKeys(): string[] {
+  const config = read('vite.config.ts');
+  const block = /proxy:\s*\{([\s\S]*?)\n\s*\},/.exec(config)?.[1] ?? '';
+  // The keys are TypeScript string literals: '\\.' in the file is \. in the key.
+  return [...block.matchAll(/^\s*'([^']+)':\s*apiTarget/gm)].map((m) => m[1].replace(/\\\\/g, '\\'));
+}
+
+function proxyMatches(key: string, path: string): boolean {
+  // Vite: a key starting with ^ is a regular expression, anything else a prefix.
+  return key.startsWith('^') ? new RegExp(key).test(path) : path.startsWith(key);
+}
+
+function serviceWorkerDenylist(): RegExp[] {
+  const config = read('vite.config.ts');
+  const block = /navigateFallbackDenylist:\s*\[([\s\S]*?)\n\s*\],/.exec(config)?.[1] ?? '';
+  return block
+    .split('\n')
+    .map((line) => /^\s*\/(.+)\/,?\s*$/.exec(line)?.[1])
+    .filter((source): source is string => source !== undefined)
+    .map((source) => new RegExp(source));
+}
+
+const SPA_PATHS = [
+  '/',
+  '/cooks',
+  '/collections',
+  '/collections/abc',
+  '/recipes/abc',
+  '/settings',
+  '/import',
+  '/admin',
+  '/assistant',
+  '/suggest',
+];
+
+describe('server-rendered routes reach the server in dev and pass the service worker', () => {
+  // AGENTS.md: "Vite proxies `^/mcp$`, `^/oauth/` and `^/\.well-known/oauth-`
+  // to 3001, and the PWA denylist covers them", and the same for /c/, /invite,
+  // /p, and the legal pages. A route the denylist misses is answered from the
+  // service worker's cached shell; one the proxy misses fails only in dev.
+  const samples = serverRenderedSamples();
+
+  it('finds the routes it checks', () => {
+    const paths = samples.map((s) => s.path);
+    for (const expected of ['/api/sometoken', '/invite/sometoken', '/c/sometoken', '/p/sometoken', '/mcp', '/oauth/token', '/privacy']) {
+      expect(paths).toContain(expected);
+    }
+  });
+
+  it('every one is in the PWA navigateFallbackDenylist', () => {
+    const denylist = serviceWorkerDenylist();
+    expect(denylist.length).toBeGreaterThan(5);
+    const offenders = samples.filter((s) => !denylist.some((re) => re.test(s.path))).map((s) => s.path);
+    expect(offenders).toEqual([]);
+  });
+
+  it('every one Vite does not serve itself is proxied to the API', () => {
+    const keys = viteProxyKeys();
+    expect(keys.length).toBeGreaterThan(3);
+    const offenders = samples
+      .filter((s) => !s.viteServesItself && !keys.some((key) => proxyMatches(key, s.path)))
+      .map((s) => s.path);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the pages Vite serves itself get the same treatment as in production', () => {
+    const config = read('vite.config.ts');
+    const offenders = samples
+      .filter((s) => s.viteServesItself)
+      .map((s) => (s.path.startsWith('/p/') ? '/p' : s.path))
+      .filter((path) => !config.includes(`req.url === '${path}'`));
+    expect(offenders).toEqual([]);
+  });
+
+  it('no SPA route is proxied or denied to the service worker', () => {
+    const keys = viteProxyKeys();
+    const denylist = serviceWorkerDenylist();
+    const offenders = SPA_PATHS.filter(
+      (path) => keys.some((key) => proxyMatches(key, path)) || denylist.some((re) => re.test(path)),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('link-token pages are kept out of request logs (scripts/logExclusions.ts)', () => {
+  // AGENTS.md: token pages send `Referrer-Policy: no-referrer`, and "a new
+  // token-in-path route must be added to that filter". Each module that sends
+  // no-referrer is a token page; this table names its path, and the filter
+  // must drop a request line for it.
+  const TOKEN_PAGES: Record<string, string[]> = {
+    'server/invites.ts': ['/invite/'],
+    'server/collectionLinksHttp.ts': ['/c/'],
+    'server/publicLinksHttp.ts': ['/api/public/'],
+    'scripts/server.ts': ['/p/'],
+  };
+
+  it('the table lists exactly the modules that send no-referrer', () => {
+    const senders = ['server', 'scripts', 'api']
+      .flatMap((dir) => filesUnder(dir, ['.ts']))
+      .filter((path) => !isTestFile(path))
+      .filter((path) => matchingLines(path, /['"]no-referrer['"]/).length > 0);
+    expect(senders.sort()).toEqual(Object.keys(TOKEN_PAGES).sort());
+  });
+
+  it('the exclusion filter matches a token on each of those paths', () => {
+    const pattern = new RegExp(LINK_TOKEN_URL);
+    const token = 'A'.repeat(43);
+    const offenders = Object.values(TOKEN_PAGES)
+      .flat()
+      .filter((prefix) => !pattern.test(`https://sous.kyrylo.lol${prefix}${token}`));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('import retries (docs/plans/import-reliability.md)', () => {
+  it('MAX_IMPORT_RETRIES is a code constant, never an env var', () => {
+    // AGENTS.md: "Retries are the code constant MAX_IMPORT_RETRIES ... never an env var."
+    expect(read('server/recipeImport.ts')).toMatch(/^export const MAX_IMPORT_RETRIES = \d+;$/m);
+    const offenders = filesUnder('server', ['.ts'])
+      .filter((path) => !isTestFile(path))
+      .flatMap((path) => matchingLines(path, /process\.env\.\w*RETR/i));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('MCP module boundary (Public MCP in AGENTS.md)', () => {
+  it('app code outside server/mcp/ imports only server/mcp/index.ts', () => {
+    // "scripts/server.ts imports only server/mcp/index.ts." Test tooling under
+    // testing/ may reach inside; app code may not.
+    const offenders = ['server', 'api', 'scripts', 'src']
+      .flatMap((dir) => filesUnder(dir, ['.ts', '.tsx']))
+      .filter((path) => !isTestFile(path) && !path.startsWith('server/mcp/'))
+      .flatMap((path) => matchingLines(path, /from\s+['"][^'"]*\/mcp\/(?!index\.ts['"])[^'"]+['"]/));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('sign-in and route placement (Auth and What this is in AGENTS.md)', () => {
+  it('sign-in is a link built by signInHref, never a fetch', () => {
+    // "Sign-in control is <a href={signInHref(...)}>, never fetch from a button."
+    const srcFiles = filesUnder('src', ['.ts', '.tsx']).filter((path) => !isTestFile(path));
+    const mentions = srcFiles.flatMap((path) => matchingLines(path, /\/api\/auth\/start/));
+    expect(mentions.map((line) => line.split(':')[0])).toEqual(['src/lib/session.ts']);
+    const definitions = srcFiles.flatMap((path) => matchingLines(path, /function signInHref\b/));
+    expect(definitions).toHaveLength(1);
+  });
+
+  it('api/ holds only the two Vercel files', () => {
+    // "New HTTP routes go in server/, not api/."
+    const handlers = filesUnder('api', ['.ts']).filter((path) => !isTestFile(path));
+    expect(handlers).toEqual(['api/chat.ts', 'api/import.ts']);
+  });
+});
+
+describe('UI text lives only in the catalogs (docs/constitutions/i18n.md, principle 9)', () => {
+  // Words a user reads are never typed into a component. The brand name is
+  // the same in every language.
+  const ALLOWED = new Set(['Sous']);
+  const TEXT_ATTRIBUTES = new Set(['aria-label', 'title', 'placeholder', 'alt']);
+  const hasWord = (text: string) => /\p{L}{2,}/u.test(text);
+
+  function offendersIn(path: string): string[] {
+    const source = ts.createSourceFile(path, read(path), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const out: string[] = [];
+    const report = (node: ts.Node, text: string) => {
+      if (!hasWord(text) || ALLOWED.has(text.trim())) return;
+      const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+      out.push(`${path}:${line + 1}: ${text.trim()}`);
+    };
+    const literalText = (node: ts.Node | undefined): string | undefined =>
+      node !== undefined && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+        ? node.text
+        : undefined;
+    const visit = (node: ts.Node): void => {
+      if (ts.isJsxText(node)) {
+        // `&larr;` and `&#8594;` are symbols, not words.
+        report(node, node.text.replace(/&(?:#\d+|#x[\da-f]+|[a-z]+);/gi, ' '));
+      } else if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
+        const text = literalText(node.expression);
+        if (text !== undefined) report(node, text);
+      } else if (ts.isJsxAttribute(node) && TEXT_ATTRIBUTES.has(node.name.getText(source))) {
+        const init = node.initializer;
+        const text = init !== undefined && ts.isJsxExpression(init) ? literalText(init.expression) : literalText(init);
+        if (text !== undefined) report(node, text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return out;
+  }
+
+  it('no component renders a hardcoded word', () => {
+    const files = filesUnder('src', ['.tsx']).filter((path) => !isTestFile(path));
+    expect(files.length).toBeGreaterThan(30);
+    expect(files.flatMap(offendersIn)).toEqual([]);
   });
 });

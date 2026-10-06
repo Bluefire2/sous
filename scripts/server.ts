@@ -75,13 +75,14 @@ import { syncPull, syncPush, syncSharedPull } from '../server/sync.ts';
 
 type ApiHandler = (req: Request) => Promise<Response>;
 
-interface ApiRoute {
+export interface ApiRoute {
   method: string;
   path: string;
   handler: ApiHandler;
 }
 
-const apiRoutes: ApiRoute[] = [
+/** Exact-path API routes; exported for scripts/server.dispatch.test.ts. */
+export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/chat', handler: withMembership(chatPost) },
   { method: 'POST', path: '/api/import', handler: withMembership(importPost) },
   { method: 'POST', path: '/api/import-feedback', handler: withMembership(importFeedbackPost) },
