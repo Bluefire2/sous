@@ -108,10 +108,10 @@ async function openFeedbackDetails(page: Page, ctx: CaptureContext): Promise<voi
 const TOMATO_SOUP_TEXT = 'Tomato soup\n6 tomatoes\n1 onion\nsalt';
 const GUMBO_BRIEF = 'shrimp gumbo in a pressure cooker for six';
 
-/** Create mode: type the brief and press Write recipe. The mode switch is already on Create. */
+/** Create mode: type the brief and press Generate recipe. The mode switch is already on Create. */
 async function writeRecipe(page: Page, ctx: CaptureContext, brief: string): Promise<void> {
   await page.locator('textarea').fill(brief);
-  await clickButton(page, ctx.t('import.writeRecipe'));
+  await clickButton(page, ctx.t('import.generateRecipe'));
 }
 
 /** A bulk run of three links: one clean, one with a warning, one that fails. */
@@ -325,7 +325,7 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page, ctx) => {
       await clickButton(page, ctx.t('import.modeCreate'));
       await writeRecipe(page, ctx, GUMBO_BRIEF);
-      await page.getByText(ctx.t('import.writingHint'), { exact: true }).waitFor();
+      await page.getByText(ctx.t('import.generatingHint'), { exact: true }).waitFor();
     },
   },
   'import-create-too-long': {

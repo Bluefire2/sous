@@ -22,12 +22,15 @@ normal import preview.
 ## Decisions (owner, 2026-10-05)
 
 - **UX: a mode switch on the Import screen**, not a new screen and not a
-  checkbox on the paste form. Import / Create pills sit under the header.
+  checkbox on the paste form. The mode is `create` in code and in the review
+  state ids; the pill and the button say **Generate**, because "generate" is
+  the one verb that reads as "the AI makes it up" and keeps it apart from
+  Import and from writing a recipe by hand (owner, 2026-10-05). Import / Generate pills sit under the header.
   Create shows a brief textarea, a Search the web checkbox (off by default)
-  and a Write recipe button; photos and bulk are hidden. The result lands in
+  and a Generate recipe button; photos and bulk are hidden. The result lands in
   the same preview with the translate checkbox, Save, and the 👍/👎 row.
   `/import?mode=create` opens on Create; the Library add sheet links to it
-  ("Ask Sous to write one from an idea").
+  ("Generate a recipe from an idea"; the other two read "Import a recipe you already have (link, text, or photos)" and "Start with a blank recipe", so each says what you start with).
 - **Web search is opt-in, and it is a research call before the structured
   call.** The plan was one structured call with the Google Search tool
   (Gemini 3 allows the tool with `responseSchema`), but on
@@ -129,9 +132,9 @@ for the dish (… characters), starting …". The schema table in
   is the paste behaviour.
 - `importHref(collectionId, 'create')`; the Library add sheet's third link.
 - Catalog keys in all four languages: `import.mode*`, `import.placeholderCreate`,
-  `import.createHint`, `import.searchWeb(Hint)`, `import.writeRecipe`,
-  `import.writing(Hint)`, `import.sources`, `import.searchSuggestions`,
-  `importFeedback.includedBrief`, `library.writeFromIdea`, and the four
+  `import.createHint`, `import.searchWeb(Hint)`, `import.generateRecipe`,
+  `import.generating(Hint)`, `import.sources`, `import.searchSuggestions`,
+  `importFeedback.includedBrief`, `library.generateFromIdea`, and the four
   `error.import*` keys.
 - Review states `import-create-idle`, `import-create-preview`,
   `import-create-no-recipe` (`docs/i18n-review/screens.json`,

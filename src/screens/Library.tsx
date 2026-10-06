@@ -1037,7 +1037,7 @@ export default function Library() {
             to={importHref(addCollectionId, 'create')}
             className={`${secondaryBtn} mt-2 block py-3 text-center`}
           >
-            {t('library.writeFromIdea')}
+            {t('library.generateFromIdea')}
           </Link>
           <Link
             to={newRecipeHref(addCollectionId)}

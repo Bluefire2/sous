@@ -900,8 +900,8 @@ export default function ImportScreen() {
             {busy && <SpinnerIcon className="block h-5 w-5 animate-spin" />}
             {mode === 'create'
               ? busy
-                ? t('import.writing')
-                : t('import.writeRecipe')
+                ? t('import.generating')
+                : t('import.generateRecipe')
               : busy
                 ? t('import.extracting')
                 : bulk
@@ -945,7 +945,7 @@ export default function ImportScreen() {
           {busy && !progress && (
             <p className="mt-3 text-center text-sm text-ink-subtle" role="status">
               {mode === 'create'
-                ? t('import.writingHint')
+                ? t('import.generatingHint')
                 : photos.length > 0
                   ? t('import.readingPhotosHint')
                   : t('import.readingHint')}
