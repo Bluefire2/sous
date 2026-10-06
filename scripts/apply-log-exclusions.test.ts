@@ -1,3 +1,8 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { runApplyLogExclusions, SINK_URL, type Sink, type SinkClient } from './apply-log-exclusions.ts';
 import { LINK_TOKEN_EXCLUSION, type LogExclusion } from './logExclusions.ts';
@@ -90,4 +95,31 @@ describe('runApplyLogExclusions', () => {
       expect(q.err).toEqual(['The sink does not have the expected shape after the update. Check it by hand.']);
     });
   }
+});
+
+describe('the CLI', () => {
+  // A credentials path that does not exist makes ADC fail before any network
+  // call. Reaching that error proves the direct-run guard let the program run;
+  // a broken guard exits 0 having done nothing.
+  const scriptsDir = dirname(fileURLToPath(import.meta.url));
+  const run = (script: string, tmp: string) =>
+    spawnSync(process.execPath, [script], {
+      encoding: 'utf8',
+      env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: join(tmp, 'no-such-credentials.json') },
+    });
+
+  it('runs directly and through a symlinked directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'sous-cli-'));
+    try {
+      const link = join(tmp, 'scripts-link');
+      symlinkSync(scriptsDir, link, 'junction');
+      for (const script of [join(scriptsDir, 'apply-log-exclusions.ts'), join(link, 'apply-log-exclusions.ts')]) {
+        const result = run(script, tmp);
+        expect(result.status, script).toBe(1);
+        expect(result.stderr, script).toContain('GOOGLE_APPLICATION_CREDENTIALS');
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

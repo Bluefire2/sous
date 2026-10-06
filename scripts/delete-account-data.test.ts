@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -134,17 +136,36 @@ describe('runDeleteAccountData --apply', () => {
     expect(h.calls).not.toContain(`apply users ${SUB} 42`);
   });
 
-  it('uses the real step order by default', () => {
-    // The live run passes ACCOUNT_DELETION_ORDER; users is last so the profile goes after everything that points at it.
+  it('the real order deletes the profile last', () => {
+    // users goes after everything that points at it. scripts/invariants.test.ts
+    // checks that the order covers every personal collection once.
     expect(ACCOUNT_DELETION_ORDER.at(-1)).toBe('users');
   });
 });
 
 describe('the CLI', () => {
+  const scriptsDir = dirname(fileURLToPath(import.meta.url));
+  const usage = /^Usage: node --env-file=\.env\.local scripts\/delete-account-data\.ts <sub>/;
+  const run = (script: string) =>
+    spawnSync(process.execPath, [script], { encoding: 'utf8', env: { ...process.env, FIRESTORE_EMULATOR_HOST: '' } });
+
   it('still prints the usage and exits 2 with no argument', () => {
-    const script = join(dirname(fileURLToPath(import.meta.url)), 'delete-account-data.ts');
-    const result = spawnSync(process.execPath, [script], { encoding: 'utf8', env: { ...process.env, FIRESTORE_EMULATOR_HOST: '' } });
+    const result = run(join(scriptsDir, 'delete-account-data.ts'));
     expect(result.status).toBe(2);
-    expect(result.stderr).toMatch(/^Usage: node --env-file=\.env\.local scripts\/delete-account-data\.ts <sub>/);
+    expect(result.stderr).toMatch(usage);
+  });
+
+  it('runs when reached through a symlinked directory, instead of silently exiting 0', () => {
+    // A junction on Windows (no admin needed), a directory symlink elsewhere.
+    const tmp = mkdtempSync(join(tmpdir(), 'sous-cli-'));
+    const link = join(tmp, 'scripts-link');
+    try {
+      symlinkSync(scriptsDir, link, 'junction');
+      const result = run(join(link, 'delete-account-data.ts'));
+      expect(result.status).toBe(2);
+      expect(result.stderr).toMatch(usage);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

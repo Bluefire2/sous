@@ -112,19 +112,22 @@ describe('fetchSession', () => {
 
   it('keeps the cached user offline on a 503 or a network failure, never signing out', async () => {
     localStorage.setItem('cook.session', JSON.stringify(user));
+    clearLibraryMock.mockClear();
     respond(503, { error: 'Membership unavailable' });
     expect(await fetchSession()).toEqual({ status: 'offline', user });
+    expect(clearLibraryMock).not.toHaveBeenCalled();
 
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
-    clearLibraryMock.mockClear();
     expect(await fetchSession()).toEqual({ status: 'offline', user });
     expect(clearLibraryMock).not.toHaveBeenCalled();
     expect(localStorage.getItem('cook.session')).not.toBeNull();
   });
 
   it('is offline with no user when the cache is missing or corrupt', async () => {
-    localStorage.setItem('cook.session', '{not json');
+    localStorage.removeItem('cook.session');
     respond(502);
+    expect(await fetchSession()).toEqual({ status: 'offline', user: null });
+    localStorage.setItem('cook.session', '{not json');
     expect(await fetchSession()).toEqual({ status: 'offline', user: null });
     localStorage.setItem('cook.session', JSON.stringify({ sub: 'only-sub' }));
     expect(await fetchSession()).toEqual({ status: 'offline', user: null });
