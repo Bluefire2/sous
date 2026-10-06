@@ -17,12 +17,18 @@
  *
  * Uses GOOGLE_CLOUD_PROJECT and ADC like dev:api, so it targets the real
  * database unless FIRESTORE_EMULATOR_HOST is set.
+ *
+ * `runDeleteAccountData` is the whole program with its I/O passed in, so
+ * `scripts/delete-account-data.test.ts` can run it against fake steps.
  */
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   ACCOUNT_DELETION_ORDER,
   ACCOUNT_DELETION_STEPS,
   deletionRefusal,
   readDeletionSubject,
+  type DeletionStep,
 } from '../server/accountDeletion.ts';
 import { allowedEmails } from '../server/env.ts';
 import { isSafeFirestoreDocumentId } from '../server/grants.ts';
@@ -37,58 +43,107 @@ const REFUSAL_TEXT = {
     'Check the deployed ALLOWED_EMAILS by hand, then pass --not-owner.',
 } as const;
 
-const apply = process.argv.includes('--apply');
-const sub = process.argv.slice(2).find((arg) => !arg.startsWith('--'));
-if (sub === undefined || sub.trim() === '') {
-  console.error('Usage: node --env-file=.env.local scripts/delete-account-data.ts <sub> [--apply] [--not-owner]');
-  process.exit(2);
-}
-// Before any read: a path-like value would address some other document.
-if (!isSafeFirestoreDocumentId(sub)) {
-  console.error(REFUSAL_TEXT['bad-sub']);
-  process.exit(2);
+const USAGE = 'Usage: node --env-file=.env.local scripts/delete-account-data.ts <sub> [--apply] [--not-owner]';
+
+export interface DeleteAccountDataDeps {
+  readSubject: typeof readDeletionSubject;
+  steps: Readonly<Record<string, DeletionStep>>;
+  order: readonly string[];
+  allowedRaw: () => string;
+  now: () => number;
+  log: (line: string) => void;
+  error: (line: string) => void;
 }
 
-const subject = await readDeletionSubject(sub);
-const refusal = deletionRefusal({
-  sub,
-  ...subject,
-  allowedRaw: allowedEmails(),
-  notOwnerConfirmed: process.argv.includes('--not-owner'),
-});
+/** The program. `argv` is the arguments after the script path. Returns the exit code. */
+export async function runDeleteAccountData(
+  argv: readonly string[],
+  deps: DeleteAccountDataDeps,
+): Promise<number> {
+  const apply = argv.includes('--apply');
+  const sub = argv.find((arg) => !arg.startsWith('--'));
+  if (sub === undefined || sub.trim() === '') {
+    deps.error(USAGE);
+    return 2;
+  }
+  // Before any read: a path-like value would address some other document.
+  if (!isSafeFirestoreDocumentId(sub)) {
+    deps.error(REFUSAL_TEXT['bad-sub']);
+    return 2;
+  }
 
-let total = 0;
-for (const name of ACCOUNT_DELETION_ORDER) {
-  for (const line of await ACCOUNT_DELETION_STEPS[name].inventory(sub)) {
-    console.log(`${line.label}: ${line.count}`);
-    total += line.count;
+  const subject = await deps.readSubject(sub);
+  const refusal = deletionRefusal({
+    sub,
+    ...subject,
+    allowedRaw: deps.allowedRaw(),
+    notOwnerConfirmed: argv.includes('--not-owner'),
+  });
+
+  const inventoryTotal = async (print: boolean): Promise<number> => {
+    let total = 0;
+    for (const name of deps.order) {
+      for (const line of await deps.steps[name].inventory(sub)) {
+        if (print) deps.log(`${line.label}: ${line.count}`);
+        total += line.count;
+      }
+    }
+    return total;
+  };
+
+  const total = await inventoryTotal(true);
+
+  if (!apply) {
+    if (refusal !== null) deps.log(`Note: --apply would refuse. ${REFUSAL_TEXT[refusal]}`);
+    deps.log(`${total} to change. Dry run; pass --apply to delete.`);
+    return 0;
+  }
+
+  if (refusal !== null) {
+    deps.error(`Refusing to apply. ${REFUSAL_TEXT[refusal]}`);
+    return 1;
+  }
+
+  const now = deps.now();
+  for (const name of deps.order) {
+    // Each step reads its own data back and throws if any remains.
+    await deps.steps[name].apply(sub, now);
+    deps.log(`${name}: done`);
+  }
+
+  const left = await inventoryTotal(false);
+  if (left > 0) {
+    deps.error(`${left} still found after apply. Run the dry run to see where.`);
+    return 1;
+  }
+  deps.log('Firestore data deleted; none remains. Now delete the photos (README step 5).');
+  return 0;
+}
+
+/**
+ * Node resolves the main module through symlinks but leaves argv[1] as typed,
+ * so compare real paths: run through a symlink, junction, or subst drive, a
+ * plain comparison is false and the script would exit 0 having done nothing.
+ */
+function isDirectRun(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
   }
 }
 
-if (!apply) {
-  if (refusal !== null) console.log(`Note: --apply would refuse. ${REFUSAL_TEXT[refusal]}`);
-  console.log(`${total} to change. Dry run; pass --apply to delete.`);
-  process.exit(0);
+if (isDirectRun()) {
+  const code = await runDeleteAccountData(process.argv.slice(2), {
+    readSubject: readDeletionSubject,
+    steps: ACCOUNT_DELETION_STEPS,
+    order: ACCOUNT_DELETION_ORDER,
+    allowedRaw: allowedEmails,
+    now: () => Date.now(),
+    log: (line) => console.log(line),
+    error: (line) => console.error(line),
+  });
+  process.exit(code);
 }
-
-if (refusal !== null) {
-  console.error(`Refusing to apply. ${REFUSAL_TEXT[refusal]}`);
-  process.exit(1);
-}
-
-const now = Date.now();
-for (const name of ACCOUNT_DELETION_ORDER) {
-  // Each step reads its own data back and throws if any remains.
-  await ACCOUNT_DELETION_STEPS[name].apply(sub, now);
-  console.log(`${name}: done`);
-}
-
-let left = 0;
-for (const name of ACCOUNT_DELETION_ORDER) {
-  for (const line of await ACCOUNT_DELETION_STEPS[name].inventory(sub)) left += line.count;
-}
-if (left > 0) {
-  console.error(`${left} still found after apply. Run the dry run to see where.`);
-  process.exit(1);
-}
-console.log('Firestore data deleted; none remains. Now delete the photos (README step 5).');
