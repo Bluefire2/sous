@@ -699,7 +699,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
 | `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
-| `docs/plans/test-coverage.md` | PR 1 (steps 1–4) merged (#151); PR 2 (steps 5–7, #152) built; steps 8–12 open. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/test-coverage.md` | PR 1 (steps 1–4, #151) and PR 2 (steps 5–7, #152) merged; PR 3 (steps 8–11, #154) built; step 12 is the owner's call. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -719,8 +719,11 @@ path rots silently (`docs/plans/test-mode.md`); the review's use of it is in
 `npm test`. `.github/workflows/ci.yml` runs on PRs and pushes to
 `main`: `npm run build` + `npm test`, a Docker image build booted with no
 cloud credentials and checked by `.github/scripts/smoke-server.sh`, the
-`test-mode` job checked by `testing/smoke.ts`, and
-dependency review. None of it needs secrets, ADC, or production.
+`test-mode` job checked by `testing/smoke.ts` (reads, MCP, then the write
+checks in `testing/writeSmoke.ts`), `testing/deletionCheck.ts` (the real
+`scripts/delete-account-data.ts` on the viewer persona), and
+`testing/logSweep.ts` (no email, token, or query string in the server log),
+and dependency review. None of it needs secrets, ADC, or production.
 `scripts/invariants.test.ts` turns rules in this file into failing tests; follow
 the rule rather than loosening the check. `evals/pageFixtures.test.ts` runs the
 offline extraction step over every cached page and needs an entry for each new

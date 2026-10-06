@@ -94,8 +94,20 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
         run: node testing/test-server.ts --static --port 4173 > test-server.log 2>&1 &
+      # Reads, MCP, then writes (testing/writeSmoke.ts); the writes run last.
       - name: Smoke test
         run: node testing/smoke.ts http://localhost:4173
+      # The real scripts/delete-account-data.ts on the viewer persona. Removes
+      # the viewer for good, so it runs after every other check.
+      - name: Account deletion
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+        run: node testing/deletionCheck.ts http://localhost:4173
+      # No server log line may hold an email, a token, or a query string.
+      # Also after a failed check: that run's log is the one most worth sweeping.
+      - name: Log sweep
+        if: ${{ !cancelled() }}
+        run: node testing/logSweep.ts test-server.log
       - name: Logs
         if: always()
         run: |
