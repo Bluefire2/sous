@@ -1,7 +1,7 @@
 # Test coverage for CI
 
-Status: PR 1 (steps 1 to 4) and PR 2 (steps 5 to 7) built 2026-10-05; steps
-8 to 12 not started. Written from a survey of the suite
+Status: PR 1 (steps 1 to 4), PR 2 (steps 5 to 7), and PR 3 (steps 8 to 11)
+built 2026-10-05; step 12 is the owner's call. Written from a survey of the suite
 (149 test files, 2593 cases, about 13 s under `npm test`) and of
 `.github/workflows/ci.yml`. Every feature PR in the last eight commits shipped
 with tests; the gaps below are structural, not per-feature.
@@ -357,6 +357,15 @@ All steps are `[core]`; nothing touches a screen or catalog.
      and `/api/admin/requests` lists the sub under denied.
    Check: `node testing/smoke.ts http://localhost:3001` locally against a
    fresh `npm run dev:test` passes every phase; the CI job passes.
+
+   **Found while building.** A stale put answers `applied: false` with the
+   stored row and no `reason` (a last-write-wins loss is not a discarded
+   write); the check asserts that. The editor role is enforced twice, in
+   `orchestrateSharedRecipePut` and in `planSharedRecipePut`, so removing
+   one check still refuses a viewer; removing both fails three write
+   checks. Admin revoke takes effect at once in one process (the decision
+   clears the membership cache); the 65-second poll only bounds it. Locally
+   the smoke with writes takes about 16 s and the deletion check about 5 s.
 
 9. **[core] `testing/deletionCheck.ts` and its CI step.** A separate program,
    `node testing/deletionCheck.ts http://localhost:4173`, run by the job
