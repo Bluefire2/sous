@@ -13,12 +13,13 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readBoundedText } from '../server/membership.ts';
 import * as sync from '../server/sync.ts';
 import { apiRoutes, createRequestListener } from './server.ts';
 
 vi.mock('../server/sync.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../server/sync.ts')>();
-  return { ...actual, syncPull: vi.fn(actual.syncPull) };
+  return { ...actual, syncPull: vi.fn(actual.syncPull), syncPush: vi.fn(actual.syncPush) };
 });
 
 /**
@@ -319,4 +320,56 @@ describe('a handler that throws', () => {
     expect((await send(apiBase, 'GET', '/api/sync/pull')).status).toBe(401);
     error.mockRestore();
   });
+});
+
+describe('a client that hangs up mid-upload', () => {
+  /** Sends a few KB of a promised 200 000-byte body, then resets the socket. */
+  function abandonUpload(base: string, path: string): void {
+    const { hostname, port } = new URL(base);
+    const req = httpRequest({
+      hostname,
+      port,
+      path,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '200000' },
+    });
+    req.on('error', () => {});
+    req.write(`{"pastedText":"${'x'.repeat(4000)}`);
+    setTimeout(() => req.destroy(), 50);
+  }
+
+  const readers: [string, (req: Request) => Promise<unknown>][] = [
+    ['readBoundedText', (req) => readBoundedText(req, 1_000_000)],
+    // Any other reader (chat keeps its own copy) rejects with Node's ECONNRESET.
+    ['Request.text', (req) => req.text()],
+  ];
+
+  for (const [name, read] of readers) {
+    it(`is neither logged nor answered with a 500 when the route reads with ${name}`, async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let thrown: unknown;
+      const handled = new Promise<void>((resolve) => {
+        vi.mocked(sync.syncPush).mockImplementationOnce(async (req) => {
+          try {
+            await read(req);
+            return new Response(null, { status: 204 });
+          } catch (err) {
+            thrown = err;
+            throw err;
+          } finally {
+            resolve();
+          }
+        });
+      });
+      abandonUpload(apiBase, '/api/sync/push');
+      await handled;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // The read did fail; the dispatcher stayed quiet about it.
+      expect(thrown).toBeInstanceOf(Error);
+      expect(error).not.toHaveBeenCalled();
+      expect((await send(apiBase, 'POST', '/api/sync/push', { body: '' })).status).toBe(401);
+      error.mockRestore();
+    });
+  }
 });

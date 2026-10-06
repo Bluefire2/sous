@@ -276,6 +276,10 @@ async function handleRequest(
 
     sendText(nodeReq, nodeRes, 404, 'Not found');
   } catch (err) {
+    if (isRequestAbort(nodeReq)) {
+      nodeRes.destroy();
+      return;
+    }
     console.error(err);
     if (nodeRes.headersSent) {
       nodeRes.destroy();
@@ -288,6 +292,17 @@ async function handleRequest(
     }
     nodeRes.end('Internal error');
   }
+}
+
+/**
+ * Whether the client closed the connection before its request finished
+ * arriving. A route that throws then failed on the body it was reading
+ * (`readBoundedText`'s `RequestBodyError`, or Node's ECONNRESET "aborted"
+ * from another reader): the client's doing, with nobody left to answer, so
+ * the dispatcher does not log it or send a 500.
+ */
+export function isRequestAbort(req: Pick<IncomingMessage, 'destroyed' | 'complete'>): boolean {
+  return req.destroyed && !req.complete;
 }
 
 /** `/c/join` is the confirm step; any other `/c/...` is a token landing (bad shapes render the generic page). */

@@ -1,6 +1,6 @@
 import { PassThrough, Readable, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { pipeResponseBody } from './server.ts';
+import { isRequestAbort, pipeResponseBody } from './server.ts';
 
 function goneClient(): Writable {
   const client = new Writable({
@@ -72,5 +72,16 @@ describe('pipeResponseBody', () => {
     }
     expect(uncaught).toEqual([]);
     expect(upstream.destroyed).toBe(true);
+  });
+});
+
+describe('isRequestAbort', () => {
+  it('is true only for a request destroyed before it finished arriving', () => {
+    expect(isRequestAbort({ destroyed: true, complete: false })).toBe(true);
+    // The whole request arrived; whatever failed after that is the server's.
+    expect(isRequestAbort({ destroyed: true, complete: true })).toBe(false);
+    // Still arriving, still connected.
+    expect(isRequestAbort({ destroyed: false, complete: false })).toBe(false);
+    expect(isRequestAbort({ destroyed: false, complete: true })).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import {
   resetImportFeedbackRateLimitForTest,
   type ImportFeedbackDeps,
 } from './importFeedback.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
 
 const UUID = '00000000-0000-4000-8000-000000000000';
 const NOW = 1_700_000_000_000;
@@ -273,19 +274,47 @@ describe('importFeedbackPost', () => {
 
   it('rethrows anything unexpected without its message', async () => {
     const { deps } = fakeDeps();
-    const req = new Request('http://localhost/api/import-feedback', {
-      method: 'POST',
-      body: new ReadableStream({
-        start(controller) {
-          controller.error(new Error('secret text'));
-        },
-      }),
-      duplex: 'half',
-    } as RequestInit);
-    const err = await importFeedbackPost(req, CTX, deps).catch((e: unknown) => e);
+    deps.now = () => {
+      throw new Error('secret text');
+    };
+    const err = await importFeedbackPost(
+      request({ id: UUID, trigger: 'failed', via: 'url' }),
+      CTX,
+      deps,
+    ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message.startsWith('Import failed:')).toBe(true);
     expect((err as Error).message).not.toContain('secret text');
+    expect(JSON.parse(loggedLines()[0])).toMatchObject({ status: 500 });
+  });
+
+  it('answers 400 when the client hangs up mid-upload, never a 500 or a throw', async () => {
+    const { deps, create } = fakeDeps();
+    const response = await importFeedbackPost(
+      abortedRequest('http://localhost/api/import-feedback'),
+      CTX,
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'feedback-bad-request' });
+    expect(create).not.toHaveBeenCalled();
+    const lines = loggedLines();
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toStrictEqual({
+      event: 'import_feedback',
+      sub: 'sub-1',
+      status: 400,
+      ms: expect.any(Number),
+    });
+    expect(lines[0]).not.toContain('SECRET');
+  });
+
+  it('still treats a body it cannot start reading as a throw, not an abort', async () => {
+    const { deps } = fakeDeps();
+    const req = request({ id: UUID, trigger: 'failed', via: 'url' });
+    req.body?.getReader();
+    const err = await importFeedbackPost(req, CTX, deps).catch((e: unknown) => e);
+    expect((err as Error).message).toBe('Import failed: TypeError; message withheld');
     expect(JSON.parse(loggedLines()[0])).toMatchObject({ status: 500 });
   });
 

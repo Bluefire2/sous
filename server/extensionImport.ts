@@ -13,7 +13,7 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { readBoundedText, requireHeaderMember } from './membership.ts';
+import { RequestBodyError, readBoundedText, requireHeaderMember } from './membership.ts';
 import { recipePutFromExtraction } from './recipeFromExtraction.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
@@ -123,8 +123,9 @@ async function importAndSave(
   let raw: string | null;
   try {
     raw = await readBoundedText(req, MAX_BODY_BYTES);
-  } catch {
-    entry.outcome = 'bad_request';
+  } catch (err) {
+    // `RequestBodyError` is the client going away mid-upload.
+    entry.outcome = err instanceof RequestBodyError ? 'aborted' : 'bad_request';
     return fail(req, 'bad-request', 'Bad request', 400);
   }
   if (raw === null || raw.length > MAX_BODY_CHARS) {

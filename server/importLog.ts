@@ -25,9 +25,12 @@ export type ImportVia = 'url' | 'paste' | 'photos' | 'extension';
 /**
  * `ImportOutcome` kinds, plus the ways a request ends before or after the
  * pipeline. `threw` means the Gemini call (or something after it) threw.
+ * `aborted` means the request body stopped before it all arrived, which is
+ * the client going away mid-upload (`RequestBodyError`), not a server failure.
  */
 export type ImportLogOutcome =
   | ImportOutcome['kind']
+  | 'aborted'
   | 'bad_request'
   | 'too_large'
   | 'bad_language'
