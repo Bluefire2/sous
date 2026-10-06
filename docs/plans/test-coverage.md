@@ -414,6 +414,17 @@ All steps are `[core]`; nothing touches a screen or catalog.
     floor noisy, and a floor on the server and client lib directories is a
     later decision with data.
 
+    **Built** (the owner asked for it on 2026-10-06). `@vitest/coverage-v8`
+    5.0.2, `npm run test:coverage` (`vitest run --coverage`), coverage
+    config in `vitest.config.ts` over `server/`, `src/lib/`, `scripts/`,
+    and `api/` (`.ts` only, tests excluded), output in the gitignored
+    `coverage/`. The `check` job runs it in place of `npm test` (same tests)
+    and `scripts/coverageSummary.ts` writes totals, areas, and the ten
+    least-covered files of 20 lines or more to the job summary. First run:
+    74.0% of lines, 73.5% of branches; `scripts/` lowest at 50.1% (the
+    read-only operator scripts), `api/` highest at 93.1%. The run takes about
+    24 s locally against about 13 s without coverage.
+
 ## Delivery
 
 Three PRs, each green on its own:

@@ -149,6 +149,7 @@ may fail. Use `http://localhost:5173`.
 
 ```
 npm test          # Vitest over src/ and server/
+npm run test:coverage  # the same, plus a coverage report in coverage/ (no thresholds)
 npm run test:import  # live Gemini paste-to-recipe evals; needs GEMINI_API_KEY
 npm run build     # tsc -b && vite build — the only type gate on server/
 ```
@@ -717,7 +718,7 @@ is shared infrastructure for every end-to-end test, and an unexercised test
 path rots silently (`docs/plans/test-mode.md`); the review's use of it is in
 `docs/plans/i18n-review-ci.md`. Do not add the emulator to another job or to
 `npm test`. `.github/workflows/ci.yml` runs on PRs and pushes to
-`main`: `npm run build` + `npm test`, a Docker image build booted with no
+`main`: `npm run build` + `npm run test:coverage` (`npm test` plus a coverage report on the job summary, no thresholds), a Docker image build booted with no
 cloud credentials and checked by `.github/scripts/smoke-server.sh`, the
 `test-mode` job checked by `testing/smoke.ts` (reads, MCP, then the write
 checks in `testing/writeSmoke.ts`), `testing/deletionCheck.ts` (the real

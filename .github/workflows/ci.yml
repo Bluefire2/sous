@@ -27,7 +27,12 @@ jobs:
       - run: npm ci
       # tsc -b && vite build: the PWA and Tailwind build, not only types.
       - run: npm run build
-      - run: npm test
+      # npm test with a coverage report (docs/plans/test-coverage.md, step 12).
+      # The same tests; the report has no thresholds and cannot fail the job.
+      - run: npm run test:coverage
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != '' }}
+        run: node scripts/coverageSummary.ts coverage/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
 
   # Builds the production image and boots it with no cloud credentials.
   # Catches what tsc cannot: Node type-stripping and import resolution
