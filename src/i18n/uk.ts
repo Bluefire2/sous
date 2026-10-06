@@ -83,7 +83,7 @@ export const uk: Messages = {
   'library.languageShort': 'УКР',
   'library.addRecipe': 'Додати рецепт',
   'library.addRecipeTitle': 'Додати рецепт',
-  'library.importFromLink': 'Імпортувати рецепт, який у вас уже є (посилання, текст або фото)',
+  'library.importFromLink': 'Імпортувати рецепт',
   'library.writeFromScratch': 'Почати з порожнього рецепта',
   'library.generateFromIdea': 'Згенерувати рецепт з ідеї',
   'library.deleteRecipeTitle': 'Видалити «{title}»?',

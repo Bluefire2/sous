@@ -77,7 +77,7 @@ export const zhHans: Messages = {
   'library.languageShort': '中文',
   'library.addRecipe': '添加食谱',
   'library.addRecipeTitle': '添加食谱',
-  'library.importFromLink': '导入已有的食谱（链接、文本或照片）',
+  'library.importFromLink': '导入食谱',
   'library.writeFromScratch': '从空白食谱开始',
   'library.generateFromIdea': '根据想法生成食谱',
   'library.deleteRecipeTitle': '删除「{title}」？',

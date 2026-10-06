@@ -98,7 +98,7 @@ export const en = {
   'library.languageShort': 'EN',
   'library.addRecipe': 'Add recipe',
   'library.addRecipeTitle': 'Add a recipe',
-  'library.importFromLink': 'Import a recipe you already have (link, text, or photos)',
+  'library.importFromLink': 'Import a recipe',
   'library.writeFromScratch': 'Start with a blank recipe',
   'library.generateFromIdea': 'Generate a recipe from an idea',
   'library.deleteRecipeTitle': 'Delete “{title}”?',

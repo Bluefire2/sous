@@ -82,7 +82,7 @@ export const ru: Messages = {
   'library.languageShort': 'РУС',
   'library.addRecipe': 'Добавить рецепт',
   'library.addRecipeTitle': 'Добавить рецепт',
-  'library.importFromLink': 'Импортировать рецепт, который у вас уже есть (ссылка, текст или фото)',
+  'library.importFromLink': 'Импортировать рецепт',
   'library.writeFromScratch': 'Начать с пустого рецепта',
   'library.generateFromIdea': 'Сгенерировать рецепт из идеи',
   'library.deleteRecipeTitle': 'Удалить «{title}»?',

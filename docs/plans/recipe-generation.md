@@ -30,7 +30,7 @@ normal import preview.
   and a Generate recipe button; photos and bulk are hidden. The result lands in
   the same preview with the translate checkbox, Save, and the 👍/👎 row.
   `/import?mode=create` opens on Create; the Library add sheet links to it
-  ("Generate a recipe from an idea"; the other two read "Import a recipe you already have (link, text, or photos)" and "Start with a blank recipe", so each says what you start with).
+  ("Generate a recipe from an idea"; the other two read "Import a recipe" and "Start with a blank recipe". A longer import label naming link, text, and photos overfilled the button, owner 2026-10-06).
 - **Web search is opt-in, and it is a research call before the structured
   call.** The plan was one structured call with the Google Search tool
   (Gemini 3 allows the tool with `responseSchema`), but on
