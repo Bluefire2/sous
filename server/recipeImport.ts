@@ -301,11 +301,13 @@ const RECIPE_SCHEMA: Schema = {
     },
   },
   required: ['title', 'servings', 'ingredientSections', 'steps', 'tags'],
-  // Times early and a string last. Left to itself the model writes the
-  // required fields first and the optional ones after them, so `prepMinutes`
-  // came last and sometimes ran on (20.000000000000004, or zeros until
-  // MAX_TOKENS, which is a `parse_error`), and some runs dropped
-  // `description`, `notes` and `lang` (evals/EXPERIMENTS.md, 2026-10-06).
+  // Times before the required lists, so a free-form number is never the last
+  // token: the lists always follow it, and the optional `notes` and `lang`
+  // after them are strings. Left to itself the model writes the required
+  // fields first and the optional ones after them, so `prepMinutes` came last
+  // and sometimes ran on (20.000000000000004, or zeros until MAX_TOKENS,
+  // which is a `parse_error`), and some runs dropped `description`, `notes`
+  // and `lang` (evals/EXPERIMENTS.md, 2026-10-06).
   // `PAGE_RECIPE_SCHEMA` appends its two booleans to this order.
   propertyOrdering: [
     'title',
@@ -601,6 +603,21 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * A duration as whole minutes, or `undefined` to drop it. A negative value is
+ * dropped before rounding, so -0.4 never becomes -0. A number the model let
+ * run on reads as a whole number (20.000000000000004 is 20), but a positive
+ * value that would round to 0 (5.000000000000001e-05) is dropped: no time is
+ * better than a wrong "0 min". An exact 0 is kept, for a dish with no cooking
+ * (evals/EXPERIMENTS.md, 2026-10-06).
+ */
+function wholeMinutes(value: unknown): number | undefined {
+  const minutes = finiteNumber(value);
+  if (minutes === undefined || minutes < 0) return undefined;
+  const rounded = Math.round(minutes);
+  return rounded === 0 && minutes > 0 ? undefined : rounded;
+}
+
 function normalizeIngredient(item: unknown): ImportedIngredient | undefined {
   if (!isPlainObject(item)) return undefined;
   const itemText = nonEmptyString(item.item);
@@ -685,14 +702,11 @@ export function normalizeImportedRecipe(raw: unknown): ImportedRecipe | null {
   const notes = nonEmptyString(raw.notes);
   if (notes !== undefined) recipe.notes = notes;
 
-  // Whole minutes: a number the model let run on (20.000000000000004,
-  // 5.000000000000001e-05) reads as the time it meant, not as a float in the
-  // preview (evals/EXPERIMENTS.md, 2026-10-06).
-  const prepMinutes = finiteNumber(raw.prepMinutes);
-  if (prepMinutes !== undefined && prepMinutes >= 0) recipe.prepMinutes = Math.round(prepMinutes);
+  const prepMinutes = wholeMinutes(raw.prepMinutes);
+  if (prepMinutes !== undefined) recipe.prepMinutes = prepMinutes;
 
-  const cookMinutes = finiteNumber(raw.cookMinutes);
-  if (cookMinutes !== undefined && cookMinutes >= 0) recipe.cookMinutes = Math.round(cookMinutes);
+  const cookMinutes = wholeMinutes(raw.cookMinutes);
+  if (cookMinutes !== undefined) recipe.cookMinutes = cookMinutes;
 
   const lang = normalizeLang(raw.lang);
   if (lang !== undefined) recipe.lang = lang;

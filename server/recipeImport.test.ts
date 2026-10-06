@@ -431,17 +431,26 @@ describe('normalizeImportedRecipe', () => {
     expect(recipe).toMatchObject({ cookMinutes: 0 });
   });
 
-  it('rounds durations to whole minutes, so a number that ran on reads as the time it meant', () => {
+  it('rounds durations to whole minutes', () => {
     const cases: [number, number][] = [
       [20.000000000000004, 20],
-      [5.000000000000001e-5, 0],
       [12.5, 13],
       [7.4, 7],
+      [0.5, 1],
       [45, 45],
+      [0, 0],
     ];
     for (const [raw, minutes] of cases) {
       const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
       expect(recipe, String(raw)).toMatchObject({ prepMinutes: minutes, cookMinutes: minutes });
+    }
+  });
+
+  it('drops a duration that would round to 0 from a positive or negative value', () => {
+    for (const raw of [5.000000000000001e-5, 0.4, -0.4]) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
+      expect(recipe, String(raw)).not.toHaveProperty('cookMinutes');
     }
   });
 });
@@ -1314,11 +1323,13 @@ describe('generateFromBrief', () => {
     expect('mediaResolution' in config).toBe(false);
   });
 
-  it('orders every field of its schema, times before the lists and no number last', async () => {
+  it('orders every field of its schema, times before the lists, and photos get the same order', async () => {
     const generate = fakeImportDeps(JSON.stringify(GENERATED));
     await generateFromBrief(BRIEF, generate.deps, { search: false });
     const page = fakeImportDeps(JSON.stringify(MINIMAL));
     await importFromSource('soup', page.deps);
+    const photo = fakeImportDeps(JSON.stringify(MINIMAL));
+    await importFromImages([{ mediaType: 'image/jpeg', base64: 'AAAA' }], '', photo.deps);
     type OrderedSchema = {
       properties: Record<string, { type: string }>;
       propertyOrdering: string[];
@@ -1330,6 +1341,8 @@ describe('generateFromBrief', () => {
     expect(order.indexOf('prepMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
     expect(order.indexOf('cookMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
     expect(schema.properties[order[order.length - 1]].type).toBe('STRING');
+    // The photo request is the one the image-import constitution protects; check it directly.
+    expect((photo.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering).toEqual(order);
     // The page schema keeps the same order and only appends its two booleans.
     const pageOrder = (page.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering;
     expect(pageOrder).toEqual([...order, 'instructionsOnPage', 'ingredientsOnPage']);

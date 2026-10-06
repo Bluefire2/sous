@@ -30,9 +30,12 @@ summary, approach A.
   `PAGE_RECIPE_SCHEMA` now builds its order from it plus its two booleans;
   the resulting list is the same as before, so the page and paste request
   is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
-  `cookMinutes` to whole minutes for every import path (negative values are
-  still dropped before rounding). Prompts, model settings, retries and
-  goldens are unchanged.
+  `cookMinutes` to whole minutes for every import path. Negative values are
+  still dropped before rounding, and a positive value that would round to 0
+  (such as 5.000000000000001e-05) is dropped, not shown as "0 min"; an
+  exact 0 is kept. Prompts, model settings, retries and goldens are
+  unchanged. Commits `21a5a48`, then the review follow-up that added the
+  drop rule (a normalizer change only; no eval reads minutes).
 - Reason (not fixture-specific): the 2026-10-01 rule that no free-form
   number should be the last token of the object, which only the page schema
   followed. Without an order the model writes the required fields, then
@@ -51,13 +54,13 @@ summary, approach A.
     `MAX_TOKENS` (3,241 output tokens, `parse_error`). 5/16 had no
     `description`, `notes` or `lang` (2 without search, 3 with), including
     the parsed runaway.
-  - After: 16/16 `STOP` in the schema order, raw times all integers, and
+  - After (`21a5a48`): 16/16 `STOP` in the schema order, raw times all integers, and
     `description`, `notes` and `lang` present in 16/16.
 - Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per side
 - Before (`33c0c16`): dev 11/15 (blueberry-muffins 3/3, choc-pie-tea-towel
   3/3, hundred-good-cookies 3/3, lemon-tea-bread 2/3, sweet-sour-pork 0/3),
   holdout 15/15; every A run `STOP`, calls 1.
-- After: dev 14/15 (blueberry-muffins 3/3, choc-pie-tea-towel 3/3,
+- After (`21a5a48`): dev 14/15 (blueberry-muffins 3/3, choc-pie-tea-towel 3/3,
   hundred-good-cookies 3/3, lemon-tea-bread 3/3, sweet-sour-pork 2/3),
   holdout 15/15; every A run `STOP`, calls 1. Approach B sends the page
   schema, whose request did not change: dev 9/15 → 9/15, holdout
