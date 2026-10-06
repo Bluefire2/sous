@@ -288,6 +288,27 @@ export const MOCKS = {
   })),
   /** No recipe on the page: 422 `import-no-recipe`. */
   importNoRecipe: importMock(() => NO_RECIPE),
+  /** A recipe written from a brief with Search the web on: clean, in the UI language, with two grounding sources. */
+  importGenerated: importMock((request) => {
+    const outcome = importOutcome(request, { lang: 'ui' });
+    return {
+      ...outcome,
+      body: {
+        ...(outcome.body as Record<string, unknown>),
+        grounding: {
+          sources: [
+            { title: 'Spring pea soup, the classic way', url: 'https://example.com/spring-pea-soup' },
+            { title: 'Pea soup in a pressure cooker', url: 'https://example.org/pressure-cooker-pea-soup' },
+          ],
+        },
+      },
+    };
+  }),
+  /** The brief was not about food: 422 `import-no-recipe-brief`. */
+  importBriefNoRecipe: importMock(() => ({
+    status: 422,
+    body: { error: "Couldn't make a recipe from that — describe a dish.", code: 'import-no-recipe-brief' },
+  })),
   /** Bulk rows by URL: `…/check` warns, `…/broken` fails, anything else is clean. */
   importBulk: importMock((request) => {
     const url = typeof request.url === 'string' ? request.url : '';

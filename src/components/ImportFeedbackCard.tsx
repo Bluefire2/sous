@@ -134,6 +134,11 @@ export default function ImportFeedbackCard({
               {t('importFeedback.includedPaste', { count: summary.chars, preview: summary.preview })}
             </li>
           )}
+          {summary.kind === 'brief' && (
+            <li>
+              {t('importFeedback.includedBrief', { count: summary.chars, preview: summary.preview })}
+            </li>
+          )}
           {summary.kind === 'photos' && <li>{t('importFeedback.includedPhotos')}</li>}
           <li>{t('importFeedback.includedDetails')}</li>
         </ul>

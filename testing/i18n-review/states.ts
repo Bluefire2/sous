@@ -106,6 +106,13 @@ async function openFeedbackDetails(page: Page, ctx: CaptureContext): Promise<voi
 }
 
 const TOMATO_SOUP_TEXT = 'Tomato soup\n6 tomatoes\n1 onion\nsalt';
+const GUMBO_BRIEF = 'shrimp gumbo in a pressure cooker for six';
+
+/** Create mode: type the brief and press Write recipe. The mode switch is already on Create. */
+async function writeRecipe(page: Page, ctx: CaptureContext, brief: string): Promise<void> {
+  await page.locator('textarea').fill(brief);
+  await clickButton(page, ctx.t('import.writeRecipe'));
+}
 
 /** A bulk run of three links: one clean, one with a warning, one that fails. */
 async function runBulk(page: Page, ctx: CaptureContext): Promise<void> {
@@ -278,6 +285,36 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page, ctx) => {
       // The label holds the hint too, so the name only starts with "Bulk import".
       await page.getByRole('checkbox', { name: ctx.t('import.bulk') }).check();
+    },
+  },
+  'import-create-idle': {
+    persona: 'member',
+    path: '/import',
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).waitFor();
+    },
+  },
+  'import-create-preview': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importGenerated'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).check();
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('import.sources'), { exact: true }).first().waitFor();
+    },
+  },
+  'import-create-no-recipe': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importBriefNoRecipe'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, 'what is the weather tomorrow');
+      await page.getByText(ctx.t('error.importNoRecipeBrief'), { exact: true }).waitFor();
+      await page.getByText(ctx.t('importFeedback.heading'), { exact: true }).first().waitFor();
     },
   },
   'import-preview': { persona: 'member', path: '/import', mocks: ['importClean'], reach: extractClean },

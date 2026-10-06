@@ -1034,6 +1034,12 @@ export default function Library() {
             {t('library.importFromLink')}
           </Link>
           <Link
+            to={importHref(addCollectionId, 'create')}
+            className={`${secondaryBtn} mt-2 block py-3 text-center`}
+          >
+            {t('library.writeFromIdea')}
+          </Link>
+          <Link
             to={newRecipeHref(addCollectionId)}
             className={`${secondaryBtn} mt-2 block py-3 text-center`}
           >

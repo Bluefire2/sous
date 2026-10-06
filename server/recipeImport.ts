@@ -1,10 +1,13 @@
 /**
- * Recipe import: page HTML, pasted text, or photos in, a saveable recipe draft out.
+ * Recipe import: page HTML, pasted text, photos, or an idea for a dish in, a
+ * saveable recipe draft out.
  *
  * The one pipeline behind `POST /api/import` (`server/importRoute.ts`),
  * `POST /api/extension/import` (`server/extensionImport.ts`) and the live
- * import evals (`evals/recipeImport.eval.ts`). Callers enter through
- * `importFromHtml`, `importFromSource`, or `importFromImages`. Nothing here
+ * import evals (`evals/recipeImport.eval.ts`, `evals/recipeGenerate.eval.ts`).
+ * Callers enter through `importFromHtml`, `importFromSource`,
+ * `importFromImages`, or `generateFromBrief` (the model writes the recipe
+ * from a short brief, `docs/plans/recipe-generation.md`). Nothing here
  * knows about HTTP: routes map `ImportOutcome` / `PageFetchOutcome` to statuses
  * and copy. The Gemini client and model are passed in; `recipeImportDepsFromEnv`
  * is the only place that reads the environment. Translation uses the injected
@@ -12,7 +15,13 @@
  *
  * Photo import is bound by `docs/constitutions/image-import.md`.
  */
-import { GoogleGenAI, MediaResolution, Type, type Schema } from '@google/genai';
+import {
+  GoogleGenAI,
+  MediaResolution,
+  Type,
+  type GroundingMetadata,
+  type Schema,
+} from '@google/genai';
 import {
   checkImport,
   groundingCorpus,
@@ -25,6 +34,7 @@ import {
 } from './importChecks.ts';
 import { thrownStatus } from './importLog.ts';
 import {
+  MIN_STEPS,
   isBlockingWarning,
   type ImportWarning,
   type ImportWarningCode,
@@ -122,6 +132,11 @@ export const MAX_IMPORT_RETRIES = 0;
 /** No new attempt starts after this long, so one bulk row cannot stall the batch. */
 export const IMPORT_RETRY_DEADLINE_MS = 40_000;
 
+/** Longest brief `generateFromBrief` accepts; the route rejects longer ones, the client caps the textarea. */
+export const MAX_GENERATE_BRIEF_CHARS = 2000;
+/** Grounding sources kept on a generated recipe. */
+export const MAX_GENERATE_SOURCES = 10;
+
 export const IMPORT_BAD_LANGUAGE_CODE = 'import-bad-language';
 export const IMPORT_BAD_LANGUAGE_ERROR = 'That language is not supported.';
 
@@ -163,6 +178,25 @@ export interface ImportOutcomeLog {
   errorStatus?: number;
 }
 
+/** A page Gemini grounded a generated recipe on. */
+export interface GenerateSource {
+  title: string;
+  url: string;
+}
+
+/** What Google Search grounding reported for one `generateFromBrief` call. */
+export interface GenerateGrounding {
+  /** Distinct http(s) pages, in the order reported, at most `MAX_GENERATE_SOURCES`. */
+  sources: GenerateSource[];
+  /**
+   * Google's Search Suggestions snippet (`searchEntryPoint.renderedContent`).
+   * Google's terms require it to be shown with the result, as provided.
+   */
+  searchSuggestions?: string;
+  /** How many searches the model ran. For the log line; never the queries themselves. */
+  queries: number;
+}
+
 export type ImportOutcome =
   | {
       kind: 'ok';
@@ -170,6 +204,8 @@ export type ImportOutcome =
       translation?: ImportTranslation;
       /** Computed on the original extraction, before translation. May be empty. */
       warnings: ImportWarning[];
+      /** `generateFromBrief` with search on, when Google reported anything. */
+      grounding?: GenerateGrounding;
       log?: ImportOutcomeLog;
     }
   /** Nothing to send; Gemini is not called. */
@@ -762,12 +798,7 @@ async function extractOnce(
     });
     text = result.text;
   } catch (err) {
-    // Only a numeric status is kept from the error: SDK messages can echo the request.
-    log.attempts.push({ result: 'threw', codes: [] });
-    const status = thrownStatus(err);
-    if (status !== undefined) log.errorStatus = status;
-    else delete log.errorStatus;
-    return { kind: 'model_error' };
+    return noteThrow(err, log);
   }
   const read = readModelText(text);
   if (read.kind !== 'ok') {
@@ -787,6 +818,18 @@ async function extractOnce(
     codes: warnings.map((w) => w.code),
   });
   return { kind: 'ok', recipe: read.recipe, warnings, failureClass };
+}
+
+/**
+ * Records a thrown Gemini call on `log` and returns the `model_error` attempt.
+ * Only a numeric status is kept from the error: SDK messages can echo the request.
+ */
+function noteThrow(err: unknown, log: ImportOutcomeLog): { kind: 'model_error' } {
+  log.attempts.push({ result: 'threw', codes: [] });
+  const status = thrownStatus(err);
+  if (status !== undefined) log.errorStatus = status;
+  else delete log.errorStatus;
+  return { kind: 'model_error' };
 }
 
 function imageImportPrompt(extraText: string): string {
@@ -848,6 +891,165 @@ export async function importFromImages(
   // Photo import runs no checks (constitution `image-import.md`, principle 1).
   const finished = await finishImport(read.recipe, translateTo, deps);
   return { ...finished, warnings: [] };
+}
+
+/**
+ * The prompt for a recipe written from an idea. It is the opposite of
+ * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
+ * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
+ * exercises it live; `server/recipeImport.test.ts` pins its key phrases.
+ * With `withNotes`, the research call's notes follow the request.
+ */
+function generatePrompt(withNotes: boolean): string {
+  const fillIn =
+    'Fill in the ingredients with quantities and the method as clear numbered steps from your knowledge of cooking.' +
+    (withNotes
+      ? ' Notes from a web search follow the request: combine what they say in your own words, prefer them where they disagree with your memory, and never copy one page\'s recipe.'
+      : '');
+  return [
+    'The request below is an idea for a dish, not a finished recipe. Write a complete recipe that someone can cook from, and save it.',
+    fillIn,
+    'Keep every constraint the request states: equipment, diet, cuisine, ingredients to use or avoid, servings, time.',
+    'Convert fractions to decimals for quantities. Give realistic prep and cook minutes. Set servings to what the request says; otherwise 4.',
+    'Write in the language the request is written in, and set lang to it.',
+    'Put a short description of the dish in description, and tips or variations in notes.',
+    'If the request is not about something that can be cooked or eaten, save a recipe with the title "NOT_A_RECIPE".',
+  ].join('\n');
+}
+
+/**
+ * The research call that runs before the structured call when search is on.
+ * Measured 2026-10-05 (`evals/EXPERIMENTS.md`): with the Google Search tool on
+ * the structured call itself, the model never searched for a known dish (0 of
+ * 17 runs, however firmly the prompt asked), but a call framed as research
+ * searched every time (3 of 3). So the search happens here, as free text,
+ * and the structured call writes from these notes.
+ */
+function researchPrompt(request: string): string {
+  return (
+    'Use Google Search to find at least three published recipes that match the request below. ' +
+    'Report what you found, not a recipe of your own: for each page, its name, the main ingredients with quantities, ' +
+    'the method in a few lines, and the timings. Note where the pages disagree. Keep it under 400 words.\n\n' +
+    `Request:\n${request}`
+  );
+}
+
+/** Output cap for the research call; its notes are cut to `MAX_RESEARCH_NOTE_CHARS` before the structured call. */
+const RESEARCH_MAX_OUTPUT_TOKENS = 2048;
+const MAX_RESEARCH_NOTE_CHARS = 6000;
+
+/** `value` parsed as an http(s) URL, or `undefined`. */
+function httpUrl(value: unknown): URL | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    return isHttpUrl(url) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The grounding Google reported, reduced to what the client shows and the log
+ * counts. The search queries themselves are dropped: they paraphrase the brief.
+ * `undefined` when nothing usable was reported.
+ */
+function readGrounding(metadata: GroundingMetadata | undefined): GenerateGrounding | undefined {
+  if (metadata === undefined) return undefined;
+  const sources: GenerateSource[] = [];
+  const seen = new Set<string>();
+  for (const chunk of metadata.groundingChunks ?? []) {
+    const uri = chunk.web?.uri;
+    const url = httpUrl(uri);
+    if (url === undefined || typeof uri !== 'string' || seen.has(uri)) continue;
+    seen.add(uri);
+    const title = typeof chunk.web?.title === 'string' ? chunk.web.title.trim() : '';
+    sources.push({ title: title === '' ? url.hostname : title, url: uri });
+    if (sources.length >= MAX_GENERATE_SOURCES) break;
+  }
+  const rendered = metadata.searchEntryPoint?.renderedContent;
+  const searchSuggestions =
+    typeof rendered === 'string' && rendered.trim() !== '' ? rendered : undefined;
+  const queries = metadata.webSearchQueries?.length ?? 0;
+  if (sources.length === 0 && searchSuggestions === undefined && queries === 0) return undefined;
+  return {
+    sources,
+    ...(searchSuggestions !== undefined ? { searchSuggestions } : {}),
+    queries,
+  };
+}
+
+/**
+ * A short brief ("shrimp gumbo in a pressure cooker") → a recipe the model
+ * writes. One structured Gemini call with `RECIPE_SCHEMA`. With `search` on,
+ * a research call with the Google Search tool runs first (`researchPrompt`);
+ * its notes go into the structured call and the pages it used come back as
+ * `grounding`. No import checks run, because there is no source to compare
+ * against: instead a recipe with no ingredients or fewer than `MIN_STEPS`
+ * steps is `unusable`. A throw from either call is `model_error`, as for
+ * pasted text. `translateTo` works as for every other import.
+ */
+export async function generateFromBrief(
+  brief: string,
+  deps: RecipeImportDeps,
+  options: { search: boolean; translateTo?: string },
+): Promise<ImportOutcome> {
+  const log: ImportOutcomeLog = { attempts: [] };
+  const request = brief.trim();
+  if (request === '') {
+    return { kind: 'empty_source', log };
+  }
+
+  let notes: string | undefined;
+  let grounding: GenerateGrounding | undefined;
+  if (options.search) {
+    try {
+      const research = await deps.ai.models.generateContent({
+        model: deps.model,
+        contents: researchPrompt(request),
+        config: { maxOutputTokens: RESEARCH_MAX_OUTPUT_TOKENS, tools: [{ googleSearch: {} }] },
+      });
+      const found = research.text?.trim() ?? '';
+      if (found !== '') notes = found.slice(0, MAX_RESEARCH_NOTE_CHARS);
+      grounding = readGrounding(research.candidates?.[0]?.groundingMetadata);
+    } catch (err) {
+      return { ...noteThrow(err, log), log };
+    }
+  }
+
+  let text: string | undefined;
+  try {
+    const result = await deps.ai.models.generateContent({
+      model: deps.model,
+      contents:
+        `${generatePrompt(notes !== undefined)}\n\nRequest:\n${request}` +
+        (notes !== undefined ? `\n\nNotes from a web search:\n${notes}` : ''),
+      config: { ...RECIPE_OUTPUT_CONFIG },
+    });
+    text = result.text;
+  } catch (err) {
+    return { ...noteThrow(err, log), log };
+  }
+
+  const read = readModelText(text);
+  if (read.kind !== 'ok') {
+    log.attempts.push({ result: read.kind, codes: [] });
+    return { kind: read.kind, log };
+  }
+  const recipe = read.recipe;
+  const ingredients = recipe.ingredientSections.reduce((n, section) => n + section.items.length, 0);
+  if (ingredients === 0 || recipe.steps.length < MIN_STEPS) {
+    log.attempts.push({ result: 'unusable', codes: [] });
+    return { kind: 'unusable', log };
+  }
+  log.attempts.push({ result: 'ok', codes: [] });
+  const finished = await finishImport(recipe, options.translateTo, deps);
+  return {
+    ...finished,
+    warnings: [],
+    ...(grounding !== undefined ? { grounding } : {}),
+    log,
+  };
 }
 
 /** Ingredients and steps the model returned with blank text, before normalization drops them. */

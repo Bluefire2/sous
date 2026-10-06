@@ -264,6 +264,40 @@ export default function ImportPreview({
         </p>
       )}
 
+      {result.grounding !== undefined && (
+        <section className={`${noticeClass} mt-3`} aria-label={t('import.sources')}>
+          {result.grounding.sources.length > 0 && (
+            <>
+              <p className="font-medium">{t('import.sources')}</p>
+              {/* Google's links are redirects on its own host, so the title (usually the site) is the only useful label. */}
+              <ul className="mt-1 list-disc pl-5">
+                {result.grounding.sources.map((source) => (
+                  <li key={source.url} className="break-words">
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="underline hover:text-ink-muted"
+                    >
+                      {source.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {result.grounding.searchSuggestions !== undefined && (
+            // Google's own snippet, shown as provided (its terms). No scripts run in it.
+            <iframe
+              title={t('import.searchSuggestions')}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={result.grounding.searchSuggestions}
+              className="mt-2 h-14 w-full border-0"
+            />
+          )}
+        </section>
+      )}
+
       <div className={pasted ? `${noticeClass} mt-3` : 'mt-3'}>
         <label htmlFor="import-source-lang" className="block text-sm text-ink">
           {guessLine}

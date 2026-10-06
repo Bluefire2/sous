@@ -100,6 +100,7 @@ export const en = {
   'library.addRecipeTitle': 'Add a recipe',
   'library.importFromLink': 'Import from a link, text, or photos',
   'library.writeFromScratch': 'Write one from scratch',
+  'library.writeFromIdea': 'Ask Sous to write one from an idea',
   'library.deleteRecipeTitle': 'Delete “{title}”?',
   'library.deleteRecipeBody':
     'This also deletes its chat history and cook log. There is no undo.',
@@ -297,6 +298,18 @@ export const en = {
   'import.discardEditsAndPhotos':
     'Switching versions discards your edits and the photos you picked. Continue?',
   'import.translating': 'Translating…',
+  'import.mode': 'Import or create',
+  'import.modeImport': 'Import',
+  'import.modeCreate': 'Create',
+  'import.placeholderCreate': 'Describe the dish you want — for example, shrimp gumbo in a pressure cooker for six…',
+  'import.createHint': "Sous writes a complete recipe from your idea. It's AI-written: check amounts, times, and food safety before you cook.",
+  'import.searchWeb': 'Search the web',
+  'import.searchWebHint': 'Lets Gemini run Google searches for your idea. The pages it used are shown with the result.',
+  'import.writeRecipe': 'Write recipe',
+  'import.writing': 'Writing…',
+  'import.writingHint': 'Writing the recipe — this takes a few seconds.',
+  'import.sources': 'Pages Gemini used',
+  'import.searchSuggestions': 'Google Search suggestions',
   'importWarning.label': 'Import warnings',
   'importWarning.previewHeading': 'Check these before saving:',
   'importWarning.MISSING_INSTRUCTIONS': 'No steps came through. Add them, or check the original.',
@@ -386,6 +399,10 @@ export const en = {
   'importFeedback.includedPaste': {
     one: 'The text you pasted ({count} character), starting “{preview}”',
     other: 'The text you pasted ({count} characters), starting “{preview}”',
+  },
+  'importFeedback.includedBrief': {
+    one: 'Your idea for the dish ({count} character), starting “{preview}”',
+    other: 'Your idea for the dish ({count} characters), starting “{preview}”',
   },
   'import.summaryImported': {
     one: '{count} imported',
@@ -601,6 +618,10 @@ export const en = {
   'error.importBodyTooLarge': "That's too large to import — try fewer photos.",
   'error.importPhotosFailed': "Couldn't read those photos — try again.",
   'error.importNoRecipePhotos': "Couldn't find a recipe in those photos.",
+  'error.importBriefTooLong': "That's too long — keep the idea under 2,000 characters.",
+  'error.importSearchRateLimited': 'Too many web searches. Try again later, or turn Search the web off.',
+  'error.importNoRecipeBrief': "Couldn't make a recipe from that — describe a dish.",
+  'error.importGenerateFailed': "Couldn't write that recipe — try again.",
   'error.badRequest': 'That request was not valid.',
   'error.sttUnavailable': 'Assistant is unavailable.',
   'error.sttTooLong': 'Recording too long — try a shorter question.',

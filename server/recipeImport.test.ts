@@ -7,11 +7,14 @@ import { fakePageFetch, PUBLIC_ADDRESS, type FakePage } from '../test/fakePageFe
 import { resolveHost } from './netGuard.ts';
 import {
   IMPORT_RETRY_DEADLINE_MS,
+  MAX_GENERATE_BRIEF_CHARS,
+  MAX_GENERATE_SOURCES,
   MAX_IMPORT_RETRIES,
   MAX_PAGE_HTML_CHARS,
   MAX_PAGE_REDIRECTS,
   extractRecipeSource,
   fetchPageHtml,
+  generateFromBrief,
   importFromHtml,
   importFromImages,
   importFromSource,
@@ -1244,5 +1247,230 @@ describe('import translation', () => {
       restoreEnv('GEMINI_API_KEY', savedKey);
       restoreEnv('TRANSLATE_PROVIDER', savedProvider);
     }
+  });
+});
+
+describe('generateFromBrief', () => {
+  const GENERATED = {
+    title: 'Pressure cooker shrimp gumbo',
+    servings: 6,
+    ingredientSections: [{ items: [{ item: 'shrimp', quantity: 500, unit: 'g' }, { item: 'okra' }] }],
+    steps: [{ text: 'Make the roux.' }, { text: 'Pressure cook 8 minutes.' }],
+    tags: ['gumbo'],
+    lang: 'en',
+  };
+  const BRIEF = 'shrimp gumbo in a pressure cooker for 6';
+
+  /** The structured call's prompt: the only call without search, the second one with it. */
+  async function promptFor(search: boolean): Promise<string> {
+    const { deps, calls } = fakeImportDeps(JSON.stringify(GENERATED));
+    await generateFromBrief(BRIEF, deps, { search });
+    return String(calls[calls.length - 1].contents);
+  }
+
+  it('locks the caps', () => {
+    expect(MAX_GENERATE_BRIEF_CHARS).toBe(2000);
+    expect(MAX_GENERATE_SOURCES).toBe(10);
+  });
+
+  it('returns empty_source and does not call the model for a blank brief', async () => {
+    const { deps, calls } = fakeImportDeps(JSON.stringify(GENERATED));
+    expect(await generateFromBrief('   ', deps, { search: false })).toEqual({
+      kind: 'empty_source',
+      log: { attempts: [] },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('makes one call with the brief, the photo schema, and no tools', async () => {
+    const generate = fakeImportDeps(JSON.stringify(GENERATED));
+    await generateFromBrief(`  ${BRIEF}  `, generate.deps, { search: false });
+    const photo = fakeImportDeps(JSON.stringify(MINIMAL));
+    await importFromImages([{ mediaType: 'image/jpeg', base64: 'AAAA' }], '', photo.deps);
+
+    expect(generate.calls).toHaveLength(1);
+    expect(generate.calls[0].model).toBe('test-model');
+    const contents = String(generate.calls[0].contents);
+    expect(contents.endsWith(`Request:\n${BRIEF}`)).toBe(true);
+    const config = generate.calls[0].config ?? {};
+    expect(config.responseMimeType).toBe('application/json');
+    expect(config.maxOutputTokens).toBe(4096);
+    expect(config.responseSchema).toBe(photo.calls[0].config?.responseSchema);
+    expect('tools' in config).toBe(false);
+    expect('mediaResolution' in config).toBe(false);
+  });
+
+  it('with search, researches with the Google Search tool first, then writes from the notes', async () => {
+    const { deps, calls } = fakeImportDeps('Three pages agree: make a dark roux first.');
+    const outcome = await generateFromBrief(BRIEF, deps, { search: true });
+    // The fake answers both calls with the notes, so the structured call's reply is not JSON.
+    expect(outcome.kind).toBe('parse_error');
+    expect(calls).toHaveLength(2);
+
+    const research = calls[0];
+    expect(research.config?.tools).toEqual([{ googleSearch: {} }]);
+    expect(research.config?.responseSchema).toBeUndefined();
+    expect(research.config?.responseMimeType).toBeUndefined();
+    expect(research.config?.maxOutputTokens).toBe(2048);
+    const researchPrompt = String(research.contents);
+    for (const phrase of ['Use Google Search', 'not a recipe of your own', `Request:\n${BRIEF}`]) {
+      expect(researchPrompt, phrase).toContain(phrase);
+    }
+
+    const write = calls[1];
+    expect(write.config?.tools).toBeUndefined();
+    expect(write.config?.responseSchema).toBeDefined();
+    const writePrompt = String(write.contents);
+    expect(writePrompt).toContain('Notes from a web search follow the request');
+    expect(writePrompt).toContain(`Request:\n${BRIEF}\n\nNotes from a web search:\nThree pages agree: make a dark roux first.`);
+  });
+
+  it('writes without notes when the research call answered nothing', async () => {
+    const { deps, calls } = fakeImportDeps(JSON.stringify(GENERATED));
+    // The fake answers the research call with JSON too; a blank reply needs its own fake.
+    const blank: RecipeImportDeps = {
+      ...deps,
+      ai: {
+        models: {
+          generateContent: (params) =>
+            calls.length === 0
+              ? (calls.push(params), Promise.resolve({ text: '   ' } as never))
+              : deps.ai.models.generateContent(params),
+        },
+      },
+    };
+    const outcome = await generateFromBrief(BRIEF, blank, { search: true });
+    expect(outcome.kind).toBe('ok');
+    expect(calls).toHaveLength(2);
+    expect(String(calls[1].contents)).not.toContain('Notes from a web search');
+    expect(outcome).not.toHaveProperty('grounding');
+  });
+
+  it('tells the model to write a recipe, not transcribe one', async () => {
+    const prompt = await promptFor(false);
+    for (const phrase of [
+      'idea for a dish, not a finished recipe',
+      'Fill in',
+      'Keep every constraint',
+      'not about something that can be cooked',
+      'NOT_A_RECIPE',
+    ]) {
+      expect(prompt, phrase).toContain(phrase);
+    }
+    expect(prompt).not.toContain('web search');
+    expect(prompt).not.toContain('Never invent');
+    expect(await promptFor(true)).toContain('Notes from a web search');
+  });
+
+  it('maps the model reply, and refuses a recipe it did not finish', async () => {
+    for (const reply of [undefined, '', 'Sure!', '42', 'null']) {
+      const { deps } = fakeImportDeps(reply);
+      expect(await generateFromBrief(BRIEF, deps, { search: false }), String(reply)).toEqual({
+        kind: 'parse_error',
+        log: { attempts: [{ result: 'parse_error', codes: [] }] },
+      });
+    }
+    const cases: [unknown, ImportOutcome['kind']][] = [
+      [{ ...GENERATED, title: 'NOT_A_RECIPE' }, 'not_a_recipe'],
+      [{ ...GENERATED, title: ' ' }, 'unusable'],
+      [{ ...GENERATED, ingredientSections: [] }, 'unusable'],
+      [{ ...GENERATED, steps: [{ text: 'Cook.' }] }, 'unusable'],
+    ];
+    for (const [reply, kind] of cases) {
+      const { deps } = fakeImportDeps(JSON.stringify(reply));
+      const outcome = await generateFromBrief(BRIEF, deps, { search: false });
+      expect(outcome.kind, JSON.stringify(reply)).toBe(kind);
+      expect(outcome.log?.attempts.map((a) => a.result)).toEqual([kind]);
+    }
+    const { deps } = fakeImportDeps(JSON.stringify({ ...GENERATED, servings: 0, photoId: 'x' }));
+    expect(await generateFromBrief(BRIEF, deps, { search: false })).toEqual({
+      kind: 'ok',
+      recipe: { ...GENERATED, servings: 1 },
+      warnings: [],
+      log: { attempts: [{ result: 'ok', codes: [] }] },
+    });
+  });
+
+  it('turns a thrown call into model_error with its status only', async () => {
+    const error = Object.assign(new Error('SECRET request echo'), { status: 503 });
+    let rejected = 0;
+    const deps: RecipeImportDeps = {
+      model: 'test-model',
+      ai: {
+        models: {
+          generateContent: () => {
+            rejected += 1;
+            return Promise.reject(error);
+          },
+        },
+      },
+      translator: () => Promise.resolve({ ok: false, code: TRANSLATE_FAILED }),
+    };
+    for (const search of [false, true]) {
+      rejected = 0;
+      const outcome = await generateFromBrief(BRIEF, deps, { search });
+      expect(outcome, String(search)).toEqual({
+        kind: 'model_error',
+        log: { attempts: [{ result: 'threw', codes: [] }], errorStatus: 503 },
+      });
+      expect(JSON.stringify(outcome)).not.toContain('SECRET');
+      // A research throw ends the import; the structured call is never made.
+      expect(rejected).toBe(1);
+    }
+  });
+
+  it('reads the grounding sources, de-duplicated and capped, without the queries', async () => {
+    const chunks = Array.from({ length: 14 }, (_, i) => ({
+      web: { uri: `https://example.com/gumbo-${i % 12}`, title: i === 0 ? '  ' : `Gumbo ${i % 12}` },
+    }));
+    const { deps } = fakeImportDeps(JSON.stringify(GENERATED), undefined, {
+      groundingMetadata: {
+        groundingChunks: [
+          { web: { uri: 'ftp://example.com/x', title: 'not http' } },
+          { web: { title: 'no uri' } },
+          { web: { uri: 'not a url', title: 'bad' } },
+          ...chunks,
+        ],
+        webSearchQueries: ['pressure cooker shrimp gumbo recipe', 'gumbo roux pressure cooker'],
+        searchEntryPoint: { renderedContent: '<div class="chip">gumbo</div>' },
+      },
+    });
+    const outcome = await generateFromBrief(BRIEF, deps, { search: true });
+    expect(outcome.kind).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    expect(outcome.grounding?.sources).toHaveLength(MAX_GENERATE_SOURCES);
+    expect(outcome.grounding?.sources[0]).toEqual({ title: 'example.com', url: 'https://example.com/gumbo-0' });
+    expect(outcome.grounding?.sources[1]).toEqual({ title: 'Gumbo 1', url: 'https://example.com/gumbo-1' });
+    expect(new Set(outcome.grounding?.sources.map((s) => s.url)).size).toBe(MAX_GENERATE_SOURCES);
+    expect(outcome.grounding?.searchSuggestions).toBe('<div class="chip">gumbo</div>');
+    expect(outcome.grounding?.queries).toBe(2);
+    expect(JSON.stringify(outcome)).not.toContain('pressure cooker shrimp gumbo recipe');
+  });
+
+  it('reports no grounding without search, or when Google reported nothing', async () => {
+    const metadata = { groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'A' } }] };
+    const unsearched = fakeImportDeps(JSON.stringify(GENERATED), undefined, { groundingMetadata: metadata });
+    expect(await generateFromBrief(BRIEF, unsearched.deps, { search: true })).toHaveProperty('grounding');
+    expect(await generateFromBrief(BRIEF, unsearched.deps, { search: false })).not.toHaveProperty('grounding');
+    const empty = fakeImportDeps(JSON.stringify(GENERATED), undefined, { groundingMetadata: {} });
+    expect(await generateFromBrief(BRIEF, empty.deps, { search: true })).not.toHaveProperty('grounding');
+    const none = fakeImportDeps(JSON.stringify(GENERATED));
+    expect(await generateFromBrief(BRIEF, none.deps, { search: true })).not.toHaveProperty('grounding');
+  });
+
+  it('translates like a paste import', async () => {
+    const { calls, translator } = prefixTranslator('it');
+    const italian = { ...ITALIAN, steps: [{ text: 'Simmer.' }, { text: 'Blend.' }] };
+    const ukrainian = { ...UKRAINIAN, steps: [{ text: 'UK Simmer.' }, { text: 'UK Blend.' }] };
+    const { deps } = fakeImportDeps(JSON.stringify(italian), translator);
+    const outcome = await generateFromBrief('zuppa', deps, { search: false, translateTo: 'uk' });
+    expect(outcome.kind).toBe('ok');
+    expect(core(outcome)).toEqual({
+      kind: 'ok',
+      recipe: italian,
+      translation: { kind: 'ok', lang: 'uk', recipe: ukrainian },
+    });
+    expect(calls[0]?.target).toBe('uk');
+    expect(calls[0]?.sourceLang).toBe('it');
   });
 });

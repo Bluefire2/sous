@@ -22,6 +22,35 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-05 — Recipe from a brief: search as a research call, not on the structured call
+
+- Change: `generateFromBrief` (new, `docs/plans/recipe-generation.md`). With
+  search on, a free-text research call with the Google Search tool runs
+  first and the structured call writes from its notes. The extraction
+  prompts, schemas, checks, retry policy and goldens are unchanged; the
+  handwritten evals were not run because nothing they cover changed.
+- Reason (not fixture-specific): the Google Search tool on the structured
+  call never fired for a dish the model knows. Over 17 raw calls on
+  `gemini-3.7-flash` (gumbo and a 2025 trend dish; "you may search",
+  "search before writing", and "use the Google Search tool first"; with and
+  without the schema) the response had no `groundingMetadata` in every
+  case, while a news question with the same tool searched at once (2
+  queries, 4 chunks, the Search Suggestions chip). A call framed as
+  research ("find at least three published recipes … report what you
+  found, not a recipe of your own") searched 3 of 3 times (2–3 queries,
+  4–9 chunks, chip 4.7–5.1 KB, 10–12 s).
+- Command: `node --env-file=.env.local node_modules/vitest/vitest.mjs run
+  --config vitest.eval.config.ts evals/recipeGenerate.eval.ts`
+- Before: one structured call with the tool; the eval's search case had no
+  grounding to show.
+- After: 4/4 (gumbo constraints, Ukrainian brief, non-food refusal, search
+  with sources). Structured calls without search parsed 12 of 13 raw
+  probes; the one `parse_error` was a searched single call, which no longer
+  exists.
+- Decision: kept. Searched generation is two calls (about 20 s); the
+  checkbox is opt-in and rate-limited for that reason.
+- Run by: agent, default model.
+
 ## 2026-10-01 — Wikibooks Cookbook:Pancake returns not_a_recipe (issue #106), no change
 
 - Change: none to prompts, schema, checks, or goldens. Only the documented

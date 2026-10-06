@@ -25,6 +25,7 @@ import type { RecipeDraft } from './types';
 export interface ImportSource {
   via: ImportFeedbackVia;
   url?: string;
+  /** The pasted text (`paste`) or the brief the recipe was written from (`generate`). */
   pastedText?: string;
   photos?: number;
 }
@@ -59,8 +60,19 @@ export type FeedbackCardInput = Omit<BuildImportFeedbackInput, 'id' | 'comment'>
 export type IncludedSummary =
   | { kind: 'url'; url: string }
   | { kind: 'paste'; preview: string; chars: number }
+  | { kind: 'brief'; preview: string; chars: number }
   | { kind: 'photos' }
   | { kind: 'none' };
+
+function typedText(source: ImportSource): boolean {
+  return source.via === 'paste' || source.via === 'generate';
+}
+
+function textPreview(text: string): { preview: string; chars: number } {
+  const preview =
+    text.length > PASTE_PREVIEW_CHARS ? `${text.slice(0, PASTE_PREVIEW_CHARS)}…` : text;
+  return { preview, chars: text.length };
+}
 
 const PASTE_PREVIEW_CHARS = 200;
 
@@ -122,7 +134,7 @@ export function buildImportFeedback(input: BuildImportFeedbackInput): ImportFeed
   const report: ImportFeedbackReport = { id: input.id, trigger: input.trigger, via: source.via };
   const url = feedbackUrl(source.url);
   if (url !== undefined) report.url = url;
-  if (source.via === 'paste' && typeof source.pastedText === 'string') {
+  if (typedText(source) && typeof source.pastedText === 'string') {
     const pasted = truncateUtf8(source.pastedText, MAX_FEEDBACK_PASTE_BYTES);
     report.pastedText = pasted.text;
     if (pasted.truncated) report.pastedTruncated = true;
@@ -148,11 +160,8 @@ export function ratingUp(source: ImportSource): ImportRatingUp {
 export function includedSummary(source: ImportSource): IncludedSummary {
   const url = feedbackUrl(source.url);
   if (url !== undefined) return { kind: 'url', url };
-  if (source.via === 'paste' && typeof source.pastedText === 'string' && source.pastedText !== '') {
-    const text = source.pastedText;
-    const preview =
-      text.length > PASTE_PREVIEW_CHARS ? `${text.slice(0, PASTE_PREVIEW_CHARS)}…` : text;
-    return { kind: 'paste', preview, chars: text.length };
+  if (typedText(source) && typeof source.pastedText === 'string' && source.pastedText !== '') {
+    return { kind: source.via === 'generate' ? 'brief' : 'paste', ...textPreview(source.pastedText) };
   }
   if (source.via === 'photos') return { kind: 'photos' };
   return { kind: 'none' };
