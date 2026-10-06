@@ -9,6 +9,13 @@ policy in `server/recipeImport.ts`, `RECIPE_SCHEMA` descriptions, or any
 `golden.json`. They sit alongside `docs/constitutions/image-import.md` and do
 not replace it.
 
+`generatePrompt` (the recipe-from-an-idea prompt behind `generateFromBrief`,
+`evals/recipeGenerate.eval.ts`) has no goldens and no dev/holdout split, so
+the measurement and acceptance rules below do not apply to it. Changes to
+it are still recorded in `evals/EXPERIMENTS.md` with the eval's outcome
+before and after, and it must never be used to loosen the extraction
+prompts' "never invent" rules.
+
 ## What the split is for
 
 `evals/import-handwritten/dev/` holds cards that people and agents have
