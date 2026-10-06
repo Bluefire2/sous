@@ -30,7 +30,11 @@ function serverGate(req: Request): string | null {
 
 /** A token signed by hand, for payloads `signSession` never writes. */
 function handSigned(payload: unknown, secret = SECRET): string {
-  const part = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return signedPart(Buffer.from(JSON.stringify(payload)).toString('base64url'), secret);
+}
+
+/** A correctly signed token around any payload part, so a row reaches the payload checks. */
+function signedPart(part: string, secret = SECRET): string {
   return `${part}.${createHmac('sha256', secret).update(part).digest('base64url')}`;
 }
 
@@ -54,6 +58,8 @@ type Row = {
   req: () => Request;
   /** The sub both copies must return, or null. */
   want: string | null;
+  /** The clock for this row, for the expiry boundary. */
+  at?: number;
 };
 
 const ROWS: Row[] = [
@@ -67,7 +73,8 @@ const ROWS: Row[] = [
   { label: 'the token after another cookie', req: () => request(signSession({ sub: 'sub-1', email: 'owner@example.com' }, NOW), 'theme=dark'), want: 'sub-1' },
   { label: 'a hand-signed payload of the same shape', req: () => request(handSigned(valid)), want: 'sub-1' },
   { label: 'an expired token', req: () => request(handSigned({ ...valid, exp: NOW - 1 })), want: null },
-  { label: 'a token expiring now', req: () => request(handSigned({ ...valid, exp: NOW - 5 })), want: null },
+  { label: 'a token whose exp is exactly now', at: NOW, req: () => request(handSigned({ ...valid, exp: NOW })), want: null },
+  { label: 'a token with a millisecond left', at: NOW, req: () => request(handSigned({ ...valid, exp: NOW + 1 })), want: 'sub-1' },
   { label: 'version 2', req: () => request(handSigned({ ...valid, v: 2 })), want: null },
   { label: 'version "1" as a string', req: () => request(handSigned({ ...valid, v: '1' })), want: null },
   { label: 'an empty sub', req: () => request(handSigned({ ...valid, sub: '' })), want: null },
@@ -81,7 +88,9 @@ const ROWS: Row[] = [
   { label: 'a signature with a stray character', req: () => request(`${handSigned(valid)}=`), want: null },
   { label: 'three parts', req: () => request(`${handSigned(valid)}.extra`), want: null },
   { label: 'no signature', req: () => request(handSigned(valid).split('.')[0]), want: null },
-  { label: 'a payload that is not JSON', req: () => request(handSigned('x').replace(/^[^.]+/, Buffer.from('{').toString('base64url'))), want: null },
+  { label: 'a signed payload that is not JSON', req: () => request(signedPart(Buffer.from('{').toString('base64url'))), want: null },
+  { label: 'a signed payload that is not an object', req: () => request(signedPart(Buffer.from('7').toString('base64url'))), want: null },
+  { label: 'a signed payload part that is not canonical base64url', req: () => request(signedPart(`${Buffer.from(JSON.stringify(valid)).toString('base64url')}A`)), want: null },
   { label: 'an oauth transaction token', req: () => request(signAuthTx({ state: 's', nonce: 'n', verifier: 'v', returnTo: '/' }, NOW)), want: null },
   { label: 'an invite hop token', req: () => request(signInviteTx({ id: INVITE_ID }, NOW)), want: null },
   { label: 'an access-request token for an allowed address', req: () => request(signAccessRequestTx({ sub: 'sub-1', email: 'owner@example.com' }, NOW)), want: null },
@@ -93,6 +102,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 
@@ -100,6 +110,10 @@ describe('api/chat.ts sessionSub agrees with server/session.ts and server/allowl
   for (const row of ROWS) {
     it(row.label, () => {
       if (row.allowed !== undefined) vi.stubEnv('ALLOWED_EMAILS', row.allowed);
+      if (row.at !== undefined) {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(row.at);
+      }
       // Sign with the real secret, then switch, so a blank secret sees a real token.
       const req = row.req();
       if (row.secret !== undefined) vi.stubEnv('SESSION_SECRET', row.secret);

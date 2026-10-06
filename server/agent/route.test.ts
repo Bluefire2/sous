@@ -147,8 +147,13 @@ describe('POST /api/agent gates', () => {
   it('answers 503 when the library load outlasts its 90 s budget', async () => {
     vi.useFakeTimers();
     loadAgentLibrary.mockReturnValue(new Promise(() => {}));
-    const pending = agentPost(post());
-    await vi.advanceTimersByTimeAsync(90_000);
+    let settled = false;
+    const pending = agentPost(post()).finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     const res = await pending;
     expect(res.status).toBe(503);
     expect(startAgent).not.toHaveBeenCalled();

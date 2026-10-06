@@ -14,7 +14,7 @@
  * so `scripts/apply-log-exclusions.test.ts` can run it against a fake sink.
  * The ADC client is created only when the file is run directly.
  */
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { GoogleAuth } from 'google-auth-library';
 import {
@@ -92,9 +92,15 @@ export async function runApplyLogExclusions(
   return 0;
 }
 
+/** Real paths on both sides, as in scripts/delete-account-data.ts: a symlinked run must not silently do nothing. */
 function isDirectRun(): boolean {
   const entry = process.argv[1];
-  return entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url);
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
 
 if (isDirectRun()) {

@@ -21,7 +21,7 @@
  * `runDeleteAccountData` is the whole program with its I/O passed in, so
  * `scripts/delete-account-data.test.ts` can run it against fake steps.
  */
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   ACCOUNT_DELETION_ORDER,
@@ -120,9 +120,19 @@ export async function runDeleteAccountData(
   return 0;
 }
 
+/**
+ * Node resolves the main module through symlinks but leaves argv[1] as typed,
+ * so compare real paths: run through a symlink, junction, or subst drive, a
+ * plain comparison is false and the script would exit 0 having done nothing.
+ */
 function isDirectRun(): boolean {
   const entry = process.argv[1];
-  return entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url);
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
 
 if (isDirectRun()) {

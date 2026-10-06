@@ -1,7 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_API_PORT, devPort } from './devPorts.ts';
 
 const port = (argv: string[]) => devPort(argv, '--port', 'SOUS_API_PORT', DEFAULT_API_PORT);
+
+beforeEach(() => {
+  // A developer may export these (AGENTS.md, How to run it); empty means unset.
+  vi.stubEnv('SOUS_API_PORT', '');
+  vi.stubEnv('SOUS_WEB_PORT', '');
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();

@@ -26,10 +26,15 @@ const google = vi.hoisted(() => ({
   getToken: [] as unknown[],
   verifyIdToken: [] as unknown[],
   getTokenError: undefined as Error | undefined,
+  /** Constructor arguments. The client is cached in module scope, so this is set once per file. */
+  constructed: [] as unknown[][],
 }));
 
 vi.mock('google-auth-library', () => {
   class OAuth2Client {
+    constructor(...args: unknown[]) {
+      google.constructed.push(args);
+    }
     generateAuthUrl(options: unknown): string {
       google.generateAuthUrl.push(options);
       return google.authUrl;
@@ -171,6 +176,11 @@ afterEach(() => {
 });
 
 describe('authStart', () => {
+  it('builds one Google client with the configured id, secret, and callback URL', async () => {
+    await authStart(new Request(`${ORIGIN}/api/auth/start`));
+    expect(google.constructed).toEqual([[CLIENT_ID, 'client-secret', `${ORIGIN}/api/auth/callback/google`]]);
+  });
+
   it('redirects to Google with PKCE S256 and the three scopes, and signs the transaction', async () => {
     const res = await authStart(new Request(`${ORIGIN}/api/auth/start?returnTo=/settings`));
     expect(res.status).toBe(302);
