@@ -1,8 +1,8 @@
 # Test coverage for CI
 
-Status: steps 1 to 11 merged 2026-10-06 as #151 (steps 1 to 4), #152 (5 to
-7), and #154 (8 to 11). Not deployed (tests and CI only, plus the small
-production fixes each PR names). Step 12 is the owner's call. Written from a survey of the suite
+Status: done. Merged 2026-10-06 as #151 (steps 1 to 4), #152 (5 to 7), #154
+(8 to 11), and #157 (12, the coverage report). Not deployed (tests and CI
+only, plus the small production fixes each PR names). Written from a survey of the suite
 (149 test files, 2593 cases, about 13 s under `npm test`) and of
 `.github/workflows/ci.yml`. Every feature PR in the last eight commits shipped
 with tests; the gaps below are structural, not per-feature.
