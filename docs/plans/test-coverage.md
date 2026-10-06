@@ -1,6 +1,6 @@
 # Test coverage for CI
 
-Status: PR 1 (steps 1 to 4) and PR 2 (steps 5 to 7) built 2026-10-05; steps
+Status: PR 1 (steps 1 to 4) merged as #151; PR 2 (steps 5 to 7) built 2026-10-05; steps
 8 to 12 not started. Written from a survey of the suite
 (149 test files, 2593 cases, about 13 s under `npm test`) and of
 `.github/workflows/ci.yml`. Every feature PR in the last eight commits shipped
