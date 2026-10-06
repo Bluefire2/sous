@@ -188,13 +188,12 @@ All steps are `[core]`; nothing touches a screen or catalog.
    dots; a blank `SESSION_SECRET`. Keep the existing `api/sessionGate.test.ts`
    as it is. Check: changing either copy alone fails the table.
 
-   **Found while building.** The copies already differ in one place:
-   `server/session.ts` requires a numeric `iat`, and `api/chat.ts` never
-   reads it. Only a holder of `SESSION_SECRET` can mint such a token and
-   `signSession` always writes `iat`, so it is not reachable. The test lists
-   it under `KNOWN_DIFFERENCES` and asserts the copies still differ there, so
-   whoever aligns them removes the entry. Aligning them is an owner decision
-   (it changes the Vercel handler).
+   **Found while building.** The copies differed in one place:
+   `server/session.ts` required a numeric `iat` and `api/chat.ts` never read
+   it. Not reachable (only a holder of `SESSION_SECRET` can mint such a
+   token), but a drift. The owner chose to align them: `api/chat.ts` now
+   requires a numeric `iat` too, and the table has rows for a missing and a
+   string `iat`.
 
 4. **[core] Invariants** in `scripts/invariants.test.ts`, new `describe`s:
    - a. **Server-rendered routes.** A table of every prefix the dispatcher

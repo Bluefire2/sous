@@ -74,6 +74,8 @@ const ROWS: Row[] = [
   { label: 'a numeric sub', req: () => request(handSigned({ ...valid, sub: 7 })), want: null },
   { label: 'a missing email', req: () => request(handSigned({ ...valid, email: undefined })), want: null },
   { label: 'a string exp', req: () => request(handSigned({ ...valid, exp: String(NOW + 60_000) })), want: null },
+  { label: 'a token with no iat', req: () => request(handSigned({ ...valid, iat: undefined })), want: null },
+  { label: 'a string iat', req: () => request(handSigned({ ...valid, iat: String(NOW) })), want: null },
   { label: 'another secret', req: () => request(handSigned(valid, 'other-secret')), want: null },
   { label: 'a tampered payload', req: () => request(handSigned(valid).replace(/^./, (c) => (c === 'e' ? 'f' : 'e'))), want: null },
   { label: 'a signature with a stray character', req: () => request(`${handSigned(valid)}=`), want: null },
@@ -83,17 +85,6 @@ const ROWS: Row[] = [
   { label: 'an oauth transaction token', req: () => request(signAuthTx({ state: 's', nonce: 'n', verifier: 'v', returnTo: '/' }, NOW)), want: null },
   { label: 'an invite hop token', req: () => request(signInviteTx({ id: INVITE_ID }, NOW)), want: null },
   { label: 'an access-request token for an allowed address', req: () => request(signAccessRequestTx({ sub: 'sub-1', email: 'owner@example.com' }, NOW)), want: null },
-];
-
-/**
- * Where the copies disagree today. Each entry is a known gap, checked to
- * still differ, so fixing one fails this test and the entry is removed.
- * `server/session.ts` requires a numeric `iat`; `api/chat.ts` never reads
- * it. Only a holder of SESSION_SECRET can mint such a token, and
- * `signSession` always writes `iat`.
- */
-const KNOWN_DIFFERENCES: Row[] = [
-  { label: 'a token with no iat', req: () => request(handSigned({ ...valid, iat: undefined })), want: null },
 ];
 
 beforeEach(() => {
@@ -114,16 +105,6 @@ describe('api/chat.ts sessionSub agrees with server/session.ts and server/allowl
       if (row.secret !== undefined) vi.stubEnv('SESSION_SECRET', row.secret);
       expect(serverGate(req.clone())).toBe(row.want);
       expect(sessionSub(req)).toBe(row.want);
-    });
-  }
-});
-
-describe('known differences between the copies', () => {
-  for (const row of KNOWN_DIFFERENCES) {
-    it(`${row.label}: the server refuses and the Vercel copy still accepts`, () => {
-      const req = row.req();
-      expect(serverGate(req.clone())).toBe(row.want);
-      expect(sessionSub(req)).not.toBe(row.want);
     });
   }
 });
