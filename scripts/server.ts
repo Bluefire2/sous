@@ -490,8 +490,43 @@ async function writeFetchResponse(nodeRes: ServerResponse, response: Response): 
   try {
     await pipeResponseBody(response.body, nodeRes);
   } catch (err) {
-    console.error(err);
+    if (!isClientHangUp(err)) {
+      console.error(err);
+    }
     nodeRes.destroy();
+  }
+}
+
+/**
+ * Whether a `pipeline` rejection only means the client went away: its
+ * response closed before the body finished (ERR_STREAM_PREMATURE_CLOSE) or
+ * was already closed (ERR_STREAM_UNABLE_TO_PIPE). That is routine (a closed
+ * tab, a cancelled fetch, a service worker install cut short) and is not
+ * logged. A failing source rejects with its own error and is logged.
+ */
+export function isClientHangUp(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ERR_STREAM_UNABLE_TO_PIPE';
+}
+
+/**
+ * Streams a static file to the client. A client that has already gone gets
+ * nothing and the file is never opened: `pipeline` would throw
+ * ERR_STREAM_UNABLE_TO_PIPE and leave the file open. A client that leaves
+ * mid-file resolves quietly, and the file is closed. A read error rejects.
+ */
+export async function pipeFile(open: () => Readable, destination: Writable): Promise<void> {
+  if (destination.destroyed || destination.closed) {
+    return;
+  }
+  const file = open();
+  try {
+    await pipeline(file, destination);
+  } catch (err) {
+    file.destroy();
+    if (!isClientHangUp(err)) {
+      throw err;
+    }
   }
 }
 
@@ -565,7 +600,7 @@ async function sendFile(
 
   nodeRes.flushHeaders();
   try {
-    await pipeline(createReadStream(filePath), nodeRes);
+    await pipeFile(() => createReadStream(filePath), nodeRes);
   } catch (err) {
     console.error(err);
     if (nodeRes.headersSent) {
