@@ -2,8 +2,8 @@
 
 A personal, allowlisted recipe book that runs as an installed PWA on a phone.
 It holds a readable recipe view, a cooking assistant attached to that recipe,
-and one-tap import of recipes from a URL, pasted text, or photos of
-handwritten notes.
+one-tap import of recipes from a URL, pasted text, or photos of handwritten
+notes, and a Create mode that writes a recipe from an idea you type.
 
 Live at <https://sous.kyrylo.lol>.
 
@@ -228,7 +228,7 @@ the full map).
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | yes | Passed to `new GoogleGenAI({ apiKey })` in the Gemini handlers (chat, import, and Ask dictation). Use a key from a **paid-tier** AI Studio project: free-tier content may be used to improve Google's products, and import sends photos of personal notes. |
+| `GEMINI_API_KEY` | yes | Passed to `new GoogleGenAI({ apiKey })` in the Gemini handlers (chat, import, and Ask dictation). Use a key from a **paid-tier** AI Studio project: free-tier content may be used to improve Google's products, and import sends photos of personal notes. In `.env.local`, use a separate dev key from its own project so local runs and evals don't use production's quota; production's key lives only on the Cloud Run service. |
 | `AUTH_GOOGLE_ID` | yes | OAuth 2.0 Web client id. |
 | `AUTH_GOOGLE_SECRET` | yes | OAuth client secret. |
 | `SESSION_SECRET` | yes | HMAC key for the `sous_session` cookie. **Do not rotate casually** — every device is signed out if it changes. |
@@ -239,9 +239,9 @@ the full map).
 | `MAIL_FROM` | yes (prod) | Resend sender for the owner's access-request notifications and the approval email to requesters. Must be on a domain verified in Resend. The sandbox `onboarding@resend.dev` only reaches the Resend account's own inbox, so approval emails are skipped (and logged) while it is set. |
 | `OWNER_NOTIFY_EMAIL` | yes (prod) | Inbox that receives access-request notifications. |
 | `RESEND_API_KEY` | no | Resend API key. Unset ⇒ no notification email; requests still land in `/admin`. |
-| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, and Ask dictation). Defaults to `gemini-3.7-flash`. A bare `CHAT_MODEL=` is read as `''` by `--env-file`, which defeats the default — comment the line out instead. |
-| `TRANSLATE_PROVIDER` | no | Recipe translation provider. Defaults to `gemini`, the only accepted value. Any other value fails closed (`503`, code `translate-provider-unavailable`). A bare `TRANSLATE_PROVIDER=` is read as `''` and keeps the default — comment the line out instead. |
-| `TRANSLATE_MODEL` | no | Gemini model for recipe translation. Defaults to `gemini-3.5-flash-lite`. A bare `TRANSLATE_MODEL=` is read as `''` and keeps the default — comment the line out instead. |
+| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, and Ask dictation). Defaults to `gemini-3.7-flash`. A blank value uses the default. |
+| `TRANSLATE_PROVIDER` | no | Recipe translation provider. Defaults to `gemini`, the only accepted value. Any other value fails closed (`503`, code `translate-provider-unavailable`). A blank value uses the default. |
+| `TRANSLATE_MODEL` | no | Gemini model for recipe translation. Defaults to `gemini-3.5-flash-lite`. A blank value uses the default. |
 
 No `VITE_`-prefixed variable exists anywhere in the app, and none should. Vite
 inlines `VITE_*` values into the client bundle, so prefixing the Gemini key
@@ -328,7 +328,7 @@ is untouched. Chat and import there return 401.
 api/chat.ts               streaming Gemini proxy + the update_recipe tool
 api/import.ts             Vercel-only stub; always 401
 server/recipeImport.ts    import pipeline: page fetch, JSON-LD/region extraction, Gemini, cleanup
-server/importRoute.ts     POST /api/import: URL, pasted text, or up to 4 photos in, recipe draft out
+server/importRoute.ts     POST /api/import: URL, pasted text, up to 4 photos, or an idea to write from in, recipe draft out
 extension/                Chrome extension: import the page you are reading
 server/stt.ts             Ask dictation: raw audio in, `{ text }` out via Gemini
 server/auth.ts            Google OAuth and session cookie

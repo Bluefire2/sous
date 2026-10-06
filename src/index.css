@@ -62,6 +62,19 @@ html.dark {
   color-scheme: dark;
 }
 
+/*
+ * Google's Search Suggestions frame (ImportPreview) picks light or dark from
+ * this element's scheme. The light theme sets none, which would leave it to
+ * the operating system: a dark chip on the light page.
+ */
+.chip-frame {
+  color-scheme: light;
+}
+
+html.dark .chip-frame {
+  color-scheme: dark;
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }

@@ -35,6 +35,7 @@ function toolContext(): McpToolContext {
         { truncated: false, maxIndexEntries: 500, maxIndexChars: 40_000 },
       ),
     readRecipes: vi.fn(async (ids: readonly string[]) => ids.map(() => undefined)),
+    readOwnRecipeDoc: vi.fn(async () => undefined),
     createRecipe: vi.fn(async () => true),
     createRecipeInCollection: vi.fn(async () => ({ kind: 'collection_not_found' as const })),
     moveRecipes: vi.fn(async () => ({ kind: 'collection_not_found' as const })),

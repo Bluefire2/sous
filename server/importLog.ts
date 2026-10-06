@@ -7,10 +7,11 @@
  * Logged: the account `sub`, how the import arrived, the page address without
  * its query string or fragment, whether the page was read from its Recipe
  * JSON-LD or its text, each Gemini attempt's result, the warning codes on the
- * result, the outcome, counts, and timing. Never logged:
- * the email, recipe text, page HTML, pasted text, photo bytes, or an error
- * message (SDK errors can echo the request). `/privacy` and `/terms` describe
- * this line; change them with it.
+ * result, for a recipe written from a brief whether web search was on and how
+ * many searches ran, the outcome, counts, and timing. Never logged:
+ * the email, recipe text, page HTML, pasted text, the brief, the search
+ * queries, photo bytes, or an error message (SDK errors can echo the
+ * request). `/privacy` and `/terms` describe this line; change them with it.
  */
 import type { ImportWarningCode } from './importWarnings.ts';
 import type {
@@ -20,11 +21,12 @@ import type {
   PageFetchOutcome,
 } from './recipeImport.ts';
 
-export type ImportVia = 'url' | 'paste' | 'photos' | 'extension';
+export type ImportVia = 'url' | 'paste' | 'photos' | 'extension' | 'generate';
 
 /**
  * `ImportOutcome` kinds, plus the ways a request ends before or after the
  * pipeline. `threw` means the Gemini call (or something after it) threw.
+ * `rate_limited` is a searched generation the per-member limit refused.
  */
 export type ImportLogOutcome =
   | ImportOutcome['kind']
@@ -34,6 +36,8 @@ export type ImportLogOutcome =
   | 'bad_url'
   | 'fetch_failed'
   | 'bad_photos'
+  | 'bad_brief'
+  | 'rate_limited'
   | 'save_failed'
   | 'threw';
 
@@ -58,6 +62,10 @@ export interface ImportLogEntry {
   codes?: ImportWarningCode[];
   photos?: number;
   bytes?: number;
+  /** Generated recipes: whether Google Search grounding was requested. */
+  search?: boolean;
+  /** Generated recipes with search: how many searches Google reported, on any outcome after the research call. Never the queries. */
+  searchQueries?: number;
   /** A numeric HTTP status on a thrown provider error (429, 503, …), when it has one. */
   errorStatus?: number;
   /** The status this route answered with. */
@@ -96,6 +104,7 @@ export function noteImportOutcome(entry: ImportLogEntry, outcome: ImportOutcome)
     if (log.source !== undefined) entry.source = log.source;
     entry.attempts = log.attempts.map((attempt) => attempt.result);
     if (log.errorStatus !== undefined) entry.errorStatus = log.errorStatus;
+    if (log.searchQueries !== undefined) entry.searchQueries = log.searchQueries;
   }
   if (outcome.kind !== 'ok') return;
   if (outcome.warnings.length > 0) entry.codes = outcome.warnings.map((w) => w.code);

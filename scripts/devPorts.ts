@@ -14,7 +14,8 @@ export const DEFAULT_WEB_PORT = 5173;
 function flagValue(argv: readonly string[], name: string): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === name) return argv[i + 1];
+    // A bare flag at the end of argv has no value: '' makes devPort throw, not fall back.
+    if (arg === name) return argv[i + 1] ?? '';
     if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
   }
   return undefined;

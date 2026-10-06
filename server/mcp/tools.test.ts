@@ -93,6 +93,10 @@ function fakeContext(
       directReads.push([...ids]);
       return ids.map((id) => recipes.find((r) => r.id === id));
     },
+    async readOwnRecipeDoc(id) {
+      const doc = docs.get(id);
+      return doc === undefined ? undefined : { ...doc, id };
+    },
     async createRecipe(id, payload) {
       docs.set(id, payload);
       created.push(id);
@@ -277,6 +281,80 @@ describe('create_recipe', () => {
     expect(out.ok && out.data).not.toHaveProperty('sharedWithMembers');
   });
 
+  describe('variantOf', () => {
+    const ORIGINAL = '55555555-5555-4555-8555-555555555555';
+
+    it('saves a variant of a recipe and says which one', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const out = await run('create_recipe', { ...EGG, title: 'Potato stew', variantOf: R1 }, ctx);
+      expect(out).toMatchObject({
+        ok: true,
+        data: { recipe: { id: NEW_ID, title: 'Potato stew' }, variantOf: { id: R1, title: 'Carrot stew' } },
+      });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
+      // The original is left as it was.
+      expect(ctx.docs.get(R1)).not.toHaveProperty('variantOf');
+    });
+
+    it("joins a variant's group instead of nesting under it", async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Spicy stew' })]);
+      ctx.docs.set(R1, { ...ctx.docs.get(R1), variantOf: ORIGINAL });
+      const out = await run('create_recipe', { ...EGG, variantOf: R1 }, ctx);
+      expect(out).toMatchObject({ ok: true, data: { variantOf: { id: R1 } } });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: ORIGINAL });
+    });
+
+    it("takes the original's language unless lang is given", async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Борщ' })]);
+      ctx.docs.set(R1, { ...ctx.docs.get(R1), lang: 'uk' });
+      await run('create_recipe', { ...EGG, variantOf: R1 }, ctx);
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ lang: 'uk' });
+      await run('create_recipe', { ...EGG, variantOf: R1, lang: 'en' }, ctx);
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ lang: 'en' });
+    });
+
+    it('files a variant into a collection', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })], [{ id: SOUPS, name: 'Soups', recipeIds: [R1] }]);
+      const out = await run('create_recipe', { ...EGG, variantOf: R1, collectionId: SOUPS }, ctx);
+      expect(out).toMatchObject({ ok: true, data: { recipe: { collectionName: 'Soups' }, variantOf: { id: R1 } } });
+      expect(ctx.docs.get(NEW_ID)).toMatchObject({ variantOf: R1 });
+    });
+
+    it('refuses a deleted recipe and one not in this library, without writing', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const DELETED = '66666666-6666-4666-8666-666666666666';
+      ctx.docs.set(DELETED, { id: DELETED, title: 'Old stew', deletedAt: 300, updatedAt: 300 });
+      for (const variantOf of [DELETED, R2]) {
+        const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
+        expect(out).toMatchObject({ ok: false, code: 'not_found' });
+      }
+      expect(ctx.created).toEqual([]);
+    });
+
+    it('rejects a variantOf that is not a recipe id by its shape, without reading or writing', async () => {
+      const ctx = fakeContext([recipe({ id: R1, title: 'Carrot stew' })]);
+      const reads: string[] = [];
+      const read = ctx.readOwnRecipeDoc.bind(ctx);
+      ctx.readOwnRecipeDoc = async (id) => {
+        reads.push(id);
+        return read(id);
+      };
+      for (const variantOf of [7, 'not-an-id', '../users/other/recipes/x', R1 + 'x'.repeat(300_000)]) {
+        const out = await run('create_recipe', { ...EGG, variantOf }, ctx);
+        expect(out).toMatchObject({ ok: false, code: 'invalid', data: { errors: [{ path: 'variantOf' }] } });
+        expect(!out.ok && out.message.length).toBeLessThan(200);
+      }
+      expect(reads).toEqual([]);
+      expect(ctx.created).toEqual([]);
+    });
+
+    it('stores no variantOf on an ordinary create', async () => {
+      const ctx = fakeContext([]);
+      await run('create_recipe', EGG, ctx);
+      expect(ctx.docs.get(NEW_ID)).not.toHaveProperty('variantOf');
+    });
+  });
+
   it('treats "unfiled" as no collection', async () => {
     const ctx = fakeContext([], [{ id: SOUPS, name: 'Soups', recipeIds: [] }]);
     const out = await run('create_recipe', { ...EGG, collectionId: 'unfiled' }, ctx);
@@ -288,9 +366,12 @@ describe('create_recipe', () => {
     const ctx = fakeContext([], [{ id: PUBLIC, name: 'For everyone', recipeIds: [] }], { publicIds: [PUBLIC] });
     expect(await run('create_recipe', { ...EGG, collectionId: PUBLIC }, ctx)).toMatchObject({ ok: false, code: 'not_allowed' });
     expect(await run('create_recipe', { ...EGG, collectionId: SOUPS }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    expect(await run('create_recipe', { ...EGG, collectionId: 'Soups' }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    const blank = await run('create_recipe', { ...EGG, collectionId: ' ' }, ctx);
-    expect(blank).toMatchObject({ ok: false, code: 'invalid' });
+    // A value that is not an id is rejected by shape and never repeated back.
+    for (const collectionId of [' ', 'Soups', 'x'.repeat(300_000), 7]) {
+      const out = await run('create_recipe', { ...EGG, collectionId }, ctx);
+      expect(out).toMatchObject({ ok: false, code: 'invalid', data: { errors: [{ path: 'collectionId' }] } });
+      expect(!out.ok && out.message.length).toBeLessThan(200);
+    }
     expect(ctx.created).toEqual([]);
   });
 });
@@ -369,7 +450,7 @@ describe('move_recipes', () => {
   it('is not_found for an unknown collection and invalid for bad arguments', async () => {
     const ctx = library();
     expect(await run('move_recipes', { ids: [R1], collectionId: NEW_ID }, ctx)).toMatchObject({ ok: false, code: 'not_found' });
-    for (const args of [{ ids: [], collectionId: OTHER }, { ids: [R1] }, { ids: Array(21).fill(R1), collectionId: OTHER }, { ids: [R1], collectionId: OTHER, x: 1 }]) {
+    for (const args of [{ ids: [], collectionId: OTHER }, { ids: [R1] }, { ids: Array(21).fill(R1), collectionId: OTHER }, { ids: [R1], collectionId: OTHER, x: 1 }, { ids: [R1], collectionId: 'Soups' }]) {
       expect(await run('move_recipes', args, ctx)).toMatchObject({ ok: false, code: 'invalid' });
     }
   });

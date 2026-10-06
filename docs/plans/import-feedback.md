@@ -130,9 +130,9 @@ report is still stored. An absent field is omitted, never stored as `null` or
 | `createdAt` | number | always | Server time, in milliseconds since the epoch. |
 | `expireAt` | Timestamp | always | `createdAt + 180 days`. The TTL field. |
 | `trigger` | `'failed'` \| `'warnings'` \| `'down'` | always | `failed`: `/api/import` returned an error. `warnings`: the import check flagged the result. `down`: a 👎 on a clean preview. |
-| `via` | `'url'` \| `'paste'` \| `'photos'` | always | How the recipe arrived. Bulk rows are `url`. |
+| `via` | `'url'` \| `'paste'` \| `'photos'` \| `'generate'` | always | How the recipe arrived. Bulk rows are `url`. `generate` is a recipe the model wrote from an idea (`docs/plans/recipe-generation.md`). |
 | `url` | string | when the import had a link | The full http(s) link as submitted, including any query and fragment, with `user:pass@` removed. At most 2,048 characters; a longer link is dropped. |
-| `pastedText` | string | `via: 'paste'` only | The text the person pasted, cut to at most 150,000 UTF-8 bytes without splitting a character. |
+| `pastedText` | string | `via: 'paste'` or `'generate'` | The text the person pasted, or for `generate` the idea they typed, cut to at most 150,000 UTF-8 bytes without splitting a character. |
 | `pastedTruncated` | `true` | when `pastedText` was cut | |
 | `photos` | integer 1–4 | `via: 'photos'` only | How many photos were sent. The photos and the notes typed with them are never stored (`docs/constitutions/image-import.md`, principle 3). |
 | `error` | map | `failed` reports | See `error` below. Omitted when no part of it is valid. |

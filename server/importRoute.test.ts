@@ -8,10 +8,13 @@ import {
   MAX_IMPORT_BODY_BYTES,
   MAX_IMPORT_IMAGE_BYTES,
   MAX_IMPORT_IMAGES,
+  MAX_IMPORT_SEARCHES_PER_HOUR,
+  resetImportSearchRateLimitForTest,
 } from './importRoute.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
+  MAX_GENERATE_BRIEF_CHARS,
   type RecipeImportDeps,
 } from './recipeImport.ts';
 import * as recipeImport from './recipeImport.ts';
@@ -47,6 +50,8 @@ interface PostOptions {
   /** Replaces the fake built from `reply`. */
   deps?: RecipeImportDeps;
   translator?: (input: TranslateInput) => Promise<TranslateOutcome>;
+  /** The member the gate admitted; `sub-1` by default. */
+  sub?: string;
 }
 
 async function post(
@@ -60,7 +65,7 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.rawBody ?? JSON.stringify(body),
   });
-  const response = await importPost(req, { authorizedSub: 'sub-1' }, options.deps ?? deps);
+  const response = await importPost(req, { authorizedSub: options.sub ?? 'sub-1' }, options.deps ?? deps);
   return { status: response.status, body: (await response.json()) as unknown, calls };
 }
 
@@ -671,5 +676,190 @@ describe('POST /api/import log line', () => {
     expect(importLogLines().map((line) => line.entry)).toEqual([
       expect.objectContaining({ sub: 'sub-1', outcome: 'bad_request', status: 400 }),
     ]);
+  });
+});
+
+describe('POST /api/import with a brief', () => {
+  const BRIEF = 'shrimp gumbo in a pressure cooker for 6';
+  const GROUNDED = {
+    groundingChunks: [
+      { web: { uri: 'https://example.com/gumbo', title: 'Gumbo' } },
+      { web: { uri: 'https://example.org/roux', title: 'Roux' } },
+    ],
+    webSearchQueries: ['pressure cooker gumbo recipe SECRET-QUERY'],
+    searchEntryPoint: { renderedContent: '<div>chip</div>' },
+  };
+
+  function groundedDeps(reply = JSON.stringify(RECIPE)) {
+    return fakeImportDeps(reply, undefined, { groundingMetadata: GROUNDED });
+  }
+
+  beforeEach(() => {
+    resetImportSearchRateLimitForTest();
+  });
+
+  it('writes a recipe from the brief, without sourceUrl or grounding', async () => {
+    const { status, body, calls } = await post({ brief: BRIEF });
+    expect(status).toBe(200);
+    expect(body).toEqual({ recipe: RECIPE });
+    expect('sourceUrl' in (body as { recipe: object }).recipe).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0].contents)).toContain(BRIEF);
+    expect(String(calls[0].contents)).toContain('idea for a dish');
+    expect(calls[0].config?.tools).toBeUndefined();
+  });
+
+  it('adds the search tool and returns the grounding when asked', async () => {
+    const grounded = groundedDeps();
+    const { status, body } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
+    expect(status).toBe(200);
+    expect(body).toEqual({
+      recipe: RECIPE,
+      grounding: {
+        sources: [
+          { title: 'Gumbo', url: 'https://example.com/gumbo' },
+          { title: 'Roux', url: 'https://example.org/roux' },
+        ],
+        searchSuggestions: '<div>chip</div>',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('SECRET-QUERY');
+    expect(grounded.calls[0].config?.tools).toEqual([{ googleSearch: {} }]);
+  });
+
+  it('prefers the URL, then photos, over the brief; the brief over text', async () => {
+    serve(PAGE);
+    const url = await post({ url: 'https://example.com/r', brief: BRIEF });
+    expect(url.status).toBe(200);
+    expect(String(url.calls[0].contents)).toContain('Source material');
+    expect(String(url.calls[0].contents)).not.toContain(BRIEF);
+
+    const photos = await post({ images: [jpeg()], brief: BRIEF });
+    expect(photos.status).toBe(200);
+    expect(sentParts(photos.calls)[0].inlineData).toBeDefined();
+
+    const text = await post({ text: 'Tomato soup\n6 tomatoes', brief: BRIEF });
+    expect(text.status).toBe(200);
+    expect(String(text.calls[0].contents)).toContain('idea for a dish');
+    expect(String(text.calls[0].contents)).not.toContain('6 tomatoes');
+  });
+
+  it('rejects a brief that is not a string, or a search flag that is not a boolean', async () => {
+    for (const body of [{ brief: 7 }, { brief: ['x'] }, { brief: BRIEF, search: 'yes' }, { brief: BRIEF, search: 1 }]) {
+      const { status, body: answer, calls } = await post(body);
+      expect(status, JSON.stringify(body)).toBe(400);
+      expect(answer).toMatchObject({ code: 'bad-request' });
+      expect(calls).toHaveLength(0);
+    }
+  });
+
+  it('rejects a blank brief as nothing to import', async () => {
+    const { status, body, calls } = await post({ brief: '   ' });
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ code: 'import-empty' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rejects a brief over the cap without calling the model', async () => {
+    const ok = await post({ brief: 'x'.repeat(MAX_GENERATE_BRIEF_CHARS) });
+    expect(ok.status).toBe(200);
+    const long = await post({ brief: 'x'.repeat(MAX_GENERATE_BRIEF_CHARS + 1) });
+    expect(long.status).toBe(400);
+    expect(long.body).toEqual({
+      code: 'import-brief-too-long',
+      error: "That's too long — keep the idea under 2,000 characters.",
+    });
+    expect(long.calls).toHaveLength(0);
+  });
+
+  it('limits searched generations per member, and never unsearched ones', async () => {
+    expect(MAX_IMPORT_SEARCHES_PER_HOUR).toBe(20);
+    for (let i = 0; i < MAX_IMPORT_SEARCHES_PER_HOUR; i++) {
+      expect((await post({ brief: BRIEF, search: true })).status, `call ${i + 1}`).toBe(200);
+    }
+    const refused = await post({ brief: BRIEF, search: true });
+    expect(refused.status).toBe(429);
+    expect(refused.body).toEqual({
+      code: 'import-search-rate-limited',
+      error: 'Too many web searches. Try again later, or turn Search the web off.',
+    });
+    expect(refused.calls).toHaveLength(0);
+    expect((await post({ brief: BRIEF })).status).toBe(200);
+    expect((await post({ brief: BRIEF, search: false })).status).toBe(200);
+    // Each member has their own bucket.
+    expect((await post({ brief: BRIEF, search: true }, undefined, { sub: 'sub-2' })).status).toBe(200);
+    expect((await post({ brief: BRIEF, search: true })).status).toBe(429);
+    expect(importLogLines().at(-5)?.entry).toEqual(
+      expect.objectContaining({ via: 'generate', search: true, outcome: 'rate_limited', status: 429 }),
+    );
+  });
+
+  it('maps brief outcomes to brief copy, never the extraction wording', async () => {
+    expect(await post({ brief: 'the weather' }, JSON.stringify({ title: 'NOT_A_RECIPE' }))).toMatchObject({
+      status: 422,
+      body: { code: 'import-no-recipe-brief', error: "Couldn't make a recipe from that — describe a dish." },
+    });
+    const generateFailed = { code: 'import-generate-failed', error: "Couldn't generate that recipe — try again." };
+    expect(await post({ brief: BRIEF }, JSON.stringify({ ...RECIPE, steps: [] }))).toMatchObject({
+      status: 502,
+      body: generateFailed,
+    });
+    expect(await post({ brief: BRIEF }, 'not json')).toMatchObject({
+      status: 502,
+      body: generateFailed,
+    });
+    const failed = await post({ brief: BRIEF }, undefined, { deps: rejectingDeps('SECRET-UPSTREAM', 503) });
+    expect(failed).toMatchObject({ status: 502, body: generateFailed });
+    expect(JSON.stringify(failed.body)).not.toContain('SECRET');
+  });
+
+  it('forwards translateTo like a paste import', async () => {
+    const { status, body } = await post({ brief: 'zuppa di pomodoro', translateTo: 'uk' }, JSON.stringify({ ...RECIPE, lang: 'it' }), {
+      translator: prefixTranslator('it'),
+    });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      recipe: { ...RECIPE, lang: 'it' },
+      translation: { lang: 'uk', recipe: { title: 'UK Tomato soup', lang: 'uk' } },
+    });
+  });
+
+  it('logs the brief import with search counts and never the brief or the queries', async () => {
+    const grounded = groundedDeps();
+    const secretBrief = 'SECRET-BRIEF gumbo in a pressure cooker';
+    await post({ brief: secretBrief, search: true }, undefined, { deps: grounded.deps });
+    await post({ brief: secretBrief });
+    const lines = importLogLines();
+    expect(lines.map((line) => line.entry)).toEqual([
+      {
+        event: 'import',
+        sub: 'sub-1',
+        via: 'generate',
+        search: true,
+        outcome: 'ok',
+        attempts: ['ok'],
+        searchQueries: 1,
+        ingredients: 1,
+        steps: 2,
+        status: 200,
+        ms: expect.any(Number),
+      },
+      expect.objectContaining({ via: 'generate', search: false, outcome: 'ok', status: 200 }),
+    ]);
+    expect(lines[1].entry).not.toHaveProperty('searchQueries');
+    expect(lines[1].entry).not.toHaveProperty('source');
+    for (const line of lines) {
+      expect(line.raw).not.toContain('SECRET');
+      expect(line.raw).not.toContain('gumbo');
+    }
+  });
+
+  it('logs the search count when the searched brief then fails', async () => {
+    const grounded = groundedDeps(JSON.stringify({ title: 'NOT_A_RECIPE' }));
+    const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
+    expect(status).toBe(422);
+    expect(importLogLines().at(-1)?.entry).toEqual(
+      expect.objectContaining({ via: 'generate', search: true, outcome: 'not_a_recipe', searchQueries: 1 }),
+    );
   });
 });

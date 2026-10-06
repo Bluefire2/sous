@@ -11,6 +11,7 @@
 import type { PublicCollectionBody } from '../server/publicLinks.ts';
 import { FIXTURE_IDS, memberLibrary, ownerLibrary, viewerLibrary, viewerSharedChat } from './fixtures.ts';
 import { checkMcpEndpoints } from './mcpSmoke.ts';
+import { checkWrites } from './writeSmoke.ts';
 import { PERSONAS, type PersonaName, persona } from './personas.ts';
 
 const baseUrl = (process.argv[2] ?? 'http://localhost:3001').replace(/\/+$/, '');
@@ -243,6 +244,8 @@ async function main(): Promise<void> {
   await run('owner', checkOwner);
   await run('empty', checkEmpty);
   await run('member', (cookie) => checkMcpEndpoints(baseUrl, cookie, check));
+  // Last: these add rows, and the MCP checks above assert exact counts.
+  await checkWrites(baseUrl, cookies, check);
 
   console.log(failures === 0 ? 'All test-mode checks passed' : `${failures} test-mode check(s) failed`);
   process.exitCode = failures === 0 ? 0 : 1;

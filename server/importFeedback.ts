@@ -163,7 +163,7 @@ export function readImportFeedback(body: unknown): ReadImportFeedback {
   const fields: ImportFeedbackFields = { trigger: body.trigger, via };
   const url = feedbackUrl(body.url);
   if (url !== undefined) fields.url = url;
-  if (via === 'paste' && typeof body.pastedText === 'string') {
+  if ((via === 'paste' || via === 'generate') && typeof body.pastedText === 'string') {
     const pasted = truncateUtf8(body.pastedText, MAX_FEEDBACK_PASTE_BYTES);
     fields.pastedText = pasted.text;
     if (pasted.truncated || body.pastedTruncated === true) fields.pastedTruncated = true;
