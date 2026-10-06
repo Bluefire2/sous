@@ -79,7 +79,10 @@ normal import preview.
   hostname; `searchEntryPoint.renderedContent` as `searchSuggestions`;
   `webSearchQueries.length` as `queries`. `grounding` is set only with
   search on and only when something came back. The queries themselves are
-  never returned or logged (they paraphrase the brief).
+  never a JSON field and never logged (they paraphrase the brief); the member
+  who typed the brief still sees them inside Google's chip, which is shown as
+  provided. Sources are de-duplicated by redirect URL and by title, because
+  Google issues one redirect URL per chunk.
 - `finishImport` runs as for paste, so translation works the same.
 
 `POST /api/import` (`server/importRoute.ts`): body gains `brief` and

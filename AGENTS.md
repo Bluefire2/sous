@@ -34,8 +34,9 @@ than `MIN_STEPS` steps is `unusable`). With `search: true` a free-text
 research call with the Google Search tool runs first and the structured call
 writes from its notes (the tool on the structured call itself never fired
 for a known dish; `evals/EXPERIMENTS.md` 2026-10-05); the pages it used and
-Google's Search Suggestions chip come back as `grounding`, and the search
-queries and notes never leave the server. Searched calls are rate-limited to
+Google's Search Suggestions chip come back as `grounding`; the research notes
+never leave the server, and the queries are only a count in the log and the
+JSON (they are visible to the member inside Google's chip, shown as provided). Searched calls are rate-limited to
 `MAX_IMPORT_SEARCHES_PER_HOUR` (20) per member per instance (429
 `import-search-rate-limited`); a brief is `via: 'generate'` in the log and
 in import feedback. Page and paste imports are checked by

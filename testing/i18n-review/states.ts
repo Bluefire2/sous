@@ -314,6 +314,49 @@ export const STATES: Record<string, StateEntry> = {
       await clickButton(page, ctx.t('import.modeCreate'));
       await writeRecipe(page, ctx, 'what is the weather tomorrow');
       await page.getByText(ctx.t('error.importNoRecipeBrief'), { exact: true }).waitFor();
+      // The "What's included" list names the idea; open it so that line is judged.
+      await openFeedbackDetails(page, ctx);
+    },
+  },
+  'import-create-writing': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importHangs'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('import.writingHint'), { exact: true }).waitFor();
+    },
+  },
+  'import-create-too-long': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importBriefTooLong'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('error.importBriefTooLong'), { exact: true }).waitFor();
+    },
+  },
+  'import-create-rate-limited': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importSearchRateLimited'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).check();
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('error.importSearchRateLimited'), { exact: true }).waitFor();
+    },
+  },
+  'import-create-failed': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importGenerateFailed'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('error.importGenerateFailed'), { exact: true }).waitFor();
       await page.getByText(ctx.t('importFeedback.heading'), { exact: true }).first().waitFor();
     },
   },

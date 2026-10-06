@@ -951,7 +951,11 @@ function httpUrl(value: unknown): URL | undefined {
 
 /**
  * The grounding Google reported, reduced to what the client shows and the log
- * counts. The search queries themselves are dropped: they paraphrase the brief.
+ * counts. `webSearchQueries` is reduced to a count: the queries paraphrase the
+ * brief, so they never reach a JSON field or the log line. They are still
+ * visible to the person inside Google's chip, which is shown as provided.
+ * Google issues one redirect URL per chunk, so a page can appear several
+ * times with the same title; the title is the second de-duplication key.
  * `undefined` when nothing usable was reported.
  */
 function readGrounding(metadata: GroundingMetadata | undefined): GenerateGrounding | undefined {
@@ -962,9 +966,12 @@ function readGrounding(metadata: GroundingMetadata | undefined): GenerateGroundi
     const uri = chunk.web?.uri;
     const url = httpUrl(uri);
     if (url === undefined || typeof uri !== 'string' || seen.has(uri)) continue;
+    const rawTitle = typeof chunk.web?.title === 'string' ? chunk.web.title.trim() : '';
+    const title = rawTitle === '' ? url.hostname : rawTitle;
+    if (seen.has(`title:${title}`)) continue;
     seen.add(uri);
-    const title = typeof chunk.web?.title === 'string' ? chunk.web.title.trim() : '';
-    sources.push({ title: title === '' ? url.hostname : title, url: uri });
+    seen.add(`title:${title}`);
+    sources.push({ title, url: uri });
     if (sources.length >= MAX_GENERATE_SOURCES) break;
   }
   const rendered = metadata.searchEntryPoint?.renderedContent;

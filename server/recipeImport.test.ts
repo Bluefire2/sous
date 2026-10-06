@@ -1447,6 +1447,23 @@ describe('generateFromBrief', () => {
     expect(JSON.stringify(outcome)).not.toContain('pressure cooker shrimp gumbo recipe');
   });
 
+  it('lists a page once even when Google issued it several redirect links', async () => {
+    const { deps } = fakeImportDeps(JSON.stringify(GENERATED), undefined, {
+      groundingMetadata: {
+        groundingChunks: [
+          { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa', title: 'gumbo.example' } },
+          { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/bbb', title: 'gumbo.example' } },
+          { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/ccc', title: 'roux.example' } },
+        ],
+      },
+    });
+    const outcome = await generateFromBrief(BRIEF, deps, { search: true });
+    expect(outcome.kind === 'ok' && outcome.grounding?.sources).toEqual([
+      { title: 'gumbo.example', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa' },
+      { title: 'roux.example', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/ccc' },
+    ]);
+  });
+
   it('reports no grounding without search, or when Google reported nothing', async () => {
     const metadata = { groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'A' } }] };
     const unsearched = fakeImportDeps(JSON.stringify(GENERATED), undefined, { groundingMetadata: metadata });

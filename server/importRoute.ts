@@ -365,7 +365,8 @@ async function handleImport(
       entry.outcome = 'bad_brief';
       return fail('import-brief-too-long', BRIEF_TOO_LONG, 400);
     }
-    // `entry.sub` is the membership gate's decision; a request with none cannot share a bucket.
+    // `entry.sub` is the membership gate's decision; `withMembership` always
+    // passes it, so only direct calls without a context (tests) share the '' bucket.
     const member = entry.sub ?? '';
     if (
       search &&

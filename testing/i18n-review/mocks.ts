@@ -309,6 +309,25 @@ export const MOCKS = {
     status: 422,
     body: { error: "Couldn't make a recipe from that — describe a dish.", code: 'import-no-recipe-brief' },
   })),
+  /** The brief was over the cap: 400 `import-brief-too-long` (the textarea caps it; a mode switch can carry longer text). */
+  importBriefTooLong: importMock(() => ({
+    status: 400,
+    body: { error: "That's too long — keep the idea under 2,000 characters.", code: 'import-brief-too-long' },
+  })),
+  /** Too many searched generations this hour: 429 `import-search-rate-limited`. */
+  importSearchRateLimited: importMock(() => ({
+    status: 429,
+    body: { error: 'Too many web searches. Try again later, or turn Search the web off.', code: 'import-search-rate-limited' },
+  })),
+  /** The model call failed while writing: 502 `import-generate-failed`. */
+  importGenerateFailed: importMock(() => ({
+    status: 502,
+    body: { error: "Couldn't write that recipe — try again.", code: 'import-generate-failed' },
+  })),
+  /** `POST /api/import` never answers: the Writing… state stays on screen. */
+  importHangs: async (context) => {
+    await context.route('**/api/import', () => new Promise<void>(() => {}));
+  },
   /** Bulk rows by URL: `…/check` warns, `…/broken` fails, anything else is clean. */
   importBulk: importMock((request) => {
     const url = typeof request.url === 'string' ? request.url : '';

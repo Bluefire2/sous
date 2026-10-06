@@ -632,7 +632,7 @@ export const ru: Messages = {
   'error.importBodyTooLarge': 'Это слишком большое для импорта — попробуйте меньше фото.',
   'error.importPhotosFailed': 'Не удалось прочитать эти фото — попробуйте ещё раз.',
   'error.importNoRecipePhotos': 'В этих фото не нашлось рецепта.',
-  'error.importBriefTooLong': 'Слишком длинно — опишите идею не более чем 2 000 символами.',
+  'error.importBriefTooLong': 'Слишком длинно — уложитесь в 2 000 символов.',
   'error.importSearchRateLimited': 'Слишком много поисков в интернете. Попробуйте позже или выключите поиск в интернете.',
   'error.importNoRecipeBrief': 'Не удалось составить рецепт из этого — опишите блюдо.',
   'error.importGenerateFailed': 'Не удалось написать этот рецепт — попробуйте ещё раз.',
