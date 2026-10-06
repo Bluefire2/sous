@@ -32,6 +32,9 @@ describe('fetchIntroSeen', () => {
     await expect(fetchIntroSeen()).resolves.toBeNull();
     respond(200, { seen: 'no' });
     await expect(fetchIntroSeen()).resolves.toBeNull();
+    // A 200 that isn't JSON (an HTML page from a proxy, say).
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html>', { status: 200 })));
+    await expect(fetchIntroSeen()).resolves.toBeNull();
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new TypeError('offline');
     }));
