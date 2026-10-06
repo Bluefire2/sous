@@ -730,6 +730,23 @@ the rule rather than loosening the check. `evals/pageFixtures.test.ts` runs the
 offline extraction step over every cached page and needs an entry for each new
 page fixture.
 
+**Coverage before a PR.** Once a change adds or substantially changes a module
+under `server/`, `src/lib/`, `scripts/`, or `api/`, and before opening the PR,
+run coverage for those files and read their uncovered lines:
+
+```
+npx vitest run --coverage --coverage.include=server/newThing.ts --coverage.reporter=text
+```
+
+Repeat `--coverage.include` per file. Leave the test files off the command so
+every test that touches the module counts. Add tests for uncovered logic:
+branches, error paths, refusals, the cases a route maps to a status. Do not
+chase a percentage, do not add tests that only execute lines, and do not test
+screens or components (they are checked in the browser). There is no
+threshold; CI shows the whole report on the `check` job's summary page for
+reviewers. Like the translation review, this is a pre-PR check, not part of
+every edit.
+
 Live paste-to-recipe evals are `npm run test:import` (`evals/**/*.eval.ts`,
 `vitest.eval.config.ts`). They call Gemini against fixtures in `evals/import/`
 and need `GEMINI_API_KEY` from `.env.local` (same as `dev:api`). Website
