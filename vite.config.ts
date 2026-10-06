@@ -21,7 +21,8 @@ export default defineConfig({
       '/api': apiTarget,
       '/invite': apiTarget,
       // Regex key: a plain '/c' prefix would also catch the SPA's /cooks.
-      '^/c/': apiTarget,
+      // Bare /c too: scripts/server.ts answers it with the link page.
+      '^/c(/|$)': apiTarget,
       // The MCP server: its endpoint, the OAuth pages, and discovery.
       '^/mcp$': apiTarget,
       '^/oauth/': apiTarget,
@@ -61,8 +62,9 @@ export default defineConfig({
           /^\/privacy$/,
           /^\/terms$/,
           /^\/about$/,
-          /^\/invite\//,
-          /^\/c\//,
+          // Bare /invite and /c are server pages too (scripts/server.ts).
+          /^\/invite(\/|$)/,
+          /^\/c(\/|$)/,
           /^\/mcp$/,
           /^\/oauth\//,
           /^\/\.well-known\//,

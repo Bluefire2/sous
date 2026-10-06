@@ -535,10 +535,10 @@ function serverRenderedSamples(): { path: string; viteServesItself: boolean }[] 
   const literals = [...dispatcher.matchAll(/decodedPath(?:\.startsWith\(|\s*===\s*)'([^']+)'/g)].map((m) => m[1]);
   for (const literal of new Set(literals)) {
     if (literal === '/') continue; // the "starts with a slash" check, not a route
-    if (literals.includes(`${literal}/`)) continue; // the bare form of a prefix below
+    // Bare forms (`/invite`, `/c`, `/p`) are answered by the dispatcher too, so they are checked.
     const path = literal.endsWith('/') ? `${literal}sometoken` : literal;
     // The public collection pages are SPA routes the dispatcher only adds headers to.
-    samples.push({ path, viteServesItself: literal === '/p/' });
+    samples.push({ path, viteServesItself: literal === '/p/' || literal === '/p' });
   }
   samples.push({ path: '/c/join', viteServesItself: false });
   const publicHtml = /const PUBLIC_HTML[^{]*\{([^}]*)\}/.exec(dispatcher)?.[1] ?? '';
@@ -572,7 +572,8 @@ function serviceWorkerDenylist(): RegExp[] {
   const block = /navigateFallbackDenylist:\s*\[([\s\S]*?)\n\s*\],/.exec(config)?.[1] ?? '';
   return block
     .split('\n')
-    .map((line) => /^\s*\/(.+)\/,?\s*$/.exec(line)?.[1])
+    // Every entry is an anchored regex literal; a comment line never starts with `/^`.
+    .map((line) => /^\s*\/(\^.+)\/,?\s*$/.exec(line)?.[1])
     .filter((source): source is string => source !== undefined)
     .map((source) => new RegExp(source));
 }
@@ -675,7 +676,7 @@ describe('import retries (docs/plans/import-reliability.md)', () => {
     expect(read('server/recipeImport.ts')).toMatch(/^export const MAX_IMPORT_RETRIES = \d+;$/m);
     const offenders = filesUnder('server', ['.ts'])
       .filter((path) => !isTestFile(path))
-      .flatMap((path) => matchingLines(path, /process\.env\.\w*RETR/i));
+      .flatMap((path) => matchingLines(path, /process\.env(?:\.\w*RETR|\[\s*['"`]\w*RETR)/i));
     expect(offenders).toEqual([]);
   });
 });
@@ -700,6 +701,8 @@ describe('sign-in and route placement (Auth and What this is in AGENTS.md)', () 
     expect(mentions.map((line) => line.split(':')[0])).toEqual(['src/lib/session.ts']);
     const definitions = srcFiles.flatMap((path) => matchingLines(path, /function signInHref\b/));
     expect(definitions).toHaveLength(1);
+    const fetched = srcFiles.flatMap((path) => matchingLines(path, /\bfetch\s*\([^)]*(signInHref|auth\/start)/));
+    expect(fetched).toEqual([]);
   });
 
   it('api/ holds only the two Vercel files', () => {
@@ -710,8 +713,12 @@ describe('sign-in and route placement (Auth and What this is in AGENTS.md)', () 
 });
 
 describe('UI text lives only in the catalogs (docs/constitutions/i18n.md, principle 9)', () => {
-  // Words a user reads are never typed into a component. The brand name is
-  // the same in every language.
+  // Words a user reads are never typed into a component. Checked: JSX text,
+  // string literals a JSX child expression can render (including through
+  // ?:, &&, ||, ??), and string-literal aria-label, title, placeholder, and
+  // alt. Not checked: other props (a `label="..."` passed to a component) and
+  // client `lib/` messages; review covers those. The brand name is the same
+  // in every language.
   const ALLOWED = new Set(['Sous']);
   const TEXT_ATTRIBUTES = new Set(['aria-label', 'title', 'placeholder', 'alt']);
   const hasWord = (text: string) => /\p{L}{2,}/u.test(text);
@@ -728,17 +735,32 @@ describe('UI text lives only in the catalogs (docs/constitutions/i18n.md, princi
       node !== undefined && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
         ? node.text
         : undefined;
+    /** String literals an expression can render: `{a ? 'Yes' : 'No'}`, `{x && 'Saved'}`, `{label ?? 'Untitled'}`. */
+    const renderedLiterals = (node: ts.Node | undefined): string[] => {
+      if (node === undefined) return [];
+      const text = literalText(node);
+      if (text !== undefined) return [text];
+      if (ts.isParenthesizedExpression(node)) return renderedLiterals(node.expression);
+      if (ts.isConditionalExpression(node)) return [...renderedLiterals(node.whenTrue), ...renderedLiterals(node.whenFalse)];
+      if (ts.isBinaryExpression(node)) {
+        const op = node.operatorToken.kind;
+        if (op === ts.SyntaxKind.AmpersandAmpersandToken) return renderedLiterals(node.right);
+        if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) {
+          return [...renderedLiterals(node.left), ...renderedLiterals(node.right)];
+        }
+      }
+      return [];
+    };
     const visit = (node: ts.Node): void => {
       if (ts.isJsxText(node)) {
         // `&larr;` and `&#8594;` are symbols, not words.
         report(node, node.text.replace(/&(?:#\d+|#x[\da-f]+|[a-z]+);/gi, ' '));
       } else if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
-        const text = literalText(node.expression);
-        if (text !== undefined) report(node, text);
+        for (const text of renderedLiterals(node.expression)) report(node, text);
       } else if (ts.isJsxAttribute(node) && TEXT_ATTRIBUTES.has(node.name.getText(source))) {
         const init = node.initializer;
-        const text = init !== undefined && ts.isJsxExpression(init) ? literalText(init.expression) : literalText(init);
-        if (text !== undefined) report(node, text);
+        const texts = init !== undefined && ts.isJsxExpression(init) ? renderedLiterals(init.expression) : [literalText(init)];
+        for (const text of texts) if (text !== undefined) report(node, text);
       }
       ts.forEachChild(node, visit);
     };

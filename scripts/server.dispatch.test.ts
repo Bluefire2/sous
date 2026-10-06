@@ -160,6 +160,12 @@ describe('exact API routes', () => {
     }
   });
 
+  it('answers HEAD on a GET-only API route as a wrong method, with no body', async () => {
+    const res = await send(apiBase, 'HEAD', '/api/sync/pull');
+    expect(res.status).toBe(405);
+    expect(await res.text()).toBe('');
+  });
+
   it('answers 404 for an unknown API path, also without a static root', async () => {
     expect((await send(apiBase, 'GET', '/api/nope')).status).toBe(404);
     expect((await send(staticBase, 'GET', '/api/nope')).status).toBe(404);
@@ -312,11 +318,5 @@ describe('a handler that throws', () => {
     // The server keeps answering after a crash.
     expect((await send(apiBase, 'GET', '/api/sync/pull')).status).toBe(401);
     error.mockRestore();
-  });
-
-  it('answers HEAD on a GET-only API route as a wrong method, with no body', async () => {
-    const res = await send(apiBase, 'HEAD', '/api/sync/pull');
-    expect(res.status).toBe(405);
-    expect(await res.text()).toBe('');
   });
 });
