@@ -149,6 +149,7 @@ may fail. Use `http://localhost:5173`.
 
 ```
 npm test          # Vitest over src/ and server/
+npm run test:coverage  # the same, plus a coverage report in coverage/ (no thresholds)
 npm run test:import  # live Gemini paste-to-recipe evals; needs GEMINI_API_KEY
 npm run build     # tsc -b && vite build — the only type gate on server/
 ```
@@ -717,7 +718,7 @@ is shared infrastructure for every end-to-end test, and an unexercised test
 path rots silently (`docs/plans/test-mode.md`); the review's use of it is in
 `docs/plans/i18n-review-ci.md`. Do not add the emulator to another job or to
 `npm test`. `.github/workflows/ci.yml` runs on PRs and pushes to
-`main`: `npm run build` + `npm test`, a Docker image build booted with no
+`main`: `npm run build` + `npm run test:coverage` (`npm test` plus a coverage report on the job summary, no thresholds), a Docker image build booted with no
 cloud credentials and checked by `.github/scripts/smoke-server.sh`, the
 `test-mode` job checked by `testing/smoke.ts` (reads, MCP, then the write
 checks in `testing/writeSmoke.ts`), `testing/deletionCheck.ts` (the real
@@ -728,6 +729,23 @@ and dependency review. None of it needs secrets, ADC, or production.
 the rule rather than loosening the check. `evals/pageFixtures.test.ts` runs the
 offline extraction step over every cached page and needs an entry for each new
 page fixture.
+
+**Coverage before a PR.** Once a change adds or substantially changes a module
+under `server/`, `src/lib/`, `scripts/`, or `api/`, and before opening the PR,
+run coverage for those files and read their uncovered lines:
+
+```
+npx vitest run --coverage --coverage.include=server/newThing.ts --coverage.reporter=text
+```
+
+Repeat `--coverage.include` per file. Leave the test files off the command so
+every test that touches the module counts. Add tests for uncovered logic:
+branches, error paths, refusals, the cases a route maps to a status. Do not
+chase a percentage, do not add tests that only execute lines, and do not test
+screens or components (they are checked in the browser). There is no
+threshold; CI shows the whole report on the `check` job's summary page for
+reviewers. Like the translation review, this is a pre-PR check, not part of
+every edit.
 
 Live paste-to-recipe evals are `npm run test:import` (`evals/**/*.eval.ts`,
 `vitest.eval.config.ts`). They call Gemini against fixtures in `evals/import/`
