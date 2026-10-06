@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { parsePublicCollection, publicPhotoUrl } from './publicApi';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '../i18n';
+import { joinPublicCollection, parsePublicCollection, publicPhotoUrl } from './publicApi';
+import { invalidateSession } from './session';
+
+vi.mock('./session', () => ({ invalidateSession: vi.fn() }));
 
 const recipe = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -33,5 +37,84 @@ describe('parsePublicCollection', () => {
 describe('publicPhotoUrl', () => {
   it('points at the public photo route for that recipe', () => {
     expect(publicPhotoUrl('tok', 'r1', 'p1')).toBe('/api/public/tok/recipes/r1/photos/p1');
+  });
+});
+
+describe('joinPublicCollection', () => {
+  function respond(status: number, body?: unknown): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        body === undefined
+          ? new Response(null, { status })
+          : new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+              status,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+      ),
+    );
+  }
+
+  beforeEach(() => {
+    vi.mocked(invalidateSession).mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts the token and returns the joined collection', async () => {
+    for (const result of ['joined', 'already', 'own'] as const) {
+      respond(200, { collectionId: 'c1', result });
+      expect(await joinPublicCollection('tok')).toEqual({ kind: 'ok', collectionId: 'c1', result });
+    }
+    const [path, init] = vi.mocked(fetch).mock.calls[0];
+    expect(path).toBe('/api/public/join');
+    expect(init).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'tok' }) });
+  });
+
+  it('is a generic error when the request never reaches the server', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    expect(await joinPublicCollection('tok')).toEqual({ kind: 'error', message: t('public.joinFailed') });
+  });
+
+  it('signs out on 401 and 403', async () => {
+    for (const status of [401, 403]) {
+      respond(status, { error: 'Unauthorized' });
+      expect(await joinPublicCollection('tok')).toEqual({ kind: 'signedOut' });
+    }
+    expect(invalidateSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('is missing on 404 and full on 409, whatever the server says', async () => {
+    respond(404, { error: 'Not found' });
+    expect(await joinPublicCollection('tok')).toEqual({ kind: 'missing' });
+    respond(409, { code: 'share-full', error: 'This collection is shared with 20 people.' });
+    expect(await joinPublicCollection('tok')).toEqual({ kind: 'error', message: t('public.joinFull') });
+    expect(invalidateSession).not.toHaveBeenCalled();
+  });
+
+  it('shows the server sentence for another failure, or the generic one', async () => {
+    respond(503, { error: 'Membership unavailable' });
+    expect(await joinPublicCollection('tok')).toEqual({ kind: 'error', message: 'Membership unavailable' });
+    respond(500, 'not json');
+    expect(await joinPublicCollection('tok')).toEqual({ kind: 'error', message: t('public.joinFailed') });
+  });
+
+  it('rejects a 200 whose body it does not understand', async () => {
+    const bodies = [
+      {},
+      { collectionId: 'c1' },
+      { collectionId: 1, result: 'joined' },
+      { collectionId: 'c1', result: 'maybe' },
+      'not json',
+    ];
+    for (const body of bodies) {
+      respond(200, body);
+      expect(await joinPublicCollection('tok'), JSON.stringify(body)).toEqual({
+        kind: 'error',
+        message: t('public.joinFailed'),
+      });
+    }
   });
 });

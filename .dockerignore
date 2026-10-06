@@ -12,3 +12,4 @@ docs
 extension
 testing
 gha-creds-*.json
+coverage

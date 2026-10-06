@@ -165,6 +165,7 @@ may fail. Use `http://localhost:5173`.
 
 ```
 npm test          # Vitest over src/ and server/
+npm run test:coverage  # the same, plus a coverage report in coverage/ (no thresholds)
 npm run test:import  # live Gemini paste-to-recipe evals; needs GEMINI_API_KEY
 npm run build     # tsc -b && vite build — the only type gate on server/
 ```
@@ -587,7 +588,9 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `variantOf`, the id of one of the caller's recipes. The server stores that
   recipe's group (its `variantOf`, else its id; Ask's rule) and, unless the
   call gives `lang`, its `lang` (`docs/plans/recipe-variants.md`, MCP). An
-  unknown, deleted or foreign id is `not_found`. `create_recipe` also takes
+  unknown, deleted or foreign id is `not_found`; a value that is not a
+  recipe id is `invalid` (so is a `collectionId` that is neither "unfiled"
+  nor a collection id). `create_recipe` also takes
   an optional `collectionId`; it and `move_recipes` file recipes with the app's
   membership rule in one transaction (`server/mcp/collectionMove.ts`,
   `docs/plans/mcp-collection-writes.md`) and refuse a collection with a live
@@ -714,6 +717,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
 | `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/test-coverage.md` | Done: merged as #151, #152, #154, and #157 (the coverage report), not deployed. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -731,14 +735,34 @@ is shared infrastructure for every end-to-end test, and an unexercised test
 path rots silently (`docs/plans/test-mode.md`); the review's use of it is in
 `docs/plans/i18n-review-ci.md`. Do not add the emulator to another job or to
 `npm test`. `.github/workflows/ci.yml` runs on PRs and pushes to
-`main`: `npm run build` + `npm test`, a Docker image build booted with no
+`main`: `npm run build` + `npm run test:coverage` (`npm test` plus a coverage report on the job summary, no thresholds), a Docker image build booted with no
 cloud credentials and checked by `.github/scripts/smoke-server.sh`, the
-`test-mode` job checked by `testing/smoke.ts`, and
-dependency review. None of it needs secrets, ADC, or production.
+`test-mode` job checked by `testing/smoke.ts` (reads, MCP, then the write
+checks in `testing/writeSmoke.ts`), `testing/deletionCheck.ts` (the real
+`scripts/delete-account-data.ts` on the viewer persona), and
+`testing/logSweep.ts` (no email, token, or query string in the server log),
+and dependency review. None of it needs secrets, ADC, or production.
 `scripts/invariants.test.ts` turns rules in this file into failing tests; follow
 the rule rather than loosening the check. `evals/pageFixtures.test.ts` runs the
 offline extraction step over every cached page and needs an entry for each new
 page fixture.
+
+**Coverage before a PR.** Once a change adds or substantially changes a module
+under `server/`, `src/lib/`, `scripts/`, or `api/`, and before opening the PR,
+run coverage for those files and read their uncovered lines:
+
+```
+npx vitest run --coverage --coverage.include=server/newThing.ts --coverage.reporter=text
+```
+
+Repeat `--coverage.include` per file. Leave the test files off the command so
+every test that touches the module counts. Add tests for uncovered logic:
+branches, error paths, refusals, the cases a route maps to a status. Do not
+chase a percentage, do not add tests that only execute lines, and do not test
+screens or components (they are checked in the browser). There is no
+threshold; CI shows the whole report on the `check` job's summary page for
+reviewers. Like the translation review, this is a pre-PR check, not part of
+every edit.
 
 Live paste-to-recipe evals are `npm run test:import` (`evals/**/*.eval.ts`,
 `vitest.eval.config.ts`). They call Gemini against fixtures in `evals/import/`

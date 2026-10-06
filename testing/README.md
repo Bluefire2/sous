@@ -125,6 +125,17 @@ without a key.
   recipe and disconnect the seeded app, and they need the tokens from this
   process's seed, so run the script once after a fresh start. It fails
   against `--keep`, and a second run against the same server fails too.
+  Last, it runs the write checks in `testing/writeSmoke.ts`: last-write-wins
+  and tombstones, the recipe delete cascade, editor and viewer rules, the
+  collection-link hop, public join, and admin approve and revoke. They add
+  rows and change roles and put them back.
+- `node testing/deletionCheck.ts http://localhost:3001` runs the real
+  `scripts/delete-account-data.ts` on the `viewer` persona against the
+  emulator and checks that only the viewer's data went. It removes the
+  viewer, so run it after `smoke.ts` and restart before anything else.
+- `node testing/logSweep.ts <log>` checks the server's output for persona
+  emails, MCP tokens, session cookies, link tokens, and query strings in a
+  logged URL. Redirect the server's output to a file to use it.
 
 ## Reviewing translations
 

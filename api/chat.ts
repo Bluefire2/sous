@@ -102,6 +102,7 @@ export function sessionSub(req: Request): string | null {
     v?: unknown;
     sub?: unknown;
     email?: unknown;
+    iat?: unknown;
     exp?: unknown;
   };
   if (row.v !== 1) {
@@ -113,7 +114,8 @@ export function sessionSub(req: Request): string | null {
   if (typeof row.email !== 'string') {
     return null;
   }
-  if (typeof row.exp !== 'number' || row.exp <= Date.now()) {
+  // Same as verifySession in server/session.ts: both timestamps must be numbers.
+  if (typeof row.iat !== 'number' || typeof row.exp !== 'number' || row.exp <= Date.now()) {
     return null;
   }
   if (!isEmailAllowed(row.email, process.env.ALLOWED_EMAILS ?? '')) {
