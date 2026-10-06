@@ -1,7 +1,7 @@
 # Test coverage for CI
 
-Status: PR 1 (steps 1 to 4) merged as #151; PR 2 (steps 5 to 7, #152) and PR 3
-(steps 8 to 11, #154) built 2026-10-05; step 12 is the owner's call. Written from a survey of the suite
+Status: PR 1 (steps 1 to 4) and PR 2 (steps 5 to 7) merged as #151 and #152;
+PR 3 (steps 8 to 11, #154) built 2026-10-05; step 12 is the owner's call. Written from a survey of the suite
 (149 test files, 2593 cases, about 13 s under `npm test`) and of
 `.github/workflows/ci.yml`. Every feature PR in the last eight commits shipped
 with tests; the gaps below are structural, not per-feature.
