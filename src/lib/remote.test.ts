@@ -489,6 +489,7 @@ describe('normalizeChatChange / normalizeCookChange', () => {
       recipeId: 'r1',
       servings: 2,
       currentStep: 1,
+      doneSteps: [3],
       checkedKeys: ['0-0'],
       recipeUpdatedAt: 2,
       updatedAt: 4,
@@ -498,9 +499,11 @@ describe('normalizeChatChange / normalizeCookChange', () => {
     if (cook === 'tombstone') {
       return;
     }
+    // `doneSteps` is the deliberate addition from docs/plans/parallel-steps.md.
     expect(Object.keys(cook).sort()).toEqual([
       'checkedKeys',
       'currentStep',
+      'doneSteps',
       'recipeId',
       'recipeUpdatedAt',
       'servings',
@@ -533,6 +536,27 @@ describe('normalizeChatChange / normalizeCookChange', () => {
       expect(cook).not.toHaveProperty('updatedAt');
     }
     expect(normalizeCookChange({ ...live, deletedAt: 9 })).toBe('tombstone');
+  });
+
+  it('keeps doneSteps only when something is left after normalizing', () => {
+    const live = {
+      recipeId: 'r1',
+      servings: 2,
+      currentStep: 1,
+      checkedKeys: [],
+      recipeUpdatedAt: 2,
+    };
+    for (const doneSteps of [[], ['x', -1, 2.5], 'nope']) {
+      const cook = normalizeCookChange({ ...live, doneSteps });
+      expect(cook).not.toBe('tombstone');
+      if (cook === 'tombstone') return;
+      expect(cook).not.toHaveProperty('doneSteps');
+      expect(cook.currentStep).toBe(1);
+    }
+    const folded = normalizeCookChange({ ...live, doneSteps: [1, 2] });
+    expect(folded).toEqual({ ...live, currentStep: 3 });
+    const kept = normalizeCookChange({ ...live, doneSteps: [5, 3, 3] });
+    expect(kept).toEqual({ ...live, doneSteps: [3, 5] });
   });
 
   it('places provenance only in sidecars', () => {

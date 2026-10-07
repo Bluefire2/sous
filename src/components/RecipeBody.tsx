@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { ingredientLine } from '../lib/recipeText';
+import { activeSteps, isStepDone, stepBlocks } from '../lib/stepLanes';
 import type { Recipe } from '../lib/types';
 
 /**
@@ -190,59 +191,188 @@ export function IngredientsSection({
   );
 }
 
+/** One step row: a full-width button with no control inside it (i18n principle 3). */
+function StepButton({
+  index,
+  text,
+  isCurrent,
+  isDone,
+  dimmed,
+  onTap,
+}: {
+  index: number;
+  text: string;
+  isCurrent: boolean;
+  isDone: boolean;
+  dimmed: boolean;
+  onTap: (index: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onTap(index)}
+      className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition print:px-0 print:py-1 print:text-ink print:opacity-100 ${
+        isCurrent
+          ? 'bg-surface ring-2 ring-amber-400'
+          : isDone
+            ? 'bg-surface-muted text-ink-subtle'
+            : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
+      } ${dimmed ? 'opacity-50' : ''}`}
+    >
+      <span
+        className={`font-semibold print:text-ink ${isCurrent ? 'text-amber-500' : 'text-ink-subtle'}`}
+      >
+        {/* Paper shows every step's number, whatever the cook progress. */}
+        {isDone ? (
+          <>
+            <span className="print:hidden">✓</span>
+            <span className="hidden print:inline">{index + 1}</span>
+          </>
+        ) : (
+          index + 1
+        )}
+      </span>
+      <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
+    </button>
+  );
+}
+
+/**
+ * Which lane this person follows when two people cook
+ * (`docs/plans/parallel-steps.md`). Only rendered for a recipe with lanes.
+ * `active` undefined is Everyone. The pick dims other lanes; it never hides
+ * a step and never changes progress.
+ */
+export function LaneChips({
+  lanes,
+  active,
+  onChange,
+}: {
+  lanes: readonly string[];
+  active: string | undefined;
+  onChange: (lane: string | undefined) => void;
+}) {
+  const t = useT();
+  const chip = (pressed: boolean) =>
+    `rounded-full border px-3 py-1 text-sm font-medium shadow-sm ${
+      pressed
+        ? 'border-amber-600/70 bg-accent-soft text-ink'
+        : 'border-line bg-surface text-ink-muted hover:bg-surface-muted'
+    }`;
+  return (
+    <div
+      role="group"
+      aria-label={t('recipe.laneChips')}
+      className="mt-2 flex flex-wrap items-center gap-2 print:hidden"
+    >
+      <span className="text-sm text-ink-muted">{t('recipe.laneChips')}</span>
+      <button
+        type="button"
+        aria-pressed={active === undefined}
+        onClick={() => onChange(undefined)}
+        className={chip(active === undefined)}
+      >
+        {t('recipe.laneEveryone')}
+      </button>
+      {lanes.map((lane) => (
+        <button
+          key={lane}
+          type="button"
+          aria-pressed={active === lane}
+          onClick={() => onChange(lane)}
+          className={chip(active === lane)}
+        >
+          {lane}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function StepsSection({
   recipe,
   displayRecipe,
   currentStep,
-  onStep,
+  doneSteps,
+  onTap,
+  activeLane,
+  lanePicker,
   afterDone,
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
+  /** Every step before this index is done. */
   currentStep: number;
-  onStep: (step: number) => void;
+  /** Steps done ahead of `currentStep` in a parallel block. */
+  doneSteps: readonly number[];
+  onTap: (index: number) => void;
+  /** The lane this person follows; other lanes' steps are dimmed. */
+  activeLane?: string;
+  /** Shown under the heading, such as `LaneChips`. */
+  lanePicker?: ReactNode;
   /** Shown under "Done" once every step is ticked, such as the cook-log link. */
   afterDone?: ReactNode;
 }) {
   const t = useT();
+  // Structure always comes from the stored recipe; a translation only
+  // supplies text (i18n principle 4).
+  const blocks = useMemo(() => stepBlocks(recipe.steps), [recipe.steps]);
+  const progress = { currentStep, doneSteps };
+  const active = activeSteps(recipe.steps, progress);
+  const row = (index: number, dimmed: boolean) => (
+    <StepButton
+      index={index}
+      text={displayRecipe.steps[index]?.text ?? recipe.steps[index].text}
+      isCurrent={active.has(index)}
+      isDone={isStepDone(progress, index)}
+      dimmed={dimmed}
+      onTap={onTap}
+    />
+  );
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
+      {lanePicker}
       <ol className="mt-2 flex flex-col gap-2">
-        {recipe.steps.map((step, i) => {
-          const isCurrent = i === currentStep;
-          const isDone = i < currentStep;
-          const text = displayRecipe.steps[i]?.text ?? step.text;
+        {blocks.map((block) => {
+          if (block.kind === 'sync') {
+            return <li key={block.index}>{row(block.index, false)}</li>;
+          }
+          const headingId = `steps-together-${block.start}`;
           return (
-            <li key={i}>
-              <button
-                type="button"
-                onClick={() => onStep(i === currentStep ? i + 1 : i)}
-                className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors print:px-0 print:py-1 print:text-ink ${
-                  isCurrent
-                    ? 'bg-surface ring-2 ring-amber-400'
-                    : isDone
-                      ? 'bg-surface-muted text-ink-subtle'
-                      : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
-                }`}
+            <li key={block.start}>
+              <div
+                role="group"
+                aria-labelledby={headingId}
+                className="rounded-xl border border-line p-2 print:border-0 print:p-0"
               >
-                <span
-                  className={`font-semibold print:text-ink ${
-                    isCurrent ? 'text-amber-500' : 'text-ink-subtle'
-                  }`}
+                <p
+                  id={headingId}
+                  className="px-1 text-xs font-semibold tracking-wide text-amber-600 uppercase print:text-ink"
                 >
-                  {/* Paper shows every step's number, whatever the cook progress. */}
-                  {isDone ? (
-                    <>
-                      <span className="print:hidden">✓</span>
-                      <span className="hidden print:inline">{i + 1}</span>
-                    </>
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
-              </button>
+                  {t('recipe.atTheSameTime')}
+                </p>
+                <div className="mt-2 grid gap-3 sm:auto-cols-fr sm:grid-flow-col">
+                  {block.lanes.map((run) => {
+                    const dimmed = activeLane !== undefined && run.lane !== activeLane;
+                    return (
+                      <div key={run.lane} className="min-w-0">
+                        {/* A lane name is recipe text, shown as written. */}
+                        <h3
+                          className={`px-1 text-sm font-semibold print:opacity-100 ${dimmed ? 'opacity-50' : ''}`}
+                        >
+                          {run.lane}
+                        </h3>
+                        <ol className="mt-1 flex flex-col gap-2">
+                          {run.steps.map((index) => (
+                            <li key={index}>{row(index, dimmed)}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </li>
           );
         })}

@@ -7,6 +7,7 @@
  */
 import { reconcileImportCheck, type ImportCheck } from '../importWarnings.ts';
 import { normalizeLang } from '../lang.ts';
+import { MAX_LANE_CHARS } from '../recipeSteps.ts';
 import { compactVariantOf } from '../recipeVariant.ts';
 import { compactRecipeFields, MAX_RECIPE_LANG_CHARS } from '../store.ts';
 
@@ -20,6 +21,7 @@ export const RECIPE_LIMITS = {
   note: 300,
   steps: 200,
   step: 5000,
+  lane: MAX_LANE_CHARS,
   tags: 30,
   tag: 40,
   longText: 10_000,
@@ -36,6 +38,8 @@ export type FieldError = { path: string; message: string };
 
 export type RecipeIngredient = { item: string; quantity?: number; unit?: string; note?: string };
 export type RecipeIngredientSection = { name?: string; items: RecipeIngredient[] };
+/** `lane`: who does the step when two people cook (`docs/plans/parallel-steps.md`). */
+export type RecipeStepInput = { text: string; lane?: string };
 
 /** The text a model may write. Photos, collections, and the import check are not part of it. */
 export type RecipeContentInput = {
@@ -45,7 +49,7 @@ export type RecipeContentInput = {
   prepMinutes?: number;
   cookMinutes?: number;
   ingredientSections: RecipeIngredientSection[];
-  steps: { text: string }[];
+  steps: RecipeStepInput[];
   tags: string[];
   notes?: string;
 };
@@ -60,7 +64,7 @@ export type RecipeChanges = {
   prepMinutes?: number | null;
   cookMinutes?: number | null;
   ingredientSections?: RecipeIngredientSection[];
-  steps?: { text: string }[];
+  steps?: RecipeStepInput[];
   tags?: string[];
   notes?: string | null;
 };
@@ -167,7 +171,7 @@ function numberInRange(
 
 const INGREDIENT_FIELDS: ReadonlySet<string> = new Set(['item', 'quantity', 'unit', 'note']);
 const SECTION_FIELDS: ReadonlySet<string> = new Set(['name', 'items']);
-const STEP_FIELDS: ReadonlySet<string> = new Set(['text']);
+const STEP_FIELDS: ReadonlySet<string> = new Set(['text', 'lane']);
 
 function validateIngredient(
   raw: unknown,
@@ -248,9 +252,9 @@ function validateSections(
   return errors.length === before ? sections : undefined;
 }
 
-function validateSteps(raw: unknown, path: string, errors: FieldError[]): { text: string }[] | undefined {
+function validateSteps(raw: unknown, path: string, errors: FieldError[]): RecipeStepInput[] | undefined {
   if (!Array.isArray(raw)) {
-    errors.push({ path, message: 'must be an array of { text } objects' });
+    errors.push({ path, message: 'must be an array of { text, lane? } objects' });
     return undefined;
   }
   if (raw.length > RECIPE_LIMITS.steps) {
@@ -258,7 +262,7 @@ function validateSteps(raw: unknown, path: string, errors: FieldError[]): { text
     return undefined;
   }
   const before = errors.length;
-  const steps: { text: string }[] = [];
+  const steps: RecipeStepInput[] = [];
   raw.forEach((step, i) => {
     const stepPath = `${path}[${i}]`;
     if (!isPlainObject(step)) {
@@ -267,7 +271,12 @@ function validateSteps(raw: unknown, path: string, errors: FieldError[]): { text
     }
     unknownKeys(step, STEP_FIELDS, stepPath, errors);
     const text = requiredText(step.text, `${stepPath}.text`, RECIPE_LIMITS.step, errors);
-    if (text !== undefined) steps.push({ text });
+    // A blank lane means none; a long or non-string one is an error.
+    const lane =
+      step.lane === undefined
+        ? undefined
+        : optionalText(step.lane, `${stepPath}.lane`, RECIPE_LIMITS.lane, errors);
+    if (text !== undefined) steps.push(lane === undefined ? { text } : { text, lane });
   });
   return errors.length === before ? steps : undefined;
 }

@@ -300,6 +300,18 @@
     "needsData": true
   },
   {
+    "id": "recipe-view-lanes",
+    "route": "/recipe/:id",
+    "setup": "An owned recipe whose steps have lanes (docs/plans/parallel-steps.md): under the Steps heading a chip row labelled \"I'm on\" with \"Everyone\" and one chip per lane, then a boxed group headed \"At the same time\" with each lane's name over its steps. Stored cook progress already shows a current step in each lane and a ticked step. Lane names are recipe text and stay as written. Do not tap steps or chips; cook state syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-lane-picked",
+    "route": "/recipe/:id",
+    "setup": "The recipe from recipe-view-lanes after tapping one lane chip under \"I'm on\": that chip is pressed and the other lanes' steps are dimmed. Picking a chip changes nothing that syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "recipe-view-your-cooks",
     "route": "/recipe/:id",
     "setup": "On an owned recipe, scroll to the \"Your cooks\" section (heading plus Log a cook; cards if this recipe already has logs). This is the RecipeView cook-log state. The section is absent on a shared recipe. Do not log a cook. Do not tap the translate chip. If there is no owned recipe, mark skipped: needs data.",
@@ -321,6 +333,12 @@
     "id": "recipe-edit",
     "route": "/recipe/:id/edit",
     "setup": "The edit form for an owned recipe (heading Edit recipe), including the Recipe language field. Do not change fields and do not save. A viewer share has no Edit link; that route shows Recipe not found. An editor share has an edit form and is a separate entry. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-edit-lanes",
+    "route": "/recipe/:id/edit",
+    "setup": "The edit form for an owned recipe whose steps have lanes. A hint under the Steps heading explains lanes, and each step card has a lane menu (No lane, the recipe's lanes, New lane…). Choose New lane… on one step so its lane name field shows. Do not save. If no owned recipe has lanes, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -561,6 +579,12 @@
     "id": "public-recipe",
     "route": "/p/:token/r/:recipeId",
     "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe. The top row is a back link with the collection name, then \"Share\" and \"Sign in\". Below: the photo if any, title, times, Ingredients with the servings stepper, Steps, Notes, and at the bottom right a grayed \"Ask\" pill. Prefer a recipe whose language differs from the UI language (or one with no language set) so a grayed translate chip shows under the title; hover it and capture the tooltip, then hover the Ask pill and capture its tooltip (it opens upward). Changing servings, ticking ingredients, or tapping steps is fine here: it stays in the page and writes nothing.",
+    "needsData": true
+  },
+  {
+    "id": "public-recipe-lanes",
+    "route": "/p/:token/r/:recipeId",
+    "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe whose steps have lanes. The steps show the \"I'm on\" chip row and the \"At the same time\" group, with nothing ticked. Tapping steps or chips is fine here: it stays in the page and writes nothing.",
     "needsData": true
   },
   {

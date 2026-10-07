@@ -1,6 +1,7 @@
 import { normalizeLang } from '../i18n/lang';
 import { compactImportCheck } from './importCheck';
 import { compactGalleryPhotoIds } from './recipePhotos';
+import { compactSteps } from './recipeSteps';
 import { compactVariantOf } from './recipeVariant';
 import type { Recipe } from './types';
 
@@ -17,7 +18,7 @@ export function compactRecipe(recipe: Recipe): Recipe {
     title: recipe.title,
     servings: recipe.servings,
     ingredientSections: recipe.ingredientSections,
-    steps: recipe.steps,
+    steps: compactSteps(recipe.steps),
     tags: recipe.tags,
   };
   if (recipe.description !== undefined) next.description = recipe.description;

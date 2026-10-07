@@ -207,6 +207,27 @@ describe('validatePushOp', () => {
     expect(validatePushOp({ kind: 'photo.put', payload: {} }).ok).toBe(false);
   });
 
+  it('accepts cookState.put with or without doneSteps and rejects a malformed list', () => {
+    const payload = {
+      recipeId: '11111111-1111-4111-8111-111111111111',
+      servings: 2,
+      currentStep: 1,
+      checkedKeys: [],
+      recipeUpdatedAt: 1,
+      updatedAt: 2,
+    };
+    const ok = (extra: Record<string, unknown>) =>
+      validatePushOp({ kind: 'cookState.put', payload: { ...payload, ...extra } }).ok;
+    expect(ok({})).toBe(true);
+    expect(ok({ doneSteps: [3, 5] })).toBe(true);
+    expect(ok({ doneSteps: Array.from({ length: 200 }, (_, i) => i + 2) })).toBe(true);
+    expect(ok({ doneSteps: 3 })).toBe(false);
+    expect(ok({ doneSteps: Array.from({ length: 201 }, (_, i) => i + 2) })).toBe(false);
+    expect(ok({ doneSteps: [-1] })).toBe(false);
+    expect(ok({ doneSteps: [1.5] })).toBe(false);
+    expect(ok({ doneSteps: ['3'] })).toBe(false);
+  });
+
   it('accepts recipe.put with up to 8 gallery UUIDs', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     const galleryPhotoIds = Array.from({ length: 8 }, (_, i) =>
@@ -414,6 +435,22 @@ describe('compactRecipeFields', () => {
     const compacted = compactRecipeFields({ ...required, variantOf: 'r0' });
     expect(compacted).not.toHaveProperty('variantOf');
     expect(compacted.title).toBe('Soup');
+  });
+
+  it('keeps a step lane, drops a malformed one, and drops unknown step keys', () => {
+    const compacted = compactRecipeFields({
+      ...required,
+      steps: [
+        { text: 'Boil water', foo: 1 },
+        { text: 'Fry garlic', lane: ' Sauce ' },
+        { text: 'Toss', lane: 'x'.repeat(25) },
+      ],
+    });
+    expect(compacted.steps).toEqual([
+      { text: 'Boil water' },
+      { text: 'Fry garlic', lane: 'Sauce' },
+      { text: 'Toss' },
+    ]);
   });
 
   it('omits an empty gallery and strips the cover id', () => {

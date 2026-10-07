@@ -11,6 +11,9 @@ import {
 } from './pushReasons.ts';
 import { compactImportCheck } from './importWarnings.ts';
 import { normalizeLang } from './lang.ts';
+import { MAX_DONE_STEPS, compactSteps } from './recipeSteps.ts';
+// Re-exported for the agent module, which may import only this file from server/.
+export { compactSteps } from './recipeSteps.ts';
 import { compactVariantOf } from './recipeVariant.ts';
 import { TRANSLATIONS_COLLECTION, translationCacheDocIds } from './recipeTranslation.ts';
 import { canViewRecipe } from './shareAuth.ts';
@@ -234,7 +237,8 @@ export function compactRecipeFields(recipe: Record<string, unknown>): Record<str
     title: recipe.title,
     servings: recipe.servings,
     ingredientSections: recipe.ingredientSections,
-    steps: recipe.steps,
+    // Only `text` and a valid `lane` survive (`server/recipeSteps.ts`).
+    steps: compactSteps(recipe.steps),
     tags: recipe.tags,
   };
   for (const key of [
@@ -1810,6 +1814,18 @@ function validateCookStatePut(payload: unknown): payload is Record<string, unkno
   for (const key of payload.checkedKeys) {
     if (typeof key !== 'string') {
       return false;
+    }
+  }
+  // Optional: steps done ahead of `currentStep` in a parallel block
+  // (`docs/plans/parallel-steps.md`). Absent on older clients.
+  if (payload.doneSteps !== undefined) {
+    if (!Array.isArray(payload.doneSteps) || payload.doneSteps.length > MAX_DONE_STEPS) {
+      return false;
+    }
+    for (const index of payload.doneSteps) {
+      if (!Number.isInteger(index) || (index as number) < 0) {
+        return false;
+      }
     }
   }
   return true;

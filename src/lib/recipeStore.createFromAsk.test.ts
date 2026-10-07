@@ -373,6 +373,56 @@ describe('recipeStore.applyDraft', () => {
   });
 });
 
+describe('step lanes through Ask (docs/plans/parallel-steps.md)', () => {
+  const laned = (): Recipe => ({
+    ...parentRecipe(),
+    steps: [
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook pasta.', lane: 'Pasta' },
+    ],
+  });
+
+  it('Apply keeps stored lanes when the proposal has none', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: [{ text: 'Boil.' }, { text: 'Fry garlic.' }, { text: 'Cook spaghetti.' }],
+    });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook spaghetti.' },
+    ]);
+  });
+
+  it('Apply takes a proposal that sets lanes as it is', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+    const steps = [{ text: 'Boil.', lane: 'Pasta' }, { text: 'Fry garlic.' }];
+
+    await recipeStore.applyDraft(PARENT_ID, { ...draft, steps });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual(steps);
+  });
+
+  it('Save as variant carries the parent lanes', async () => {
+    const parent = laned();
+    upsertRecipe(parent);
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    const created = await recipeStore.createFromAsk(parent, {
+      ...draft,
+      steps: parent.steps.map(({ text }) => ({ text })),
+    });
+
+    expect(created.steps).toEqual(parent.steps);
+  });
+});
+
 describe('recipeStore.create', () => {
   it('keeps lang when the draft has one', async () => {
     vi.mocked(pushOps).mockResolvedValue('ok');

@@ -221,7 +221,16 @@ const stepsSchema: JsonSchema = {
   maxItems: RECIPE_LIMITS.steps,
   items: {
     type: 'object',
-    properties: { text: { type: 'string', minLength: 1, maxLength: RECIPE_LIMITS.step } },
+    properties: {
+      text: { type: 'string', minLength: 1, maxLength: RECIPE_LIMITS.step },
+      lane: {
+        type: 'string',
+        minLength: 1,
+        maxLength: RECIPE_LIMITS.lane,
+        description:
+          'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta". Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes a recipe already has when you update its steps.',
+      },
+    },
     required: ['text'],
     additionalProperties: false,
   },

@@ -2,6 +2,7 @@
  * Guards data that entered from outside the app (the update_recipe tool, a backup file)
  * and therefore has no compile-time relationship to Recipe.
  */
+import { compactLane } from './recipeSteps';
 import type { Ingredient, IngredientSection, Recipe, RecipeDraft, RecipeStep } from './types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -54,7 +55,9 @@ function normalizeSteps(value: unknown): RecipeStep[] {
   for (const step of value) {
     if (!isPlainObject(step)) continue;
     const text = nonEmptyString(step.text);
-    if (text !== undefined) steps.push({ text });
+    if (text === undefined) continue;
+    const lane = compactLane(step.lane);
+    steps.push(lane === undefined ? { text } : { text, lane });
   }
   return steps;
 }

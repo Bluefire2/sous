@@ -41,6 +41,7 @@ import { compactCollection } from './compactCollection';
 import { wouldExceedRecipeIdCap } from './collectionMembership';
 import { recipePhotoIds } from './recipePhotos';
 import { variantGroup } from './variantGroup';
+import { carryStepLanes } from './stepLanes';
 import type { Recipe, RecipeDraft } from './types';
 import type { PushOp } from './pushOps';
 import { isDiscardedPushReason } from './pushReasons';
@@ -660,7 +661,8 @@ export const recipeStore = {
    * spread would blank them. `lang` is carried from the existing recipe,
    * like `sourceUrl`, and so is the import check, which `save` reconciles. On a shared recipe the draft never supplies photos.
    * The draft is an edit of the stored recipe, including while a translation
-   * is on screen.
+   * is on screen. A draft without any step lane keeps the stored lanes where
+   * a step's text is unchanged (`carryStepLanes`).
    */
   async applyDraft(id: string, draft: RecipeDraft): Promise<void> {
     const existing = getRecipe(id);
@@ -680,7 +682,7 @@ export const recipeStore = {
       prepMinutes: draft.prepMinutes,
       cookMinutes: draft.cookMinutes,
       ingredientSections: draft.ingredientSections,
-      steps: draft.steps,
+      steps: carryStepLanes(existing.steps, draft.steps),
       tags: draft.tags,
       notes: draft.notes,
       sourceUrl: draft.sourceUrl ?? existing.sourceUrl,
@@ -696,13 +698,15 @@ export const recipeStore = {
    * new ids. Fields on the draft never supply a photo. `lang` comes from
    * `parent` too: the proposal never carries it, including when `parent` is
    * a shared recipe. The new recipe joins `parent`'s variant group, keyed on
-   * the group's original, so a variant of a variant does not nest.
+   * the group's original, so a variant of a variant does not nest. Step lanes
+   * carry from `parent` as in `applyDraft`.
    */
   async createFromAsk(parent: Recipe, draft: RecipeDraft): Promise<Recipe> {
     const copied = await copyParentPhotos(parent);
     try {
       return await recipeStore.create({
         ...draft,
+        steps: carryStepLanes(parent.steps, draft.steps),
         lang: parent.lang,
         // A recipe from an Ask proposal was not imported.
         importCheck: undefined,

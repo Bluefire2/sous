@@ -65,6 +65,22 @@ describe('normalizeRecipeDraft', () => {
     });
   });
 
+  it('keeps a valid step lane and drops a blank or too long one', () => {
+    const draft = normalizeRecipeDraft({
+      ...wellFormedProposal,
+      steps: [
+        { text: 'Boil water.', lane: ' Pasta ' },
+        { text: 'Fry garlic.', lane: '   ' },
+        { text: 'Toss.', lane: 'x'.repeat(25) },
+      ],
+    });
+    expect(draft?.steps).toEqual([
+      { text: 'Boil water.', lane: 'Pasta' },
+      { text: 'Fry garlic.' },
+      { text: 'Toss.' },
+    ]);
+  });
+
   it.each([null, [], 'nope', 42])('drops non-object input (%s)', (value) => {
     expect(normalizeRecipeDraft(value)).toBeUndefined();
   });

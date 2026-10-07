@@ -8,6 +8,7 @@ import { photoStore } from '../lib/photoStore';
 import { blankDraft } from '../lib/recipeDraft';
 import { defaultRecipeFormLang, detectedLangHint } from '../lib/recipeFormLang';
 import { MAX_GALLERY_PHOTOS } from '../lib/recipePhotos';
+import { MAX_LANE_CHARS, compactLane } from '../lib/recipeSteps';
 import { settings } from '../lib/settings';
 import { getDetectedLang } from '../lib/translationStore';
 import type { Ingredient, IngredientSection, Recipe, RecipeDraft } from '../lib/types';
@@ -37,6 +38,48 @@ interface SectionFields {
 }
 
 /**
+ * `lane` is raw text, '' for none (`docs/plans/parallel-steps.md`). `key`
+ * identifies the card for this form's lifetime, so a card typing a new lane
+ * stays in that mode when it moves; `toDraft` drops it.
+ */
+interface StepFields {
+  key: number;
+  text: string;
+  lane: string;
+}
+
+let stepKeySeq = 0;
+function stepFields(text: string, lane = ''): StepFields {
+  stepKeySeq += 1;
+  return { key: stepKeySeq, text, lane };
+}
+
+/** The lane select's "New lane…" option. */
+const NEW_LANE = '__new_lane__';
+
+/** Distinct non-blank lanes in the form, trimmed, in order of first use. */
+function formLanes(steps: readonly StepFields[]): string[] {
+  const lanes: string[] = [];
+  for (const step of steps) {
+    const lane = step.lane.trim();
+    if (lane !== '' && !lanes.includes(lane)) lanes.push(lane);
+  }
+  return lanes;
+}
+
+/** Cards whose lane no other step uses start as a text field, so a lone lane stays editable. */
+function loneLaneKeys(steps: readonly StepFields[]): Set<number> {
+  const keys = new Set<number>();
+  for (const step of steps) {
+    const lane = step.lane.trim();
+    if (lane !== '' && steps.filter((other) => other.lane.trim() === lane).length === 1) {
+      keys.add(step.key);
+    }
+  }
+  return keys;
+}
+
+/**
  * Numbers live in state as raw strings so a half-typed or emptied field stays
  * exactly what the user typed; they only become numbers (or `undefined`) on
  * submit. Parsing on every keystroke is how an empty box turns into `NaN`.
@@ -50,7 +93,7 @@ interface FormState {
   tags: string;
   notes: string;
   sections: SectionFields[];
-  steps: string[];
+  steps: StepFields[];
   /**
    * Recipe language. A new recipe starts as the UI language. An edit keeps
    * the stored tag. Unknown clears it, and the key is then omitted.
@@ -109,7 +152,7 @@ export function fromDraft(
             }))
           : [blankItem()],
     })),
-    steps: steps.map((step) => step.text),
+    steps: steps.map((step) => stepFields(step.text, step.lane ?? '')),
     ...(lang !== undefined ? { lang } : {}),
   };
 }
@@ -179,9 +222,9 @@ export function toDraft(
       .map(toSection)
       .filter((section) => section.items.length > 0),
     steps: form.steps
-      .map((text) => text.trim())
-      .filter((text) => text !== '')
-      .map((text) => ({ text })),
+      .map((step) => ({ text: step.text.trim(), lane: compactLane(step.lane) }))
+      .filter((step) => step.text !== '')
+      .map(({ text, lane }) => (lane === undefined ? { text } : { text, lane })),
     tags: toTags(form.tags),
     ...(notes !== '' ? { notes } : {}),
     ...(photoId !== undefined ? { photoId } : {}),
@@ -368,6 +411,19 @@ export default function RecipeForm({
   const [customUnits, setCustomUnits] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  // Step cards showing the lane text field, by card key. Kept outside `form`
+  // so switching modes never marks the form dirty.
+  const [typingLanes, setTypingLanes] = useState<ReadonlySet<number>>(() =>
+    loneLaneKeys(form.steps),
+  );
+  const setTypingLane = (key: number, typing: boolean) =>
+    setTypingLanes((prev) => {
+      if (prev.has(key) === typing) return prev;
+      const next = new Set(prev);
+      if (typing) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   const t = useT();
   const locale = useLocale();
   const hintTag = detectedLangHint(form.lang, detectedLang);
@@ -435,8 +491,14 @@ export default function RecipeForm({
     }));
   };
 
-  const patchSteps = (next: (steps: string[]) => string[]) =>
+  const patchSteps = (next: (steps: StepFields[]) => StepFields[]) =>
     setForm((prev) => ({ ...prev, steps: next(prev.steps) }));
+
+  const patchStep = (key: number, fields: Partial<Omit<StepFields, 'key'>>) =>
+    patchSteps((steps) =>
+      steps.map((step) => (step.key === key ? { ...step, ...fields } : step)),
+    );
+  const lanesInForm = formLanes(form.steps);
 
   // A lone unnamed section is the common case and needs no naming or removal
   // controls; they only appear once the recipe actually has sections.
@@ -839,65 +901,103 @@ export default function RecipeForm({
 
       <section className="mt-6">
         <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
+        <p className="mt-1 text-sm text-ink-muted">{t('form.lanesHint')}</p>
         <ol className="mt-2 flex flex-col gap-2">
-          {form.steps.map((text, i) => (
-            <li
-              key={i}
-              className="rounded-xl border border-line bg-surface p-2 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <span className="pl-1 text-sm font-semibold text-ink-subtle">
-                  {i + 1}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label={t('form.moveStepUp', { n: i + 1 })}
-                    disabled={i === 0}
-                    onClick={() => patchSteps((steps) => moved(steps, i, i - 1))}
-                    className={iconBtn}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={t('form.moveStepDown', { n: i + 1 })}
-                    disabled={i === form.steps.length - 1}
-                    onClick={() => patchSteps((steps) => moved(steps, i, i + 1))}
-                    className={iconBtn}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={t('form.removeStep', { n: i + 1 })}
-                    onClick={() =>
-                      patchSteps((steps) => steps.filter((_, j) => j !== i))
-                    }
-                    className={iconBtn}
-                  >
-                    ✕
-                  </button>
+          {form.steps.map((step, i) => {
+            const typing = typingLanes.has(step.key);
+            return (
+              <li
+                key={step.key}
+                className="rounded-xl border border-line bg-surface p-2 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="pl-1 text-sm font-semibold text-ink-subtle">
+                      {i + 1}
+                    </span>
+                    <select
+                      aria-label={t('form.stepLane', { n: i + 1 })}
+                      value={typing ? NEW_LANE : step.lane.trim()}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === NEW_LANE) {
+                          patchStep(step.key, { lane: '' });
+                          setTypingLane(step.key, true);
+                        } else {
+                          patchStep(step.key, { lane: next });
+                          setTypingLane(step.key, false);
+                        }
+                      }}
+                      className={`max-w-40 min-w-0 ${cellClass} bg-surface text-ink`}
+                    >
+                      <option value="">{t('form.noLane')}</option>
+                      {lanesInForm.map((lane) => (
+                        <option key={lane} value={lane}>
+                          {lane}
+                        </option>
+                      ))}
+                      <option value={NEW_LANE}>{t('form.newLane')}</option>
+                    </select>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      aria-label={t('form.moveStepUp', { n: i + 1 })}
+                      disabled={i === 0}
+                      onClick={() => patchSteps((steps) => moved(steps, i, i - 1))}
+                      className={iconBtn}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t('form.moveStepDown', { n: i + 1 })}
+                      disabled={i === form.steps.length - 1}
+                      onClick={() => patchSteps((steps) => moved(steps, i, i + 1))}
+                      className={iconBtn}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t('form.removeStep', { n: i + 1 })}
+                      onClick={() => {
+                        patchSteps((steps) => steps.filter((_, j) => j !== i));
+                        setTypingLane(step.key, false);
+                      }}
+                      className={iconBtn}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <textarea
-                aria-label={t('form.step', { n: i + 1 })}
-                value={text}
-                onChange={(e) =>
-                  patchSteps((steps) =>
-                    steps.map((s, j) => (j === i ? e.target.value : s)),
-                  )
-                }
-                rows={2}
-                placeholder={t('form.stepPlaceholder')}
-                className={`mt-1 w-full ${cellClass}`}
-              />
-            </li>
-          ))}
+                {typing && (
+                  <input
+                    type="text"
+                    aria-label={t('form.laneName')}
+                    placeholder={t('form.lanePlaceholder')}
+                    maxLength={MAX_LANE_CHARS}
+                    value={step.lane}
+                    // Raw value: compactLane trims on submit.
+                    onChange={(e) => patchStep(step.key, { lane: e.target.value })}
+                    className={`mt-1.5 w-40 ${cellClass}`}
+                  />
+                )}
+                <textarea
+                  aria-label={t('form.step', { n: i + 1 })}
+                  value={step.text}
+                  onChange={(e) => patchStep(step.key, { text: e.target.value })}
+                  rows={2}
+                  placeholder={t('form.stepPlaceholder')}
+                  className={`mt-1 w-full ${cellClass}`}
+                />
+              </li>
+            );
+          })}
         </ol>
         <button
           type="button"
-          onClick={() => patchSteps((steps) => [...steps, ''])}
+          onClick={() => patchSteps((steps) => [...steps, stepFields('')])}
           className={`mt-2 block ${addBtn}`}
         >
           {t('form.addStep')}

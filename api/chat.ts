@@ -124,7 +124,9 @@ export function sessionSub(req: Request): string | null {
 
 // NOTE: Duplicated in server/recipeImport.ts. Vercel's function runtime transpiles
 // each api/ entrypoint in isolation and cannot import sibling helper files,
-// so the schema must live inline. Keep both copies in sync.
+// so the schema must live inline. Keep both copies in sync, except: the
+// import copy also asks for `lang`, and only this copy has `steps[].lane`
+// (import does not produce lanes; docs/plans/parallel-steps.md).
 const RECIPE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -166,7 +168,14 @@ const RECIPE_SCHEMA: Schema = {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
-        properties: { text: { type: Type.STRING } },
+        properties: {
+          text: { type: Type.STRING },
+          lane: {
+            type: Type.STRING,
+            description:
+              'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta" (24 characters max). Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes the recipe already has.',
+          },
+        },
         required: ['text'],
       },
     },
@@ -197,7 +206,10 @@ export interface ChatRequestBody {
   messages: ChatRequestMessage[];
   /** The full recipe JSON the user is currently viewing. */
   recipe: unknown;
-  /** Where the user is in the cook: current step, checked ingredients, servings. */
+  /**
+   * Where the user is in the cook: current step, steps done ahead of it,
+   * their lane, checked ingredients, servings.
+   */
   cookingState?: unknown;
 }
 
@@ -386,6 +398,15 @@ function systemPrompt(recipe: unknown, cookingState: unknown): string {
     'just the changed parts. Briefly say what you changed in your text reply.',
     'The app shows the user a diff and lets them apply it, so do not ask for',
     'permission first. For pure questions, answer without the tool.',
+    '',
+    'Steps may have a "lane": a short label such as "Sauce" for steps two',
+    'people cook at the same time. Consecutive steps with a lane run in',
+    'parallel; a step without one is done by everyone, in order. Keep',
+    'existing lanes when you change the recipe unless asked. When asked to',
+    'split a recipe for two cooks, give consecutive steps that can happen at',
+    'once short lane names and leave shared steps without a lane. In the',
+    'cooking state, "doneSteps" lists step numbers already done ahead of',
+    '"currentStep", and "lane" is the lane the user is cooking.',
     '',
     'Current recipe (JSON):',
     JSON.stringify(recipe),

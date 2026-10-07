@@ -12,7 +12,15 @@ export interface OutgoingMessage {
 
 export interface CookingState {
   servings: number;
+  /** 1-based: the first step not yet done. */
   currentStep: number;
+  /**
+   * 1-based steps done ahead of `currentStep` in a parallel block. Left out
+   * when empty (`docs/plans/parallel-steps.md`).
+   */
+  doneSteps?: number[];
+  /** The lane this person said they are on. Left out when they follow every lane. */
+  lane?: string;
   checkedIngredients: string[];
 }
 
