@@ -269,6 +269,35 @@ same text, the same position first). Ask is told to state every step's lane
 when a recipe has lanes; the carry is the fallback. Keep progress a
 set of done steps (a prefix plus `doneSteps`), never one pointer: a later
 shared cooking session merges two cooks' progress by union.
+
+**Steps are a list with lanes, not a dependency graph, on purpose.** Lanes
+express one shape: a run of laned steps forks into one chain per lane, and
+the next unlaned step joins them. That covers "two people, one meal" with a
+label per step that survives reordering, Ask, MCP and translation. A graph
+needs stable step ids that every step path must keep, dependency references
+Ask must get right, and a dependency editor; the reviews of
+`docs/plans/parallel-steps.md` found its bugs in keeping even lanes intact
+through Ask. Lanes convert to a graph without loss (each laned step depends
+on the one before it in its lane, a lane's first step on the sync step
+before the block, and the next sync step on every lane's last step), and
+progress is already a done set, so a later move replaces `stepLanes.ts`,
+block rendering and the form's lane menu, not sync or storage.
+Strongly consider moving to a graph, instead of extending lanes, when a
+change needs any of:
+- a dependency between particular steps that the list order cannot express
+  ("step 6 needs step 3 but not step 5");
+- a lane that waits partway for a step in another lane, or keeps going past
+  a step everyone shares;
+- lanes inside a lane, or more than one current step within a lane;
+- per-step timing or scheduling (durations, "start the oven so it is hot by
+  step 7", critical path);
+- a shared cooking session that assigns or hands off individual steps, not
+  whole lanes.
+Each of these is a special case on top of fork-and-join, and several
+together become an ad hoc graph. If one is needed, write a plan for the
+graph model (ids, migration from lanes, authoring, Ask and MCP schemas)
+rather than adding another lane rule.
+
 Collections are a separate store kind. Grants live under
 `collections/{id}/grants/{viewerSub}` plus a reverse
 `incomingShares/{viewerSub}` index; they are REST, not LWW push. Shared
