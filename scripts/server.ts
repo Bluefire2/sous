@@ -295,12 +295,15 @@ async function handleRequest(
 }
 
 /**
- * Whether the client closed the connection before its request finished
- * arriving. A route that throws then failed on the body it was reading
+ * Whether the request was cut off before its body finished arriving. Usually
+ * the client hung up mid-upload; the connection also ends this way when a
+ * reader cancels the body (`readBoundedText` past its limit) or Node's request
+ * timeout fires. A route that throws then failed on the body it was reading
  * (`readBoundedText`'s `RequestBodyError`, or Node's ECONNRESET "aborted"
- * from another reader): the client's doing, with nobody left to answer, so
- * the dispatcher does not log it or send a 500. `isClientHangUp` is the
- * same for a client that leaves while the response is being written.
+ * from another reader), and the connection is gone, so the dispatcher does
+ * not log it or send a 500. A request whose body arrived in full is never
+ * covered. `isClientHangUp` is the same for a client that leaves while the
+ * response is being written.
  */
 export function isRequestAbort(req: Pick<IncomingMessage, 'destroyed' | 'complete'>): boolean {
   return req.destroyed && !req.complete;

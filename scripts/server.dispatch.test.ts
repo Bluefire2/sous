@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readBoundedText } from '../server/membership.ts';
+import { readBoundedText, RequestBodyError } from '../server/membership.ts';
 import * as sync from '../server/sync.ts';
 import { apiRoutes, createRequestListener } from './server.ts';
 
@@ -323,8 +323,8 @@ describe('a handler that throws', () => {
 });
 
 describe('a client that hangs up mid-upload', () => {
-  /** Sends a few KB of a promised 200 000-byte body, then resets the socket. */
-  function abandonUpload(base: string, path: string): void {
+  /** Starts a POST that promises 200 000 bytes and sends a few KB; `abandon` resets the socket. */
+  function startUpload(base: string, path: string): { abandon: () => void; closed: Promise<void> } {
     const { hostname, port } = new URL(base);
     const req = httpRequest({
       hostname,
@@ -334,22 +334,32 @@ describe('a client that hangs up mid-upload', () => {
       headers: { 'Content-Type': 'application/json', 'Content-Length': '200000' },
     });
     req.on('error', () => {});
+    const closed = new Promise<void>((resolve) => req.on('close', () => resolve()));
     req.write(`{"pastedText":"${'x'.repeat(4000)}`);
-    setTimeout(() => req.destroy(), 50);
+    return { abandon: () => req.destroy(), closed };
   }
 
-  const readers: [string, (req: Request) => Promise<unknown>][] = [
-    ['readBoundedText', (req) => readBoundedText(req, 1_000_000)],
-    // Any other reader (chat keeps its own copy) rejects with Node's ECONNRESET.
-    ['Request.text', (req) => req.text()],
+  const readers: [string, (req: Request) => Promise<unknown>, (err: unknown) => void][] = [
+    [
+      'readBoundedText',
+      (req) => readBoundedText(req, 1_000_000),
+      (err) => expect(err).toBeInstanceOf(RequestBodyError),
+    ],
+    // Any other reader (chat keeps its own copy) rejects with its own error.
+    ['Request.text', (req) => req.text(), (err) => expect(err).toBeInstanceOf(Error)],
   ];
 
-  for (const [name, read] of readers) {
+  for (const [name, read, expectThrown] of readers) {
     it(`is neither logged nor answered with a 500 when the route reads with ${name}`, async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
       let thrown: unknown;
       const handled = new Promise<void>((resolve) => {
         vi.mocked(sync.syncPush).mockImplementationOnce(async (req) => {
+          entered();
           try {
             await read(req);
             return new Response(null, { status: 204 });
@@ -361,12 +371,16 @@ describe('a client that hangs up mid-upload', () => {
           }
         });
       });
-      abandonUpload(apiBase, '/api/sync/push');
-      await handled;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const upload = startUpload(apiBase, '/api/sync/push');
+      // Hang up only once the route is reading, so the abort lands mid-read.
+      await started;
+      upload.abandon();
+      await Promise.all([handled, upload.closed]);
+      // The dispatcher's catch runs in the microtasks after the route rejects.
+      await new Promise((resolve) => setImmediate(resolve));
 
-      // The read did fail; the dispatcher stayed quiet about it.
-      expect(thrown).toBeInstanceOf(Error);
+      // The read did fail, the way the route sees it; the dispatcher stayed quiet.
+      expectThrown(thrown);
       expect(error).not.toHaveBeenCalled();
       expect((await send(apiBase, 'POST', '/api/sync/push', { body: '' })).status).toBe(401);
       error.mockRestore();
