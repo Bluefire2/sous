@@ -15,7 +15,11 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { readBoundedText, type MembershipHandlerContext } from './membership.ts';
+import {
+  RequestBodyError,
+  readBoundedText,
+  type MembershipHandlerContext,
+} from './membership.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
@@ -278,7 +282,15 @@ async function handleImport(
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
 ): Promise<Response> {
-  const raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  } catch (err) {
+    if (!(err instanceof RequestBodyError)) throw err;
+    // The client went away mid-upload; nobody reads this answer.
+    entry.outcome = 'aborted';
+    return fail('bad-request', 'Bad request', 400);
+  }
   if (raw === null) {
     entry.outcome = 'too_large';
     return fail('import-body-too-large', BODY_TOO_LARGE, 413);

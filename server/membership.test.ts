@@ -9,9 +9,12 @@ import {
   clearMembershipCache,
   lookupMemberForTest,
   memberFromIdentity,
+  readBoundedText,
+  RequestBodyError,
   visitorMembership,
 } from './membership.ts';
 import { signSession } from './session.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -345,6 +348,24 @@ describe('memberFromIdentity', () => {
     expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({ kind: 'denied' });
     spy.mockRejectedValueOnce(new Error('down'));
     expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('readBoundedText', () => {
+  it('reads the body as text, and null past the limit', async () => {
+    const post = (body: string) => new Request('http://localhost/', { method: 'POST', body });
+    expect(await readBoundedText(post('{"a":1}'), 100)).toBe('{"a":1}');
+    expect(await readBoundedText(post('x'.repeat(101)), 100)).toBeNull();
+  });
+
+  it('throws a RequestBodyError that drops the original when the client hangs up mid-upload', async () => {
+    const err = await readBoundedText(abortedRequest('http://localhost/'), 1_000_000).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(RequestBodyError);
+    expect(err).toMatchObject({ name: 'RequestBodyError', message: 'Request body could not be read' });
+    expect((err as Error).cause).toBeUndefined();
+    expect(String(err)).not.toContain('SECRET');
   });
 });
 

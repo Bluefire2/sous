@@ -276,6 +276,10 @@ async function handleRequest(
 
     sendText(nodeReq, nodeRes, 404, 'Not found');
   } catch (err) {
+    if (isRequestAbort(nodeReq)) {
+      nodeRes.destroy();
+      return;
+    }
     console.error(err);
     if (nodeRes.headersSent) {
       nodeRes.destroy();
@@ -288,6 +292,21 @@ async function handleRequest(
     }
     nodeRes.end('Internal error');
   }
+}
+
+/**
+ * Whether the request was cut off before its body finished arriving. Usually
+ * the client hung up mid-upload; the connection also ends this way when a
+ * reader cancels the body (`readBoundedText` past its limit) or Node's request
+ * timeout fires. A route that throws then failed on the body it was reading
+ * (`readBoundedText`'s `RequestBodyError`, or Node's ECONNRESET "aborted"
+ * from another reader), and the connection is gone, so the dispatcher does
+ * not log it or send a 500. A request whose body arrived in full is never
+ * covered. `isClientHangUp` is the same for a client that leaves while the
+ * response is being written.
+ */
+export function isRequestAbort(req: Pick<IncomingMessage, 'destroyed' | 'complete'>): boolean {
+  return req.destroyed && !req.complete;
 }
 
 /** `/c/join` is the confirm step; any other `/c/...` is a token landing (bad shapes render the generic page). */

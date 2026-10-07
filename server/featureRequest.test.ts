@@ -5,6 +5,7 @@ import {
   resetFeatureRequestRateLimitForTest,
   type FeatureRequestDeps,
 } from './featureRequest.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
 
 const UUID = '00000000-0000-4000-8000-000000000000';
 const NOW = 1_700_000_000_000;
@@ -154,19 +155,45 @@ describe('featureRequestPost', () => {
 
   it('rethrows anything unexpected without its message', async () => {
     const { deps } = fakeDeps();
-    const req = new Request('http://localhost/api/feature-request', {
-      method: 'POST',
-      body: new ReadableStream({
-        start(controller) {
-          controller.error(new Error('secret text'));
-        },
-      }),
-      duplex: 'half',
-    } as RequestInit);
-    const err = await featureRequestPost(req, CTX, deps).catch((e: unknown) => e);
+    deps.now = () => {
+      throw new Error('secret text');
+    };
+    const err = await featureRequestPost(request({ id: UUID, text: 'x' }), CTX, deps).catch(
+      (e: unknown) => e,
+    );
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message.startsWith('Feature request failed:')).toBe(true);
     expect((err as Error).message).not.toContain('secret text');
+    expect(JSON.parse(loggedLines()[0])).toMatchObject({ status: 500 });
+  });
+
+  it('answers 400 when the client hangs up mid-upload, never a 500 or a throw', async () => {
+    const { deps, create } = fakeDeps();
+    const response = await featureRequestPost(
+      abortedRequest('http://localhost/api/feature-request'),
+      CTX,
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'feature-request-bad-request' });
+    expect(create).not.toHaveBeenCalled();
+    const lines = loggedLines();
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toStrictEqual({
+      event: 'feature_request',
+      sub: 'sub-1',
+      status: 400,
+      ms: expect.any(Number),
+    });
+    expect(lines[0]).not.toContain('SECRET');
+  });
+
+  it('still treats a body it cannot start reading as a throw, not an abort', async () => {
+    const { deps } = fakeDeps();
+    const req = request({ id: UUID, text: 'x' });
+    req.body?.getReader();
+    const err = await featureRequestPost(req, CTX, deps).catch((e: unknown) => e);
+    expect((err as Error).message).toBe('Feature request failed: TypeError; message withheld');
     expect(JSON.parse(loggedLines()[0])).toMatchObject({ status: 500 });
   });
 
