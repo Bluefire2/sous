@@ -67,11 +67,13 @@ export function libraryHref(collectionId: string | undefined): string {
   return collectionPath(collectionId);
 }
 
-export function importHref(collectionId: string | undefined): string {
-  if (collectionId === undefined || collectionId === '') {
-    return '/import';
-  }
-  return `${collectionPath(collectionId)}/import`;
+/** `mode: 'create'` opens the Import screen on Create, where the model writes a recipe from an idea. */
+export function importHref(collectionId: string | undefined, mode?: 'create'): string {
+  const path =
+    collectionId === undefined || collectionId === ''
+      ? '/import'
+      : `${collectionPath(collectionId)}/import`;
+  return mode === 'create' ? `${path}?mode=create` : path;
 }
 
 export function newRecipeHref(collectionId: string | undefined): string {

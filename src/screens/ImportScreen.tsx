@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { t as translateNow, useLocale, useT } from '../i18n';
 import ImportFeedbackCard, {
   newFeedbackCardMemory,
@@ -18,6 +18,7 @@ import {
   checkImportPhotoBytes,
   fitImportPhotos,
   importRecipe,
+  MAX_GENERATE_BRIEF_CHARS,
   MAX_IMPORT_PHOTOS,
   type ImportRecipeResult,
 } from '../lib/importApi';
@@ -74,11 +75,23 @@ function needsAttention(row: BulkResult): boolean {
 
 type ImportPhoto = { key: string; image: EncodedImage; src: string };
 
+/**
+ * Import extracts a recipe from a link, text, or photos. Create asks the
+ * model to write one from an idea (`docs/plans/recipe-generation.md`); it
+ * has no photos or bulk, and the result lands in the same preview.
+ */
+type ImportMode = 'import' | 'create';
+
 export default function ImportScreen() {
   const t = useT();
   const locale = useLocale();
   const navigate = useNavigate();
   const { collectionId } = useParams();
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<ImportMode>(
+    searchParams.get('mode') === 'create' ? 'create' : 'import',
+  );
+  const [search, setSearch] = useState(false);
   // Subscribed, not a one-shot store read: on a cold load of a collection
   // import path the pull has not landed yet, and only a subscriber re-renders
   // once it does.
@@ -264,8 +277,45 @@ export default function ImportScreen() {
     setError(null);
   };
 
+  const switchMode = (next: ImportMode) => {
+    if (next === mode) return;
+    setMode(next);
+    setError(null);
+    setRetrying(false);
+    if (next === 'create') {
+      // Create has no photos or bulk; the typed text is kept.
+      setPhotoList([]);
+      setBulk(false);
+    }
+  };
+
   const extract = async () => {
     if (inFlight.current || pendingUrls || collections === undefined) return;
+    if (mode === 'create') {
+      const brief = input.trim();
+      if (brief === '') return;
+      setError(null);
+      inFlight.current = true;
+      setBusy(true);
+      // The brief is the only text; a report carries it the way a paste report carries pasted text.
+      const source: ImportSource = { via: 'generate', pastedText: brief };
+      try {
+        setPreview({
+          result: await importRecipe({ brief, search, translateTo: locale }),
+          source,
+        });
+      } catch (e) {
+        const failure = importFailureDetails(e);
+        setError({
+          message: e instanceof Error ? e.message : t('error.importFailed'),
+          ...(failure ? { feedback: { source, failure } } : {}),
+        });
+      } finally {
+        inFlight.current = false;
+        setBusy(false);
+      }
+      return;
+    }
     if (photosRef.current.length > 0) {
       setError(null);
       inFlight.current = true;
@@ -670,21 +720,43 @@ export default function ImportScreen() {
         </>
       ) : preview === null ? (
         <>
+          <div
+            role="group"
+            aria-label={t('import.mode')}
+            className="mb-3 flex flex-wrap items-center gap-2"
+          >
+            {(['import', 'create'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={mode === option}
+                disabled={busy || encoding || pendingUrls !== null}
+                onClick={() => switchMode(option)}
+                className={filterClass(mode === option)}
+              >
+                {option === 'import' ? t('import.modeImport') : t('import.modeCreate')}
+              </button>
+            ))}
+          </div>
           <textarea
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
               setRetrying(false);
             }}
-            rows={5}
+            rows={mode === 'create' ? 4 : 5}
             readOnly={busy || pendingUrls !== null}
-            maxLength={photos.length > 0 ? 2000 : undefined}
+            maxLength={
+              mode === 'create' ? MAX_GENERATE_BRIEF_CHARS : photos.length > 0 ? 2000 : undefined
+            }
             placeholder={
-              photos.length > 0
-                ? t('import.placeholderPhotos')
-                : bulk
-                  ? t('import.placeholderBulk')
-                  : t('import.placeholder')
+              mode === 'create'
+                ? t('import.placeholderCreate')
+                : photos.length > 0
+                  ? t('import.placeholderPhotos')
+                  : bulk
+                    ? t('import.placeholderBulk')
+                    : t('import.placeholder')
             }
             className={`w-full rounded-xl border border-line bg-surface px-4 py-3 shadow-sm ${inputFocus}`}
           />
@@ -700,78 +772,101 @@ export default function ImportScreen() {
               if (files.length > 0) void addPhotos(files);
             }}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={
-              busy ||
-              encoding ||
-              bulk ||
-              pendingUrls !== null ||
-              photos.length >= MAX_IMPORT_PHOTOS
-            }
-            className={`${secondaryBtn} mt-3 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-40`}
-          >
-            <CameraIcon className="h-5 w-5" />
-            {t('import.addPhotos')}
-          </button>
-          <p className="mt-1 text-sm text-ink-subtle">{t('import.photoHint')}</p>
-          {photos.length > 0 && (
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {photos.map((photo, i) => (
-                <li key={photo.key} className="relative">
-                  <div className="h-20 w-20 overflow-hidden rounded-lg bg-surface-muted">
-                    <img
-                      src={photo.src}
-                      alt={t('import.photoAlt', { n: i + 1 })}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    aria-label={t('import.removePhoto', { n: i + 1 })}
-                    onClick={() => removePhoto(photo.key)}
-                    disabled={busy}
-                    className="absolute -top-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-xs text-page hover:opacity-80 active:opacity-80 disabled:opacity-40"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <label className="mt-3 flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={bulk}
-              disabled={busy || pendingUrls !== null || encoding || photos.length > 0}
-              onChange={(e) => {
-                setBulk(e.target.checked);
-                setRetrying(false);
-                setError(null);
-              }}
-              className={`mt-1 h-4 w-4 shrink-0 accent-ink disabled:opacity-40 ${inputFocus}`}
-            />
-            <span>
-              <span className="block font-medium text-ink">{t('import.bulk')}</span>
-              <span className="mt-0.5 block text-sm text-ink-subtle">
-                {t('import.bulkHint')}
-              </span>
-            </span>
-          </label>
-          {bulk && (
-            <label className="mt-3 flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={bulkTranslate}
-                disabled={busy || pendingUrls !== null}
-                onChange={(event) => setBulkTranslate(event.target.checked)}
-                className={`mt-1 h-4 w-4 shrink-0 accent-ink disabled:opacity-40 ${inputFocus}`}
-              />
-              <span className="block font-medium text-ink">
-                {t('import.translateInto')}
-              </span>
-            </label>
+          {mode === 'create' ? (
+            <>
+              <p className="mt-1 text-sm text-ink-subtle">{t('import.createHint')}</p>
+              <label className="mt-3 flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={search}
+                  disabled={busy}
+                  onChange={(e) => setSearch(e.target.checked)}
+                  className={`mt-1 h-4 w-4 shrink-0 accent-ink disabled:opacity-40 ${inputFocus}`}
+                />
+                <span>
+                  <span className="block font-medium text-ink">{t('import.searchWeb')}</span>
+                  <span className="mt-0.5 block text-sm text-ink-subtle">
+                    {t('import.searchWebHint')}
+                  </span>
+                </span>
+              </label>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={
+                  busy ||
+                  encoding ||
+                  bulk ||
+                  pendingUrls !== null ||
+                  photos.length >= MAX_IMPORT_PHOTOS
+                }
+                className={`${secondaryBtn} mt-3 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-40`}
+              >
+                <CameraIcon className="h-5 w-5" />
+                {t('import.addPhotos')}
+              </button>
+              <p className="mt-1 text-sm text-ink-subtle">{t('import.photoHint')}</p>
+              {photos.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {photos.map((photo, i) => (
+                    <li key={photo.key} className="relative">
+                      <div className="h-20 w-20 overflow-hidden rounded-lg bg-surface-muted">
+                        <img
+                          src={photo.src}
+                          alt={t('import.photoAlt', { n: i + 1 })}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={t('import.removePhoto', { n: i + 1 })}
+                        onClick={() => removePhoto(photo.key)}
+                        disabled={busy}
+                        className="absolute -top-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-xs text-page hover:opacity-80 active:opacity-80 disabled:opacity-40"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <label className="mt-3 flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={bulk}
+                  disabled={busy || pendingUrls !== null || encoding || photos.length > 0}
+                  onChange={(e) => {
+                    setBulk(e.target.checked);
+                    setRetrying(false);
+                    setError(null);
+                  }}
+                  className={`mt-1 h-4 w-4 shrink-0 accent-ink disabled:opacity-40 ${inputFocus}`}
+                />
+                <span>
+                  <span className="block font-medium text-ink">{t('import.bulk')}</span>
+                  <span className="mt-0.5 block text-sm text-ink-subtle">
+                    {t('import.bulkHint')}
+                  </span>
+                </span>
+              </label>
+              {bulk && (
+                <label className="mt-3 flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={bulkTranslate}
+                    disabled={busy || pendingUrls !== null}
+                    onChange={(event) => setBulkTranslate(event.target.checked)}
+                    className={`mt-1 h-4 w-4 shrink-0 accent-ink disabled:opacity-40 ${inputFocus}`}
+                  />
+                  <span className="block font-medium text-ink">
+                    {t('import.translateInto')}
+                  </span>
+                </label>
+              )}
+            </>
           )}
           {error && (
             <p className="mt-2 rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger">
@@ -803,11 +898,15 @@ export default function ImportScreen() {
             style={{ opacity: busy ? 1 : undefined }}
           >
             {busy && <SpinnerIcon className="block h-5 w-5 animate-spin" />}
-            {busy
-              ? t('import.extracting')
-              : bulk
-                ? t('import.extractRecipes')
-                : t('import.extractRecipe')}
+            {mode === 'create'
+              ? busy
+                ? t('import.generating')
+                : t('import.generateRecipe')
+              : busy
+                ? t('import.extracting')
+                : bulk
+                  ? t('import.extractRecipes')
+                  : t('import.extractRecipe')}
           </button>
           {busy && progress && (
             <div className="mt-3">
@@ -845,7 +944,11 @@ export default function ImportScreen() {
           )}
           {busy && !progress && (
             <p className="mt-3 text-center text-sm text-ink-subtle" role="status">
-              {photos.length > 0 ? t('import.readingPhotosHint') : t('import.readingHint')}
+              {mode === 'create'
+                ? t('import.generatingHint')
+                : photos.length > 0
+                  ? t('import.readingPhotosHint')
+                  : t('import.readingHint')}
             </p>
           )}
         </>

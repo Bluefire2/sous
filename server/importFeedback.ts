@@ -43,6 +43,7 @@ import { loggableUrl, sanitizedImportError } from './importLog.ts';
 import { readImportWarnings, type ImportWarningCode } from './importWarnings.ts';
 import { toSupportedLocale } from './lang.ts';
 import {
+  RequestBodyError,
   readBoundedText,
   storeUnavailable,
   type MembershipHandlerContext,
@@ -163,7 +164,7 @@ export function readImportFeedback(body: unknown): ReadImportFeedback {
   const fields: ImportFeedbackFields = { trigger: body.trigger, via };
   const url = feedbackUrl(body.url);
   if (url !== undefined) fields.url = url;
-  if (via === 'paste' && typeof body.pastedText === 'string') {
+  if ((via === 'paste' || via === 'generate') && typeof body.pastedText === 'string') {
     const pasted = truncateUtf8(body.pastedText, MAX_FEEDBACK_PASTE_BYTES);
     fields.pastedText = pasted.text;
     if (pasted.truncated || body.pastedTruncated === true) fields.pastedTruncated = true;
@@ -241,7 +242,14 @@ async function handleFeedback(
   entry: ImportFeedbackLogEntry,
   deps: ImportFeedbackDeps,
 ): Promise<Response> {
-  const raw = await readBoundedText(req, MAX_IMPORT_FEEDBACK_BODY_BYTES);
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_IMPORT_FEEDBACK_BODY_BYTES);
+  } catch (err) {
+    // The client went away mid-upload; nobody reads this answer.
+    if (err instanceof RequestBodyError) return badRequest();
+    throw err;
+  }
   if (raw === null) return fail('feedback-too-large', 'Too large', 413);
   let body: unknown;
   try {

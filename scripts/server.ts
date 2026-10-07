@@ -75,13 +75,14 @@ import { syncPull, syncPush, syncSharedPull } from '../server/sync.ts';
 
 type ApiHandler = (req: Request) => Promise<Response>;
 
-interface ApiRoute {
+export interface ApiRoute {
   method: string;
   path: string;
   handler: ApiHandler;
 }
 
-const apiRoutes: ApiRoute[] = [
+/** Exact-path API routes; exported for scripts/server.dispatch.test.ts. */
+export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/chat', handler: withMembership(chatPost) },
   { method: 'POST', path: '/api/import', handler: withMembership(importPost) },
   { method: 'POST', path: '/api/import-feedback', handler: withMembership(importFeedbackPost) },
@@ -275,6 +276,10 @@ async function handleRequest(
 
     sendText(nodeReq, nodeRes, 404, 'Not found');
   } catch (err) {
+    if (isRequestAbort(nodeReq)) {
+      nodeRes.destroy();
+      return;
+    }
     console.error(err);
     if (nodeRes.headersSent) {
       nodeRes.destroy();
@@ -287,6 +292,21 @@ async function handleRequest(
     }
     nodeRes.end('Internal error');
   }
+}
+
+/**
+ * Whether the request was cut off before its body finished arriving. Usually
+ * the client hung up mid-upload; the connection also ends this way when a
+ * reader cancels the body (`readBoundedText` past its limit) or Node's request
+ * timeout fires. A route that throws then failed on the body it was reading
+ * (`readBoundedText`'s `RequestBodyError`, or Node's ECONNRESET "aborted"
+ * from another reader), and the connection is gone, so the dispatcher does
+ * not log it or send a 500. A request whose body arrived in full is never
+ * covered. `isClientHangUp` is the same for a client that leaves while the
+ * response is being written.
+ */
+export function isRequestAbort(req: Pick<IncomingMessage, 'destroyed' | 'complete'>): boolean {
+  return req.destroyed && !req.complete;
 }
 
 /** `/c/join` is the confirm step; any other `/c/...` is a token landing (bad shapes render the generic page). */
@@ -489,8 +509,43 @@ async function writeFetchResponse(nodeRes: ServerResponse, response: Response): 
   try {
     await pipeResponseBody(response.body, nodeRes);
   } catch (err) {
-    console.error(err);
+    if (!isClientHangUp(err)) {
+      console.error(err);
+    }
     nodeRes.destroy();
+  }
+}
+
+/**
+ * Whether a `pipeline` rejection only means the client went away: its
+ * response closed before the body finished (ERR_STREAM_PREMATURE_CLOSE) or
+ * was already closed (ERR_STREAM_UNABLE_TO_PIPE). That is routine (a closed
+ * tab, a cancelled fetch, a service worker install cut short) and is not
+ * logged. A failing source rejects with its own error and is logged.
+ */
+export function isClientHangUp(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ERR_STREAM_UNABLE_TO_PIPE';
+}
+
+/**
+ * Streams a static file to the client. A client that has already gone gets
+ * nothing and the file is never opened: `pipeline` would throw
+ * ERR_STREAM_UNABLE_TO_PIPE and leave the file open. A client that leaves
+ * mid-file resolves quietly, and the file is closed. A read error rejects.
+ */
+export async function pipeFile(open: () => Readable, destination: Writable): Promise<void> {
+  if (destination.destroyed || destination.closed) {
+    return;
+  }
+  const file = open();
+  try {
+    await pipeline(file, destination);
+  } catch (err) {
+    file.destroy();
+    if (!isClientHangUp(err)) {
+      throw err;
+    }
   }
 }
 
@@ -564,7 +619,7 @@ async function sendFile(
 
   nodeRes.flushHeaders();
   try {
-    await pipeline(createReadStream(filePath), nodeRes);
+    await pipeFile(() => createReadStream(filePath), nodeRes);
   } catch (err) {
     console.error(err);
     if (nodeRes.headersSent) {

@@ -1,11 +1,12 @@
 /**
- * `POST /api/import` — URL, pasted text, or up to 4 photos in, a recipe draft
- * out for the client to review and save. Gated by `withMembership` in
- * `scripts/server.ts`. The pipeline lives in `server/recipeImport.ts`; this
- * file only maps its outcomes to HTTP and writes one log line per request
- * (`server/importLog.ts`).
+ * `POST /api/import` — URL, pasted text, up to 4 photos, or a brief for the
+ * model to write a recipe from, in; a recipe draft out for the client to
+ * review and save. Gated by `withMembership` in `scripts/server.ts`. The
+ * pipeline lives in `server/recipeImport.ts`; this file only maps its
+ * outcomes to HTTP and writes one log line per request (`server/importLog.ts`).
  *
- * Photo import is bound by `docs/constitutions/image-import.md`.
+ * Photo import is bound by `docs/constitutions/image-import.md`. Writing a
+ * recipe from a brief is `docs/plans/recipe-generation.md`.
  */
 import {
   loggableUrl,
@@ -14,11 +15,17 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { readBoundedText, type MembershipHandlerContext } from './membership.ts';
+import {
+  RequestBodyError,
+  readBoundedText,
+  type MembershipHandlerContext,
+} from './membership.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
+  MAX_GENERATE_BRIEF_CHARS,
   fetchPageHtml,
+  generateFromBrief,
   importFromHtml,
   importFromImages,
   importFromSource,
@@ -29,6 +36,7 @@ import {
   type PageFetchOutcome,
   type RecipeImportDeps,
 } from './recipeImport.ts';
+import { admitTranslateCall } from './recipeTranslation.ts';
 
 export const MAX_IMPORT_IMAGES = 4;
 /** Decoded bytes, per image. */
@@ -53,6 +61,28 @@ interface ImportRequestBody {
    * absent. `text` becomes extra context.
    */
   images?: unknown;
+  /**
+   * An idea for a dish for the model to write a recipe from. Used when `url`
+   * and `images` are absent; wins over `text`. A string of at most
+   * `MAX_GENERATE_BRIEF_CHARS`.
+   */
+  brief?: unknown;
+  /** With `brief`: let Gemini run Google searches for it. A boolean. */
+  search?: unknown;
+}
+
+/**
+ * Searched generations per member per hour, per container instance. Each
+ * search Google runs is billed, so the brief path is the only import that is
+ * rate-limited; unsearched briefs cost what a paste import costs.
+ */
+export const MAX_IMPORT_SEARCHES_PER_HOUR = 20;
+const SEARCH_WINDOW_MS = 60 * 60 * 1000;
+const searchBuckets = new Map<string, number[]>();
+
+/** Test hook: clears the per-instance search rate-limit buckets. */
+export function resetImportSearchRateLimitForTest(): void {
+  searchBuckets.clear();
 }
 
 export type ImportImagesCheck =
@@ -67,6 +97,13 @@ const NOTHING_TO_IMPORT = 'Provide a URL, recipe text, or photos.';
 const BODY_TOO_LARGE = "That's too large to import — try fewer photos.";
 const PHOTOS_NOT_A_RECIPE = "Couldn't find a recipe in those photos.";
 const MODEL_FAILED = "Couldn't read that recipe — try again.";
+const BRIEF_TOO_LONG = "That's too long — keep the idea under 2,000 characters.";
+const SEARCH_RATE_LIMITED = 'Too many web searches. Try again later, or turn Search the web off.';
+const BRIEF_NOT_A_RECIPE = "Couldn't make a recipe from that — describe a dish.";
+const GENERATE_FAILED = "Couldn't generate that recipe — try again.";
+
+const NOT_A_RECIPE_DEFAULT = { code: 'import-no-recipe', error: "Couldn't find a recipe in that content." };
+const MODEL_FAILED_DEFAULT = { code: 'import-model-failed', error: MODEL_FAILED };
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -170,16 +207,32 @@ function fetchFailure(page: Exclude<PageFetchOutcome, { kind: 'ok' }>): Response
 function outcomeResponse(
   outcome: ImportOutcome,
   sourceUrl: string | undefined,
-  notARecipe: { code: string; error: string } = {
-    code: 'import-no-recipe',
-    error: "Couldn't find a recipe in that content.",
-  },
+  copy: {
+    notARecipe?: { code: string; error: string };
+    modelFailed?: { code: string; error: string };
+    /** Replaces the extraction wording for `parse_error` and `unusable` (a generated recipe). */
+    noRecipe?: { code: string; error: string };
+  } = {},
 ): Response {
+  const notARecipe = copy.notARecipe ?? NOT_A_RECIPE_DEFAULT;
+  const modelFailed = copy.modelFailed ?? MODEL_FAILED_DEFAULT;
   switch (outcome.kind) {
     case 'ok': {
       const recipe = { ...outcome.recipe, sourceUrl };
       // Codes only; the client owns the words (i18n principle 10).
       const warnings = outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {};
+      // The pages a generated recipe was grounded on, and Google's chip.
+      const grounding =
+        outcome.grounding !== undefined
+          ? {
+              grounding: {
+                sources: outcome.grounding.sources,
+                ...(outcome.grounding.searchSuggestions !== undefined
+                  ? { searchSuggestions: outcome.grounding.searchSuggestions }
+                  : {}),
+              },
+            }
+          : {};
       const translation = outcome.translation;
       if (translation?.kind === 'ok') {
         return Response.json({
@@ -189,23 +242,26 @@ function outcomeResponse(
             recipe: { ...translation.recipe, sourceUrl },
           },
           ...warnings,
+          ...grounding,
         });
       }
       if (translation?.kind === 'failed') {
-        return Response.json({ recipe, translationFailed: true, ...warnings });
+        return Response.json({ recipe, translationFailed: true, ...warnings, ...grounding });
       }
-      return Response.json({ recipe, ...warnings });
+      return Response.json({ recipe, ...warnings, ...grounding });
     }
     case 'empty_source':
       return fail('import-empty', NOTHING_TO_IMPORT, 400);
     case 'not_a_recipe':
       return fail(notARecipe.code, notARecipe.error, 422);
     case 'parse_error':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-extract-failed', 'Extraction failed — no structured result.', 502);
     case 'unusable':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-unusable', 'Extraction produced an unusable recipe.', 502);
     case 'model_error':
-      return fail('import-model-failed', MODEL_FAILED, 502);
+      return fail(modelFailed.code, modelFailed.error, 502);
   }
 }
 
@@ -226,7 +282,15 @@ async function handleImport(
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
 ): Promise<Response> {
-  const raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  } catch (err) {
+    if (!(err instanceof RequestBodyError)) throw err;
+    // The client went away mid-upload; nobody reads this answer.
+    entry.outcome = 'aborted';
+    return fail('bad-request', 'Bad request', 400);
+  }
   if (raw === null) {
     entry.outcome = 'too_large';
     return fail('import-body-too-large', BODY_TOO_LARGE, 413);
@@ -291,14 +355,52 @@ async function handleImport(
     }
     noteImportOutcome(entry, outcome);
     return outcomeResponse(outcome, undefined, {
-      code: 'import-no-recipe-photos',
-      error: PHOTOS_NOT_A_RECIPE,
+      notARecipe: { code: 'import-no-recipe-photos', error: PHOTOS_NOT_A_RECIPE },
     });
   }
   if (check.kind !== 'absent') {
     entry.via = 'photos';
     entry.outcome = 'bad_photos';
     return imagesFailure(check);
+  }
+
+  if (body.brief !== undefined && body.brief !== null) {
+    entry.via = 'generate';
+    if (typeof body.brief !== 'string' || (body.search !== undefined && typeof body.search !== 'boolean')) {
+      entry.outcome = 'bad_request';
+      return fail('bad-request', 'Bad request', 400);
+    }
+    const search = body.search === true;
+    entry.search = search;
+    const brief = body.brief.trim();
+    if (brief === '') {
+      entry.outcome = 'empty_source';
+      return fail('import-empty', NOTHING_TO_IMPORT, 400);
+    }
+    if (brief.length > MAX_GENERATE_BRIEF_CHARS) {
+      entry.outcome = 'bad_brief';
+      return fail('import-brief-too-long', BRIEF_TOO_LONG, 400);
+    }
+    // `entry.sub` is the membership gate's decision; `withMembership` always
+    // passes it, so only direct calls without a context (tests) share the '' bucket.
+    const member = entry.sub ?? '';
+    if (
+      search &&
+      !admitTranslateCall(searchBuckets, member, Date.now(), MAX_IMPORT_SEARCHES_PER_HOUR, SEARCH_WINDOW_MS)
+    ) {
+      entry.outcome = 'rate_limited';
+      return fail('import-search-rate-limited', SEARCH_RATE_LIMITED, 429);
+    }
+    const outcome = await generateFromBrief(brief, deps ?? recipeImportDepsFromEnv(), {
+      search,
+      translateTo: target.translateTo,
+    });
+    noteImportOutcome(entry, outcome);
+    return outcomeResponse(outcome, undefined, {
+      notARecipe: { code: 'import-no-recipe-brief', error: BRIEF_NOT_A_RECIPE },
+      modelFailed: { code: 'import-generate-failed', error: GENERATE_FAILED },
+      noRecipe: { code: 'import-generate-failed', error: GENERATE_FAILED },
+    });
   }
 
   entry.via = 'paste';

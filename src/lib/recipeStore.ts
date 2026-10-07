@@ -898,12 +898,14 @@ export function useRecipeCollectionId(id: string | undefined): string | undefine
 
 /**
  * Reactive variant group of one recipe, the original first; empty when the
- * recipe has no other variants. It re-renders on any recipe change, so only
- * the component that shows the group should call it.
+ * recipe has no other variants. Origins decide which shared recipes may
+ * join (`variantGroup`). It re-renders on any recipe or origin change, so
+ * only the component that shows the group should call it.
  */
 export function useRecipeVariants(id: string | undefined): readonly Recipe[] {
   const recipes = useLibrarySlice('recipes');
-  return useMemo(() => variantGroup(recipes, id), [recipes, id]);
+  const origins = useLibrarySlice('recipeOrigins');
+  return useMemo(() => variantGroup(recipes, origins, id), [recipes, origins, id]);
 }
 
 /** Reactive access to one recipe; `undefined` when it is not in the library. */

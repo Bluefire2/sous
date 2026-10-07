@@ -30,6 +30,7 @@ import {
 import { sanitizedError } from './importLog.ts';
 import { toSupportedLocale } from './lang.ts';
 import {
+  RequestBodyError,
   readBoundedText,
   storeUnavailable,
   type MembershipHandlerContext,
@@ -184,7 +185,14 @@ async function handleFeatureRequest(
   entry: FeatureRequestLogEntry,
   deps: FeatureRequestDeps,
 ): Promise<Response> {
-  const raw = await readBoundedText(req, MAX_FEATURE_REQUEST_BODY_BYTES);
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_FEATURE_REQUEST_BODY_BYTES);
+  } catch (err) {
+    // The client went away mid-upload; nobody reads this answer.
+    if (err instanceof RequestBodyError) return fail('feature-request-bad-request', 'Bad request', 400);
+    throw err;
+  }
   if (raw === null) return fail('feature-request-too-large', 'Too large', 413);
   let body: unknown;
   try {

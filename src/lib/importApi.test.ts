@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { t } from '../i18n';
 import { serverErrorText } from './errorText';
 import { IMPORT_JPEG_QUALITY, IMPORT_MAX_EDGE_PX } from './image';
 import {
@@ -6,9 +7,11 @@ import {
   fitImportPhotos,
   IMPORT_PHOTO_LIMIT_ERROR,
   importRecipe,
+  MAX_GENERATE_BRIEF_CHARS,
   MAX_IMPORT_PHOTO_BYTES,
   MAX_IMPORT_PHOTOS,
   MAX_IMPORT_PHOTOS_BASE64_CHARS,
+  readImportGrounding,
 } from './importApi';
 import * as session from './session';
 
@@ -185,5 +188,72 @@ describe('import photo limits', () => {
     expect(IMPORT_MAX_EDGE_PX).toBe(2048);
     expect(IMPORT_JPEG_QUALITY).toBe(0.85);
     expect(IMPORT_PHOTO_LIMIT_ERROR).toBe('Up to 4 photos.');
+  });
+});
+
+describe('importRecipe from a brief', () => {
+  it('posts the brief and the search flag', async () => {
+    const fetchMock = respond(200, { recipe: { title: 'Gumbo', servings: 6 } });
+    await importRecipe({ brief: 'shrimp gumbo', search: true, translateTo: 'en' });
+    expect(sentBody(fetchMock)).toEqual({ brief: 'shrimp gumbo', search: true, translateTo: 'en' });
+  });
+
+  it('keeps well-formed grounding sources and the chip', async () => {
+    respond(200, {
+      recipe: { title: 'Gumbo', servings: 6 },
+      grounding: {
+        sources: [
+          { title: 'Gumbo', url: 'https://example.com/gumbo' },
+          { title: 'bad scheme', url: 'javascript:alert(1)' },
+          { title: 7, url: 'https://example.com/no-title' },
+          'nonsense',
+          { title: 'Roux', url: 'https://example.org/roux' },
+        ],
+        searchSuggestions: '<div>chip</div>',
+      },
+    });
+    const result = await importRecipe({ brief: 'shrimp gumbo', search: true });
+    expect(result.grounding).toEqual({
+      sources: [
+        { title: 'Gumbo', url: 'https://example.com/gumbo' },
+        { title: 'Roux', url: 'https://example.org/roux' },
+      ],
+      searchSuggestions: '<div>chip</div>',
+    });
+  });
+
+  it('omits grounding when the server sent none, or nothing usable', async () => {
+    respond(200, { recipe: { title: 'Gumbo', servings: 6 } });
+    expect(await importRecipe({ brief: 'gumbo' })).not.toHaveProperty('grounding');
+    respond(200, { recipe: { title: 'Gumbo', servings: 6 }, grounding: { sources: [], searchSuggestions: '  ' } });
+    expect(await importRecipe({ brief: 'gumbo', search: true })).not.toHaveProperty('grounding');
+    respond(200, { recipe: { title: 'Gumbo', servings: 6 }, grounding: 'x' });
+    expect(await importRecipe({ brief: 'gumbo', search: true })).not.toHaveProperty('grounding');
+  });
+
+  it('keeps an untitled source for the preview to label', () => {
+    expect(readImportGrounding({ sources: [{ title: '', url: 'https://example.com/a' }] })).toEqual({
+      sources: [{ title: '', url: 'https://example.com/a' }],
+    });
+  });
+
+  it('caps the sources at ten', () => {
+    const sources = Array.from({ length: 12 }, (_, i) => ({ title: `S${i}`, url: `https://example.com/${i}` }));
+    expect(readImportGrounding({ sources })?.sources).toHaveLength(10);
+  });
+
+  it('shows the catalog text for the brief errors', async () => {
+    for (const [code, key] of [
+      ['import-brief-too-long', 'error.importBriefTooLong'],
+      ['import-search-rate-limited', 'error.importSearchRateLimited'],
+      ['import-no-recipe-brief', 'error.importNoRecipeBrief'],
+      ['import-generate-failed', 'error.importGenerateFailed'],
+    ] as const) {
+      expect(serverErrorText({ code, error: 'server words' }, 'error.importFailed')).toBe(t(key));
+    }
+  });
+
+  it('locks the brief cap', () => {
+    expect(MAX_GENERATE_BRIEF_CHARS).toBe(2000);
   });
 });

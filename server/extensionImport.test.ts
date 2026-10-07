@@ -10,6 +10,8 @@ import * as recipeImport from './recipeImport.ts';
 import { SESSION_HEADER_NAME, signSession } from './session.ts';
 import * as sync from './sync.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 
 // Spied rather than replaced: the assertion that matters is that empty html
 // short-circuits *before* the import pipeline. Without this the tests pass with
@@ -328,23 +330,6 @@ describe('extensionImport log line', () => {
   });
 });
 
-/** A body that never ends: a route that reads it whole never answers. */
-function endlessBody(): { body: ReadableStream<Uint8Array>; read: () => number; cancelled: () => boolean } {
-  let bytes = 0;
-  let cancelled = false;
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      const chunk = new Uint8Array(64 * 1024).fill(0x20);
-      bytes += chunk.byteLength;
-      controller.enqueue(chunk);
-    },
-    cancel() {
-      cancelled = true;
-    },
-  });
-  return { body, read: () => bytes, cancelled: () => cancelled };
-}
-
 describe('extensionImport body size', () => {
   beforeEach(() => {
     Object.assign(process.env, SESSION_ENV);
@@ -475,5 +460,45 @@ describe('extensionImport warnings', () => {
     );
     const payload = vi.mocked(sync.applyPushOp).mock.calls[0][1].payload;
     expect(payload).not.toHaveProperty('importCheck');
+  });
+});
+
+describe('extensionImport when the client hangs up mid-upload', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('answers 400 and logs aborted, never a 500, a throw, or the error', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(recipeImport.importFromHtml).mockClear();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const response = await extensionImport(
+      abortedRequest('http://localhost/api/extension/import', { [SESSION_HEADER_NAME]: token }),
+      fakeImportDeps(undefined).deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'bad-request' });
+    expect(recipeImport.importFromHtml).not.toHaveBeenCalled();
+    expect(importLogEntries(log)).toEqual([
+      { event: 'import', sub: 'sub-1', via: 'extension', outcome: 'aborted', status: 400, ms: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('logs a body it cannot start reading as bad_request, not aborted', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const req = authedRequest({ url: 'https://example.com/soup', html: '<main>Soup.</main>' });
+    req.body?.getReader();
+    const response = await extensionImport(req, fakeImportDeps(undefined).deps);
+    expect(response.status).toBe(400);
+    expect(importLogEntries(log)).toEqual([
+      expect.objectContaining({ outcome: 'bad_request', status: 400 }),
+    ]);
   });
 });

@@ -23,9 +23,24 @@ stub that always returns 401; Cloud Run serves `/api/import` from
 
 Recipe import (web URL/paste, extension, evals) is one pipeline in
 `server/recipeImport.ts`: `importFromHtml` / `importFromSource` /
-`importFromImages` take the Gemini client and model as arguments and return an
-`ImportOutcome`; routes map outcomes to HTTP. `normalizeImportedRecipe` is the
-only cleanup of model output for import. Page and paste imports are checked by
+`importFromImages` / `generateFromBrief` take the Gemini client and model as
+arguments and return an `ImportOutcome`; routes map outcomes to HTTP.
+`normalizeImportedRecipe` is the only cleanup of model output for import.
+`generateFromBrief` (`docs/plans/recipe-generation.md`, Create mode on
+`/import`, body field `brief`) is the one path where the model writes the
+recipe instead of extracting it: one structured call with `RECIPE_SCHEMA`
+and its own prompt, no import checks (a recipe with no ingredients or no steps
+is `unusable`; parse and unusable failures answer `import-generate-failed`, not
+the extraction wording). With `search: true` a free-text
+research call with the Google Search tool runs first and the structured call
+writes from its notes (the tool on the structured call itself never fired
+for a known dish; `evals/EXPERIMENTS.md` 2026-10-05); the pages it used and
+Google's Search Suggestions chip come back as `grounding`; the research notes
+never leave the server, and the queries are only a count in the log, on
+every outcome after the research call (they are visible to the member inside Google's chip, shown as provided). Searched calls are rate-limited to
+`MAX_IMPORT_SEARCHES_PER_HOUR` (20) per member per instance (429
+`import-search-rate-limited`); a brief is `via: 'generate'` in the log and
+in import feedback. Page and paste imports are checked by
 `server/importChecks.ts` (pure, no I/O) against the page (`server/pageScan.ts`,
 one parse5 pass shared with `extractRecipeSource`); `ok` carries typed
 `warnings` (codes only; the words are in the catalogs), and a thrown Gemini
@@ -43,11 +58,16 @@ refused address logs `fetch: 'blocked'` and answers the same 422
 Both import routes write one `event: 'import'` JSON log line per request
 (`server/importLog.ts`, `withImportLog`): the session `sub`, how the import
 arrived, the URL as `origin + pathname`, for page and paste imports `source`
-(`jsonld` | `text`) and `attempts` (each call's result), warning `codes`, the
-outcome, counts, a thrown error's numeric `status`, and timing. Never the
-email, recipe or pasted text, HTML, photo bytes, a query string, or an error
+(`jsonld` | `text`) and `attempts` (each call's result), warning `codes`, for
+a brief `search` and `searchQueries` (a count), the outcome, counts, a thrown
+error's numeric `status`, and timing. Never the email, recipe or pasted text,
+the brief, the search queries, HTML, photo bytes, a query string, or an error
 message. A Gemini throw on a page or paste import is a logged `model_error`,
-not a throw. Any other throw from either
+not a throw. A body the client abandons mid-upload (`readBoundedText` throws
+`RequestBodyError`) is a logged `aborted` 400, also not a throw; the
+dispatcher logs nothing for a route that throws on a request whose body was
+cut off before it arrived (`isRequestAbort`: a client hang-up, or a reader
+that cancelled the body). Any other throw from either
 route is rethrown as `sanitizedImportError` (class name and status only),
 because the dispatcher in `scripts/server.ts` `console.error`s whatever
 escapes and an SDK message can quote the request; never let the original
@@ -62,7 +82,8 @@ import, or a 👎 on a clean preview, the person can send a report
 live in top-level Firestore `importFeedback/{id}` (client-generated UUID
 written with `create()`; ALREADY_EXISTS, gRPC code 6, is success), never under
 `users/{uid}`, never synced or backed up. A report may hold the full link,
-pasted text, and the extracted recipe as capped JSON, but never photos, the
+pasted text (or, for `via: 'generate'`, the brief, in the same `pastedText`
+field), and the extracted recipe as capped JSON, but never photos, the
 notes typed with photos, or an email. `expireAt` drives a 180-day Firestore
 TTL policy (owner step in the plan). A 👍 stores nothing and only writes the
 `import_feedback` log line (`sub`, trigger, via, host, warning codes,
@@ -149,6 +170,7 @@ may fail. Use `http://localhost:5173`.
 
 ```
 npm test          # Vitest over src/ and server/
+npm run test:coverage  # the same, plus a coverage report in coverage/ (no thresholds)
 npm run test:import  # live Gemini paste-to-recipe evals; needs GEMINI_API_KEY
 npm run build     # tsc -b && vite build — the only type gate on server/
 ```
@@ -583,7 +605,9 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `variantOf`, the id of one of the caller's recipes. The server stores that
   recipe's group (its `variantOf`, else its id; Ask's rule) and, unless the
   call gives `lang`, its `lang` (`docs/plans/recipe-variants.md`, MCP). An
-  unknown, deleted or foreign id is `not_found`. `create_recipe` also takes
+  unknown, deleted or foreign id is `not_found`; a value that is not a
+  recipe id is `invalid` (so is a `collectionId` that is neither "unfiled"
+  nor a collection id). `create_recipe` also takes
   an optional `collectionId`; it and `move_recipes` file recipes with the app's
   membership rule in one transaction (`server/mcp/collectionMove.ts`,
   `docs/plans/mcp-collection-writes.md`) and refuse a collection with a live
@@ -699,6 +723,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
 | `docs/plans/parallel-steps.md` | Built on `claude/parallel-recipe-steps-857b23`, not deployed. Optional `RecipeStep.lane` groups steps two people cook at once; per-lane progress in `CookStateRow.doneSteps`; an "I'm on" lane chip; lanes authored in the edit form, Ask, and MCP. Amends cook-log principle 1. |
+| `docs/plans/recipe-generation.md` | Built on `claude/ai-recipe-generation-0f49e5`, not deployed. Create mode on `/import`: `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148), not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` built on `claude/mcp-create-variant` (#149). |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
 | `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |
@@ -710,6 +735,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
 | `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/test-coverage.md` | Done: merged as #151, #152, #154, and #157 (the coverage report), not deployed. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -727,14 +753,34 @@ is shared infrastructure for every end-to-end test, and an unexercised test
 path rots silently (`docs/plans/test-mode.md`); the review's use of it is in
 `docs/plans/i18n-review-ci.md`. Do not add the emulator to another job or to
 `npm test`. `.github/workflows/ci.yml` runs on PRs and pushes to
-`main`: `npm run build` + `npm test`, a Docker image build booted with no
+`main`: `npm run build` + `npm run test:coverage` (`npm test` plus a coverage report on the job summary, no thresholds), a Docker image build booted with no
 cloud credentials and checked by `.github/scripts/smoke-server.sh`, the
-`test-mode` job checked by `testing/smoke.ts`, and
-dependency review. None of it needs secrets, ADC, or production.
+`test-mode` job checked by `testing/smoke.ts` (reads, MCP, then the write
+checks in `testing/writeSmoke.ts`), `testing/deletionCheck.ts` (the real
+`scripts/delete-account-data.ts` on the viewer persona), and
+`testing/logSweep.ts` (no email, token, or query string in the server log),
+and dependency review. None of it needs secrets, ADC, or production.
 `scripts/invariants.test.ts` turns rules in this file into failing tests; follow
 the rule rather than loosening the check. `evals/pageFixtures.test.ts` runs the
 offline extraction step over every cached page and needs an entry for each new
 page fixture.
+
+**Coverage before a PR.** Once a change adds or substantially changes a module
+under `server/`, `src/lib/`, `scripts/`, or `api/`, and before opening the PR,
+run coverage for those files and read their uncovered lines:
+
+```
+npx vitest run --coverage --coverage.include=server/newThing.ts --coverage.reporter=text
+```
+
+Repeat `--coverage.include` per file. Leave the test files off the command so
+every test that touches the module counts. Add tests for uncovered logic:
+branches, error paths, refusals, the cases a route maps to a status. Do not
+chase a percentage, do not add tests that only execute lines, and do not test
+screens or components (they are checked in the browser). There is no
+threshold; CI shows the whole report on the `check` job's summary page for
+reviewers. Like the translation review, this is a pre-PR check, not part of
+every edit.
 
 Live paste-to-recipe evals are `npm run test:import` (`evals/**/*.eval.ts`,
 `vitest.eval.config.ts`). They call Gemini against fixtures in `evals/import/`
@@ -847,3 +893,9 @@ sends rendered page HTML, possibly from a page behind a login, to the server
 and on to Gemini; `/privacy` and `/terms` must describe that before the
 extension is offered beyond the owner. Photos sent for import go to Gemini and
 are not stored; `/privacy` and `/terms` say so.
+
+UI copy never names the model or its maker, because the model can change:
+an AI feature is Sous ("Sous generates…", "Pages Sous used"), never Gemini
+(owner, 2026-10-05). Google Search may be named, since the search really is
+Google's and its chip is shown. `/privacy` and `/terms` are the exception:
+they name Google's Gemini API as the provider that receives the data.
