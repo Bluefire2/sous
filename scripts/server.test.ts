@@ -199,16 +199,44 @@ describe('discardUnreadBody', () => {
         cancelled = true;
       },
     });
-    await discardUnreadBody(body, { bytes: 1_000_000, ms: 1_000 });
+    await discardUnreadBody(body, null, { bytes: 1_000_000, ms: 1_000 });
     expect(pulls).toBe(4);
     expect(cancelled).toBe(false);
   });
 
   it('cancels a body that goes past the byte bound', async () => {
     const endless = endlessBody();
-    await discardUnreadBody(endless.body, { bytes: 1_000_000, ms: 10_000 });
+    await discardUnreadBody(endless.body, null, { bytes: 1_000_000, ms: 10_000 });
     expect(endless.cancelled()).toBe(true);
     expect(endless.read()).toBeLessThan(1_000_000 + 256 * 1024);
+  });
+
+  it('cancels without reading a body that declares more than the byte bound', async () => {
+    const endless = endlessBody();
+    await discardUnreadBody(endless.body, 1_000_001, { bytes: 1_000_000, ms: 10_000 });
+    expect(endless.cancelled()).toBe(true);
+    expect(endless.read()).toBeLessThan(256 * 1024);
+  });
+
+  it('drains a body that declares no more than the byte bound', async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 2) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await discardUnreadBody(body, 2048, { bytes: 2048, ms: 1_000 });
+    expect(pulls).toBe(3);
+    expect(cancelled).toBe(false);
   });
 
   it('cancels a body that stalls past the time bound', async () => {
@@ -221,7 +249,7 @@ describe('discardUnreadBody', () => {
         cancelled = true;
       },
     });
-    await discardUnreadBody(body, { bytes: 1_000_000, ms: 20 });
+    await discardUnreadBody(body, null, { bytes: 1_000_000, ms: 20 });
     expect(cancelled).toBe(true);
   });
 

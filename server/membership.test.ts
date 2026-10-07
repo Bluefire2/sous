@@ -389,7 +389,7 @@ describe('readBoundedText', () => {
       duplex: 'half',
     } as RequestInit);
     expect(await readBoundedText(req, 100_000)).toBeNull();
-    // Cancelling would destroy the socket under the 413; the dispatcher drops the rest.
+    // Cancelling would abort the request under the 413; the dispatcher drops the rest.
     expect(endless.cancelled()).toBe(false);
     expect(req.body?.locked).toBe(false);
     expect(endless.read()).toBeLessThan(100_000 + 256 * 1024);

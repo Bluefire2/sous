@@ -17,7 +17,7 @@ import { MAX_IMPORT_BODY_BYTES } from '../server/importRoute.ts';
 import { readBoundedText, RequestBodyError } from '../server/membership.ts';
 import { SESSION_COOKIE_NAME, signSession } from '../server/session.ts';
 import * as sync from '../server/sync.ts';
-import { apiRoutes, createRequestListener } from './server.ts';
+import { apiRoutes, createRequestListener, UNREAD_BODY_LIMITS } from './server.ts';
 
 vi.mock('../server/sync.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../server/sync.ts')>();
@@ -99,12 +99,17 @@ function rawStatus(base: string, path: string): Promise<number> {
   });
 }
 
-type UploadResult = { status: number; body: string; reusedSocket: boolean } | { error: string };
+type UploadResult = ({ status: number; body: string; reusedSocket: boolean } | { error: string }) & {
+  /** Bytes written when the upload settled. */
+  sent: number;
+};
 
 /**
  * A POST of `bytes` bytes (forever when `Infinity`) written as fast as the
  * socket takes them, chunked unless `contentLength` is set. Resolves with the
- * response, or the client's error code when the connection fails first.
+ * response, the client's error code when the connection fails first, or
+ * `timeout` after 4 s, so a server that never answers fails the test rather
+ * than hanging it. An upload still being written when it settles is stopped.
  */
 function upload(
   base: string,
@@ -120,21 +125,34 @@ function upload(
     headers['Content-Length'] = String(options.bytes);
   }
   return new Promise((resolve) => {
+    let sent = 0;
+    let settled = false;
+    const settle = (result: { status: number; body: string; reusedSocket: boolean } | { error: string }): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ ...result, sent });
+      if (sent < options.bytes) {
+        req.destroy();
+      }
+    };
+    const timer = setTimeout(() => settle({ error: 'timeout' }), 4_000);
     const req = httpRequest(
       { hostname, port, path, method: 'POST', headers, agent: options.agent ?? false },
       (res) => {
         let body = '';
         res.setEncoding('utf8');
         res.on('data', (chunk: string) => (body += chunk));
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, body, reusedSocket: req.reusedSocket }));
-        res.on('error', (err: NodeJS.ErrnoException) => resolve({ error: err.code ?? err.message }));
+        res.on('end', () => settle({ status: res.statusCode ?? 0, body, reusedSocket: req.reusedSocket }));
+        res.on('error', (err: NodeJS.ErrnoException) => settle({ error: err.code ?? err.message }));
       },
     );
-    req.on('error', (err: NodeJS.ErrnoException) => resolve({ error: err.code ?? err.message }));
+    req.on('error', (err: NodeJS.ErrnoException) => settle({ error: err.code ?? err.message }));
     const piece = 'a'.repeat(16 * 1024);
-    let sent = 0;
     const pump = (): void => {
-      while (sent < options.bytes && !req.destroyed) {
+      while (sent < options.bytes && !req.destroyed && !settled) {
         const next = piece.slice(0, Math.min(piece.length, options.bytes - sent));
         sent += next.length;
         if (!req.write(next)) {
@@ -370,6 +388,7 @@ describe('a route that answers before the body is read', () => {
       status: 413,
       body: 'Payload too large',
       reusedSocket: false,
+      sent: OVER,
     });
   });
 
@@ -404,14 +423,25 @@ describe('a route that answers before the body is read', () => {
     } finally {
       agent.destroy();
     }
-  });
+  }, 15_000);
 
-  it('cuts off a body that never ends, and keeps answering', async () => {
+  it('stops reading a body that never ends, and keeps answering', async () => {
     const result = await upload(apiBase, '/api/access-request', { bytes: Infinity });
-    expect(result).toHaveProperty('error');
+    // Past the bound the server cancels the body and closes the connection
+    // under the upload. Whether the 413 written just before survives that
+    // reset depends on the client's system (Windows drops it, Linux keeps it).
+    if ('error' in result) {
+      expect(result.error).not.toBe('timeout');
+    } else {
+      expect(result.status).toBe(413);
+    }
+    // The client settled soon after the server stopped reading, not after an
+    // endless upload; the slack covers socket buffers.
+    expect(result.sent).toBeGreaterThan(UNREAD_BODY_LIMITS.bytes);
+    expect(result.sent).toBeLessThan(2 * UNREAD_BODY_LIMITS.bytes);
     // A small body with no access token is read in full and refused as expired.
     expect(await upload(apiBase, '/api/access-request', { bytes: 10 })).toMatchObject({ status: 400 });
-  });
+  }, 15_000);
 });
 
 describe('a handler that throws', () => {

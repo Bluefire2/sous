@@ -221,7 +221,7 @@ describe('sttPost error codes', () => {
     );
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({ code: 'stt-too-long' });
-    // The dispatcher drops the rest; cancelling would reset the socket under the 413.
+    // The dispatcher drops the rest; cancelling would abort the request under the 413.
     expect(endless.cancelled()).toBe(false);
     expect(endless.read()).toBeLessThan(MAX_STT_BYTES + 256 * 1024);
   });

@@ -247,8 +247,9 @@ export class RequestBodyError extends Error {
  * The body as text, or null when it is longer than `limit` bytes. Throws
  * `RequestBodyError` when the body fails. Past the limit it stops reading and
  * releases the body without cancelling it: in the server, cancelling
- * `Readable.toWeb(nodeReq)` destroys the socket, and the 413 never reaches a
- * client that is still uploading. The dispatcher (`dispatchFetch` in
+ * `Readable.toWeb(nodeReq)` aborts the request, and Node closes the connection
+ * under the arriving upload, so a client still uploading usually sees a reset
+ * instead of the 413. The dispatcher (`dispatchFetch` in
  * `scripts/server.ts`) drops what is left, within a bound, before it answers.
  * Nothing past the limit is kept here.
  */
