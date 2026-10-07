@@ -308,7 +308,9 @@ const RECIPE_SCHEMA: Schema = {
   // and sometimes ran on (20.000000000000004, or zeros until MAX_TOKENS,
   // which is a `parse_error`), and some runs dropped `description`, `notes`
   // and `lang` (evals/EXPERIMENTS.md, 2026-10-06).
-  // `PAGE_RECIPE_SCHEMA` appends its two booleans to this order.
+  // `PAGE_RECIPE_SCHEMA` appends its two booleans to this order, so changing
+  // it changes the page and paste request too and needs measuring
+  // (evals/AGENTS.md).
   propertyOrdering: [
     'title',
     'description',
@@ -603,8 +605,12 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-/** Longest prep or cook time an import keeps; the same bound as MCP's `RECIPE_LIMITS.maxMinutes`. */
-export const MAX_IMPORT_MINUTES = 10_000;
+/**
+ * Longest prep or cook time an import keeps: about 69 days, so a real cure,
+ * ferment or extract (21 days is 30 240) survives. It is not MCP's
+ * `RECIPE_LIMITS.maxMinutes` (10 000, about 7 days), which would drop those.
+ */
+export const MAX_IMPORT_MINUTES = 100_000;
 
 /**
  * A duration as whole minutes, or `undefined` to drop it. Negative values and

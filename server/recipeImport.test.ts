@@ -27,7 +27,6 @@ import {
   type RecipeImportDeps,
   type RecipeTranslator,
 } from './recipeImport.ts';
-import { RECIPE_LIMITS } from './mcp/recipeInput.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
 
 // Drift guard: the server cannot import `src/` at runtime, so ImportedRecipe
@@ -448,7 +447,7 @@ describe('normalizeImportedRecipe', () => {
     }
   });
 
-  it('drops a duration that would round to 0 from a positive or negative value', () => {
+  it('drops a positive duration that would round to 0, and a small negative one without making it -0', () => {
     for (const raw of [5.000000000000001e-5, 0.4, -0.4]) {
       const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
       expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
@@ -462,11 +461,13 @@ describe('normalizeImportedRecipe', () => {
     expect(Object.is(recipe?.cookMinutes, 0)).toBe(true);
   });
 
-  it('drops a duration over the MCP limit, so a whole-number run-on is not kept', () => {
-    expect(MAX_IMPORT_MINUTES).toBe(RECIPE_LIMITS.maxMinutes);
-    expect(normalizeImportedRecipe({ ...MINIMAL, prepMinutes: MAX_IMPORT_MINUTES })).toMatchObject({
-      prepMinutes: MAX_IMPORT_MINUTES,
-    });
+  it('keeps multi-day times and drops a duration over the cap, so a whole-number run-on is not kept', () => {
+    expect(MAX_IMPORT_MINUTES).toBe(100_000);
+    for (const minutes of [10_080, 30_240, MAX_IMPORT_MINUTES]) {
+      expect(normalizeImportedRecipe({ ...MINIMAL, prepMinutes: minutes })).toMatchObject({
+        prepMinutes: minutes,
+      });
+    }
     for (const raw of [MAX_IMPORT_MINUTES + 1, 305106198964720960, 1e21]) {
       const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
       expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');

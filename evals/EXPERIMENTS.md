@@ -31,14 +31,18 @@ summary, approach A.
   the resulting list is the same as before, so the page and paste request
   is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
   `cookMinutes` to whole minutes for every import path. Negative values and
-  values over 10,000 (MCP's `RECIPE_LIMITS.maxMinutes`) are dropped, a
-  positive value that would round to 0 (such as 5.000000000000001e-05) is
-  dropped rather than shown as "0 min", and 0 is kept. Prompts, model
-  settings, retries and goldens are unchanged. Commits: `21a5a48` (order and
-  rounding, the measured version), then review follow-ups `4b6fa54` (drop a
-  value that rounds to 0) and the commit after it (drop values over 10,000).
-  The follow-ups were not re-measured. They change only values under 0.5
-  or over 10,000. The judge does compare times (`evals/judge.ts`), but no
+  values over 100,000 (about 69 days) are dropped, a positive value that
+  would round to 0 (such as 5.000000000000001e-05) is dropped rather than
+  shown as "0 min", and 0 is kept. The cap is deliberately above MCP's
+  `RECIPE_LIMITS.maxMinutes` (10,000, about 7 days): cures, ferments and
+  extracts honestly run to weeks (21 days is 30,240), and the first cap of
+  10,000 (`dfa87f4`) dropped them. The cost is that a run-on under 100,000
+  (30 becoming 30000) is kept. Prompts, model settings, retries and goldens
+  are unchanged. Commits: `21a5a48` (order and rounding, the measured
+  version), then review follow-ups `4b6fa54` (drop a value that rounds to
+  0), `dfa87f4` (cap at 10,000) and the commit after it (cap raised to
+  100,000). The follow-ups were not re-measured. They change only values
+  under 0.5 or over 100,000. The judge does compare times (`evals/judge.ts`), but no
   raw time in the generate probe below was in either range; the one
   recorded run-on of that size is the 305106198964720960 in the 2026-10-01
   entry.
@@ -47,7 +51,7 @@ summary, approach A.
   followed. Without an order the model writes the required fields, then
   the optional ones alphabetically, so `prepMinutes` comes last. The
   normalizer rules are a backstop for a run-on that still parses: rounding
-  catches a fractional one, the 10,000 cap a whole-number one. Imported
+  catches a fractional one, the 100,000 cap a large whole-number one. Imported
   times are whole minutes; the recipe form, MCP, chat Apply and backup
   import still accept fractions, and nothing depends on whole minutes.
 - Reported: a live Generate run ("shrimp gumbo in a pressure cooker for 6",
@@ -105,10 +109,11 @@ summary, approach A.
   - Not `ok`: before 1 (sweet-sour-pork, `MAX_TOKENS` at 3,543 tokens,
     `parse_error`); after 3 (first run, 1 lemon-tea-bread and 2
     sweet-sour-pork, kind not recorded because the script did not record
-    it yet; the 14 later "after" runs on those cards were all `ok`). Summed
-    with ocrCompare and test:import (every A run `ok` on both sides),
-    1/73 before against 3/73 after: too few to tell apart, and worth
-    watching.
+    it yet; the 28 later "after" runs on those cards, 14 per card, were
+    all `ok`). Summed with the dev photo runs of ocrCompare (15) and
+    test:import (5), where every A run was `ok` on both sides: dev only,
+    73 runs per side, 1/73 not `ok` before against 3/73 after. Too few to
+    tell apart, and worth watching.
   - Read: the order did not add descriptions and wrote fewer invented
     times, so the photo path keeps it.
 - Run by: agent, default model (`gemini-3.7-flash`).
