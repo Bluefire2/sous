@@ -41,7 +41,7 @@ export type LibrarySheet =
   | { kind: 'intro'; step: number };
 
 /** How many steps the new-member intro has. */
-export const INTRO_STEP_COUNT = 3;
+export const INTRO_STEP_COUNT = 5;
 
 export type LibraryFlow = { token: number; sheet: LibrarySheet };
 

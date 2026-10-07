@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type ComponentType } from 'react';
 import { useT, type TextKey } from '../i18n';
-import { CameraIcon, ChatBubbleIcon, FolderIcon } from '../lib/icons';
+import { CameraIcon, ChatBubbleIcon, InviteIcon, PlusIcon, PotIcon } from '../lib/icons';
 import { INTRO_STEP_COUNT } from '../lib/libraryFlow';
 import { primaryBtn, secondaryBtn } from '../lib/uiClasses';
 import Sheet from './Sheet';
@@ -11,17 +11,22 @@ type IntroStep = {
   body: TextKey;
 };
 
+// Steps 3 and 4 show the header icons they point to (the assistant's chat
+// bubble, the invite person-with-plus), so the member can spot them.
 const STEPS: readonly IntroStep[] = [
   { Icon: CameraIcon, title: 'intro.importTitle', body: 'intro.importBody' },
-  { Icon: ChatBubbleIcon, title: 'intro.cookTitle', body: 'intro.cookBody' },
-  { Icon: FolderIcon, title: 'intro.shareTitle', body: 'intro.shareBody' },
+  { Icon: PotIcon, title: 'intro.cookTitle', body: 'intro.cookBody' },
+  { Icon: ChatBubbleIcon, title: 'intro.assistantTitle', body: 'intro.assistantBody' },
+  { Icon: InviteIcon, title: 'intro.shareTitle', body: 'intro.shareBody' },
+  { Icon: PlusIcon, title: 'intro.readyTitle', body: 'intro.readyBody' },
 ];
 
 /**
  * The new-member intro (`docs/plans/new-member-intro.md`): one step at a
  * time in a Library sheet. Library owns the step (the `intro` sheet in
  * `libraryFlow`) and what closing does; every way out calls `onClose`, and
- * the last step's Import a recipe calls `onImport` instead.
+ * the last step's Import a recipe calls `onImport` instead, and its Do it
+ * later is another close.
  */
 export default function IntroSheet({
   step,
@@ -81,7 +86,7 @@ export default function IntroSheet({
             {t('intro.importCta')}
           </button>
           <button type="button" onClick={onClose} className={`${secondaryBtn} mt-2 block w-full py-3`}>
-            {t('intro.lookAround')}
+            {t('intro.later')}
           </button>
         </>
       ) : (

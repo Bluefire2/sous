@@ -85,7 +85,13 @@ const weeknights = (ctx: CaptureContext) => `/collections/${ctx.ids.member.weekn
  * times; nothing closes it.
  */
 function introStep(step: number): Capturable {
-  const titles = ['intro.importTitle', 'intro.cookTitle', 'intro.shareTitle'] as const;
+  const titles = [
+    'intro.importTitle',
+    'intro.cookTitle',
+    'intro.assistantTitle',
+    'intro.shareTitle',
+    'intro.readyTitle',
+  ] as const;
   return {
     persona: 'member',
     path: '/settings',
@@ -278,6 +284,8 @@ export const STATES: Record<string, StateEntry> = {
   'intro-step-1': introStep(0),
   'intro-step-2': introStep(1),
   'intro-step-3': introStep(2),
+  'intro-step-4': introStep(3),
+  'intro-step-5': introStep(4),
   'library-language-menu': {
     persona: 'member',
     path: '/',

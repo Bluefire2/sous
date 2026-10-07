@@ -131,6 +131,26 @@ export function InviteIcon({ className }: { className?: string }) {
 }
 
 /** Chat bubble, the same mark as the assistant's header link (`src/agent/AssistantEntryLink.tsx`). */
+/** A cooking pot with steam: cooking, as opposed to the assistant's chat bubble. */
+export function PotIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M2 10h20" />
+      <path d="M5 10v6a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4v-6" />
+      <path d="M9 6V4M12 6V3M15 6V4" />
+    </svg>
+  );
+}
+
 export function ChatBubbleIcon({ className }: { className?: string }) {
   return (
     <svg

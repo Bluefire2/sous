@@ -128,19 +128,31 @@
   {
     "id": "intro-step-1",
     "route": "/",
-    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the first step (camera icon, Step 1 of 3) with Next and Skip. Do not press Import a recipe. Close it with Skip or Look around when done.",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the first step (camera icon, Step 1 of 5, Bring your recipes in) with Next and Skip. Do not press Import a recipe. Close it with Skip or Do it later when done.",
     "needsData": false
   },
   {
     "id": "intro-step-2",
     "route": "/",
-    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the second step (chat bubble icon, Step 2 of 3) with Next, Back, and Skip; press Next once to reach it. Do not press Import a recipe. Close it with Skip or Look around when done.",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the second step (pot icon, Step 2 of 5, Cook with help) with Next, Back, and Skip; press Next once to reach it. Ask and Log a cook are the names of buttons on a recipe's page. Do not press Import a recipe. Close it with Skip or Do it later when done.",
     "needsData": false
   },
   {
     "id": "intro-step-3",
     "route": "/",
-    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the last step (folder icon, Step 3 of 3) with Import a recipe, Look around, and Back; press Next twice to reach it. Do not press Import a recipe. Close it with Skip or Look around when done.",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the third step (chat bubble icon, Step 3 of 5, the recipe helper) with Next, Back, and Skip; press Next twice to reach it. The chat button it names is the chat bubble icon in the library header behind the sheet. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-4",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the fourth step (person-with-plus icon, Step 4 of 5, sharing with friends) with Next, Back, and Skip; press Next three times to reach it. The person icon it names is the invite icon in the library header behind the sheet. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-5",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the last step (plus icon, Step 5 of 5, Ready to start?) with Import a recipe, Do it later, and Back; press Next four times to reach it. It says the intro can be seen again in Settings; there is no Skip on this step. Do not press Import a recipe. Close it with Skip or Do it later when done.",
     "needsData": false
   },
   {

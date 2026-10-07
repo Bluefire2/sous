@@ -93,18 +93,23 @@ export const en = {
   'intro.stepOf': 'Step {n} of {total}',
   'intro.importTitle': 'Bring your recipes in',
   'intro.importBody':
-    "Paste a link or a recipe's text, or add up to 4 photos of handwritten notes. Sous turns it into a clean recipe you can edit.",
+    "Paste a link or a recipe's text, or snap your handwritten notes. Sous turns it into a clean recipe you can edit.",
   'intro.cookTitle': 'Cook with help',
   'intro.cookBody':
-    "Open any recipe and tap Ask for substitutions, timing, or a second opinion on how it's going; you can type or dictate. On your own recipes, Log a cook keeps notes for next time.",
-  'intro.shareTitle': 'Plan and share',
+    'Open a recipe while you cook and tap Ask: Can I swap this? How long does it need? Does it look right? Log a cook keeps notes for next time.',
+  'intro.assistantTitle': 'Your recipe helper',
+  'intro.assistantBody':
+    'The chat button at the top is your recipe helper. Try asking “What should I make tonight?” or “Make me a shopping list.”',
+  'intro.shareTitle': 'Share with friends',
   'intro.shareBody':
-    'The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap the person icon at the top to invite a friend to Sous.',
+    'Share a collection of recipes with friends, or tap the person icon to invite them to Sous.',
+  'intro.readyTitle': 'Ready to start?',
+  'intro.readyBody': 'You can see this again any time in Settings.',
   'intro.back': 'Back',
   'intro.next': 'Next',
   'intro.skip': 'Skip',
   'intro.importCta': 'Import a recipe',
-  'intro.lookAround': 'Look around',
+  'intro.later': 'Do it later',
   'library.collectionsEmpty': 'Put recipes in a collection to share them with people who have a Sous account.',
   'library.actionsFor': 'Actions for {title}',
   'library.collectionActions': 'Actions for {name}',

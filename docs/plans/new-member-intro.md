@@ -4,20 +4,18 @@ Status: built on `claude/new-member-intro-plan`, not deployed.
 
 ## Goal
 
-The first time a new member reaches their library, a short intro (three steps
+The first time a new member reaches their library, a short intro (five steps
 in a sheet) says what Sous can do, then gets out of the way:
 
-1. **Bring your recipes in.** Paste a link or recipe text, or take up to four
-   photos of handwritten notes; Sous turns it into a clean recipe.
-2. **Cook with help.** Ask on any recipe answers questions, scales, swaps
-   ingredients and suggests edits; you can dictate instead of typing. The
-   assistant works across your whole library, for example to make a shopping
-   list. Cooks keeps a log of what you made and how it went.
-3. **Organise and share.** Put recipes in collections, share a collection with
-   people who use Sous, and invite friends.
+1. **Bring your recipes in.** A link, recipe text, or a photo of handwritten
+   notes becomes a clean recipe.
+2. **Cook with help.** Ask on a recipe while cooking; Log a cook keeps notes.
+3. **Your recipe helper.** The assistant behind the header's chat button.
+4. **Share with friends.** Share a collection, or invite friends to Sous.
+5. **Ready to start?** Says the intro is in Settings, and offers **Import a
+   recipe** (primary) and **Do it later** (secondary).
 
-The last step ends with **Import a recipe** (primary) and **Look around**
-(secondary). Every step has **Skip**. Once closed, the intro doesn't open again
+Steps 1–4 have **Skip**. Once closed, the intro doesn't open again
 on any device for that account. It can be reopened from Settings.
 
 Why: today a new member lands on "No recipes yet. Import your first one!" and
@@ -140,7 +138,7 @@ the sheet is `closed`, so a late answer never replaces a sheet the person
 opened while waiting. The fetch is a side effect in an effect, not in the
 reducer or render (client-state principles 5 and 6).
 
-**D7. Every close marks it as seen.** Skip, the backdrop, Escape, Look around,
+**D7. Every close marks it as seen.** Skip, the backdrop, Escape, Do it later,
 and Import a recipe close the sheet. So do a collection change that resets
 Library's sheets, Back, and leaving Library. Library marks it seen in the
 cleanup of an effect that runs while the intro is open, so every path is
@@ -161,10 +159,15 @@ doesn't reopen it. Closing it sends the `POST` again, which is a no-op.
 mention are merged but not deployed (photo import, the library assistant,
 member invite links). Before the deploy that ships the intro, check each
 sentence against what that deploy includes, and remove any clause it doesn't.
-Keep each step to a heading and at most two sentences.
+Keep each step to a heading and at most two sentences, and describe what a
+feature does, not its limits or mechanics (no photo counts, no "type or
+dictate", no "looks across your own recipes"): people find those out when
+they tap (native-speaker review, 2026-10-07).
 
 **D10. Steps are text, with one icon from `src/lib/icons.tsx`** (`CameraIcon`,
-`ChatBubbleIcon`, `FolderIcon`). No images or illustrations, so nothing needs
+`PotIcon`, `ChatBubbleIcon`, `InviteIcon`, `PlusIcon`). Steps 3 and 4 use the
+header icons they point to, so the member can spot them; step 2 has its own
+pot so the chat bubble means only the assistant. No images or illustrations, so nothing needs
 translating per locale and nothing grows the bundle.
 
 ## English copy (draft)
@@ -179,29 +182,33 @@ library is `assistant.ask`), **Log a cook** (`recipe.logACook`), and the import 
 | `intro.welcome` | Welcome to Sous |
 | `intro.stepOf` | Step {n} of {total} |
 | `intro.importTitle` | Bring your recipes in |
-| `intro.importBody` | Paste a link or a recipe's text, or add up to 4 photos of handwritten notes. Sous turns it into a clean recipe you can edit. |
+| `intro.importBody` | Paste a link or a recipe's text, or snap your handwritten notes. Sous turns it into a clean recipe you can edit. |
 | `intro.cookTitle` | Cook with help |
-| `intro.cookBody` | Open any recipe and tap Ask for substitutions, timing, or a second opinion on how it's going; you can type or dictate. On your own recipes, Log a cook keeps notes for next time. |
-| `intro.shareTitle` | Plan and share |
-| `intro.shareBody` | The chat bubble at the top of your library looks across all your own recipes: try “What can I make tonight?” or ask for a shopping list. Put recipes in a collection to share them, or tap the person icon at the top to invite a friend to Sous. |
+| `intro.cookBody` | Open a recipe while you cook and tap Ask: Can I swap this? How long does it need? Does it look right? Log a cook keeps notes for next time. |
+| `intro.assistantTitle` | Your recipe helper |
+| `intro.assistantBody` | The chat button at the top is your recipe helper. Try asking “What should I make tonight?” or “Make me a shopping list.” |
+| `intro.shareTitle` | Share with friends |
+| `intro.shareBody` | Share a collection of recipes with friends, or tap the person icon to invite them to Sous. |
+| `intro.readyTitle` | Ready to start? |
+| `intro.readyBody` | You can see this again any time in Settings. |
 | `intro.back` | Back |
 | `intro.next` | Next |
 | `intro.skip` | Skip |
 | `intro.importCta` | Import a recipe |
-| `intro.lookAround` | Look around |
+| `intro.later` | Do it later |
 | `settings.showIntro` | Show the intro again |
 
-`intro.welcome` sits above each step's title as a small label. Clauses to cut
-if their feature isn't in the deploy that ships the intro (D9): "or add up to 4
-photos of handwritten notes" (photo import), the whole first sentence of
-`intro.shareBody` (the library assistant), and "or tap the person icon at the
-top to invite a friend to Sous" (member invite links). An owner always has the
-invite control, but most people who see the intro are members.
+`intro.welcome` sits above each step's title as a small label. What to cut
+if a feature isn't in the deploy that ships the intro (D9): "or snap your
+handwritten notes" (photo import), the whole of step 3 (the library
+assistant; drop it from `STEPS`), and "or tap the person icon to invite them
+to Sous" (member invite links). An owner always has the invite control, but
+most people who see the intro are members.
 
-Two wording rules, from review: Log a cook is only on a member's own recipes
-(shared recipes hide it), so the text says so; and the header's invite control
-is an icon with no visible label, so the text names the icon, not the word
-Invite.
+The header's invite control is an icon with no visible label, so the text
+names the icon, not the word Invite. The five-step shape, the plain feature
+descriptions and the final "Ready to start?" step come from a native Chinese
+speaker's review (2026-10-07), who also wrote the Chinese for steps 1–4.
 
 ## Steps
 
@@ -218,7 +225,7 @@ Invite.
 3. **[core]** `src/lib/introApi.ts` (D4) with tests for the status mapping
    (`200`, `401`, `503`, network error) and the per-`sub` page-load state.
 4. **[core]** `src/lib/libraryFlow.ts`: add the `intro` sheet kind, plus
-   `openIntro` (only from `closed`) and `introStep { step }` (clamped to 0–2).
+   `openIntro` (only from `closed`) and `introStep { step }` (clamped to 0–4).
    Opening it bumps `token` like any other sheet. Add reducer tests in
    `libraryFlow.test.ts`, including `openIntro` while `add` is open (no
    change).
@@ -229,7 +236,7 @@ Invite.
    recipes" (ask) and "one own recipe" (don't ask).
 6. **[ui]** `src/components/IntroSheet.tsx`: one step at a time (icon, heading,
    body), "Step {n} of {total}", Back / Next, and Skip; the last step shows
-   Import a recipe and Look around instead of Next. On a step change, focus
+   Import a recipe and Do it later instead of Next and Skip. On a step change, focus
    moves to the step heading (`tabIndex={-1}`) so screen readers read it,
    with "Step {n} of {total}" as its description (`aria-describedby`). No
    animation.
@@ -240,8 +247,8 @@ Invite.
    only when signed in.
 9. **[ui]** `intro.*` keys and `settings.showIntro` in `src/i18n/en.ts`, `uk.ts`,
    `ru.ts` and `zh-Hans.ts`. Each sentence is one catalog string; "Step {n} of
-   {total}" is one string with params. Add `intro-step-1`, `intro-step-2` and
-   `intro-step-3` to `docs/i18n-review/screens.json`, with setup notes
+   {total}" is one string with params. Add `intro-step-1` to
+   `intro-step-5` to `docs/i18n-review/screens.json`, with setup notes
    ("Settings → Show the intro"; that works on any account, so these screens
    don't need an empty library).
 10. **[ui]** `public/privacy.html`: where it says sign-in associates your
@@ -276,11 +283,11 @@ Invite.
 - Narrow phone width and dark mode: the sheet fits without horizontal scroll,
   and the buttons don't wrap awkwardly in `uk`/`ru` (the longest strings).
 - Before the PR: the in-context translation review
-  (`docs/i18n-review/README.md`) for the three intro screens and Settings in
+  (`docs/i18n-review/README.md`) for the five intro screens and Settings in
   `uk`, `ru` and `zh-Hans`.
 
 The translation review runs as `npm run test:i18n` (`testing/i18n-review/`).
-The three intro steps are scripted there from Settings as `member`, and the
+The five intro steps are scripted there from Settings as `member`, and the
 two empty-library states use the `introSeen` mock, so they still show the
 empty library and nothing closes the intro. Task run on 2026-10-04 over
 `intro-step-1..3`, `settings`, `library-empty` and
@@ -290,7 +297,11 @@ three non-English languages over `intro-step-1..3` and the two empty-library
 states (15 judged, 0 issues); `uk` and `ru` over the intro steps and
 `settings` after their line-by-line review (8 judged, 0 issues); `zh-Hans`
 over the same states after its step 3 rewording (4 judged, 0 issues,
-`--repeat 2` deterministic).
+`--repeat 2` deterministic). After the five-step rewrite, 2026-10-07: all three
+non-English languages over `intro-step-1..5` and `settings` (`--repeat 2`, 18
+judged): one blocker, in `zh-Hans` step 2 (「添加食谱「记录烹饪」」 read as adding
+a recipe), fixed to 「给食谱「记录烹饪」」 and re-reviewed clean; one unconfirmed
+nit on the native speaker's own step 1 wording, left as written.
 
 No check here needs `dev:api` or a real Google sign-in.
 
