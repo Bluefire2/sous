@@ -56,7 +56,10 @@ function normalizeSteps(value: unknown): RecipeStep[] {
     if (!isPlainObject(step)) continue;
     const text = nonEmptyString(step.text);
     if (text === undefined) continue;
-    const lane = compactLane(step.lane);
+    // A blank lane is kept as '': Ask's way of saying "take this lane off",
+    // which `carryStepLanes` honours and strips. Too long is dropped.
+    const lane =
+      typeof step.lane === 'string' && step.lane.trim() === '' ? '' : compactLane(step.lane);
     steps.push(lane === undefined ? { text } : { text, lane });
   }
   return steps;

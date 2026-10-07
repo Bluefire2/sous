@@ -409,6 +409,35 @@ describe('step lanes through Ask (docs/plans/parallel-steps.md)', () => {
     expect(getRecipe(PARENT_ID)?.steps).toEqual(steps);
   });
 
+  it('Apply removes every lane when the proposal empties them', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: laned().steps.map(({ text }) => ({ text, lane: '' })),
+    });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual(laned().steps.map(({ text }) => ({ text })));
+  });
+
+  it('a replacement import keeps lanes where the step text is unchanged', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.replaceFromImport(
+      PARENT_ID,
+      { ...draft, steps: [{ text: 'Boil.' }, { text: 'Fry garlic.' }, { text: 'Cook spaghetti.' }] },
+      undefined,
+    );
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook spaghetti.' },
+    ]);
+  });
+
   it('Save as variant carries the parent lanes', async () => {
     const parent = laned();
     upsertRecipe(parent);

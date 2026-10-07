@@ -243,6 +243,11 @@ describe('carryStepLanes', () => {
     expect(carryStepLanes(pasta, proposed).some((s) => s.lane !== undefined)).toBe(false);
   });
 
+  it('removes every lane when the proposal sets them to empty', () => {
+    const proposed = pasta.map(({ text }) => ({ text, lane: '' }));
+    expect(carryStepLanes(pasta, proposed)).toEqual(pasta.map(({ text }) => ({ text })));
+  });
+
   it('takes a proposal that has any lane as is', () => {
     const proposed = [{ text: 'Boil water', lane: 'Pasta' }, { text: 'Fry garlic' }];
     expect(carryStepLanes(pasta, proposed)).toEqual(proposed);

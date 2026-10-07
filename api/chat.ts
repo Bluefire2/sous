@@ -175,7 +175,7 @@ const RECIPE_SCHEMA: Schema = {
           lane: {
             type: Type.STRING,
             description:
-              'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta" (24 characters max). Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes the recipe already has.',
+              'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta" (24 characters max). Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes the recipe already has. To take a step out of its lane, set its lane to an empty string.',
           },
         },
         required: ['text'],
@@ -409,7 +409,9 @@ function systemPrompt(recipe: unknown, cookingState: unknown): string {
     'parallel; a step without one is done by everyone, in order. Keep',
     'existing lanes when you change the recipe unless asked. When asked to',
     'split a recipe for two cooks, give consecutive steps that can happen at',
-    'once short lane names and leave shared steps without a lane. In the',
+    'once short lane names and leave shared steps without a lane. When asked',
+    'to remove lanes, set "lane" to an empty string on every step that should',
+    'lose its lane; leaving the field out keeps the lane. In the',
     'cooking state, "doneSteps" lists step numbers already done ahead of',
     '"currentStep", and "lane" is the lane the user is cooking.',
     '',

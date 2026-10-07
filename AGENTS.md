@@ -257,8 +257,9 @@ ahead of `currentStep` in such a block) are the fourth
 `src/lib/recipeSteps.ts`) is the only step compaction on both ends and drops
 a malformed lane and any other step key. `doneSteps` is normalized by
 `normalizeStepProgress` (`src/lib/stepLanes.ts`) on every write and left out
-when empty. Import never produces lanes; Ask Apply and save-as-variant keep
-stored lanes when a proposal has none (`carryStepLanes`). Keep progress a
+when empty. Import never produces lanes; Ask Apply, save-as-variant and a
+replacement import keep stored lanes when the new steps have none
+(`carryStepLanes`), and an Ask proposal removes a lane with an empty one. Keep progress a
 set of done steps (a prefix plus `doneSteps`), never one pointer: a later
 shared cooking session merges two cooks' progress by union.
 Collections are a separate store kind. Grants live under

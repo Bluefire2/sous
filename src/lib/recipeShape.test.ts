@@ -65,19 +65,21 @@ describe('normalizeRecipeDraft', () => {
     });
   });
 
-  it('keeps a valid step lane and drops a blank or too long one', () => {
+  it('keeps a valid step lane, a blank one as "none", and drops a too long one', () => {
     const draft = normalizeRecipeDraft({
       ...wellFormedProposal,
       steps: [
         { text: 'Boil water.', lane: ' Pasta ' },
         { text: 'Fry garlic.', lane: '   ' },
         { text: 'Toss.', lane: 'x'.repeat(25) },
+        { text: 'Serve.', lane: 3 },
       ],
     });
     expect(draft?.steps).toEqual([
       { text: 'Boil water.', lane: 'Pasta' },
-      { text: 'Fry garlic.' },
+      { text: 'Fry garlic.', lane: '' },
       { text: 'Toss.' },
+      { text: 'Serve.' },
     ]);
   });
 

@@ -644,7 +644,8 @@ export const recipeStore = {
       prepMinutes: draft.prepMinutes,
       cookMinutes: draft.cookMinutes,
       ingredientSections: draft.ingredientSections,
-      steps: draft.steps,
+      // Import never produces lanes; keep the ones added since, by text.
+      steps: carryStepLanes(existing.steps, draft.steps),
       notes: draft.notes,
       lang: draft.lang,
       importCheck,

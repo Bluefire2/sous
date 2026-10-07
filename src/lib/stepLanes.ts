@@ -203,16 +203,20 @@ export function tapStep(
 }
 
 /**
- * Keeps lanes through an Ask edit that forgot them. A proposal that carries
- * at least one lane is taken as is, so Ask can move or remove lanes when
- * asked; a proposal with none gets each stored step's lane back where the
- * step's text is unchanged at the same position.
+ * Keeps lanes through an edit that forgot them. A proposal that says
+ * anything about lanes (a lane on any step, or an empty lane meaning "none")
+ * is taken as is, minus the empty lanes, so Ask can move or remove lanes
+ * when asked, all of them included. A proposal with no lane at all gets
+ * each stored step's lane back where the step's text is unchanged at the
+ * same position.
  */
 export function carryStepLanes(
   stored: readonly RecipeStep[],
   proposed: readonly RecipeStep[],
 ): RecipeStep[] {
-  if (proposed.some((step) => step.lane !== undefined)) return [...proposed];
+  if (proposed.some((step) => step.lane !== undefined)) {
+    return proposed.map((step) => (step.lane === '' ? { text: step.text } : step));
+  }
   return proposed.map((step, i) => {
     const lane = stored[i]?.text === step.text ? stored[i].lane : undefined;
     return lane === undefined ? step : { ...step, lane };

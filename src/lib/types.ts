@@ -19,6 +19,7 @@ export interface RecipeStep {
    * Who does this step when two people cook, such as "Sauce". Consecutive
    * steps with a lane run at the same time; a step without one is done by
    * everyone, in order. Missing is normal (`docs/plans/parallel-steps.md`).
+   * An Ask proposal may hold '' to mean "no lane"; a saved recipe never does.
    */
   lane?: string;
 }
