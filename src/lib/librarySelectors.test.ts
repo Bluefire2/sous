@@ -115,9 +115,34 @@ describe('library selectors', () => {
     expect(selectors.selectCookRow('r1')(snapshot)?.servings).toBe(2);
     expect(selectors.selectPendingBlob('photo-1')(snapshot)).toBeInstanceOf(Blob);
     expect(selectors.selectRecipeCollectionId('r1')(snapshot)).toBeUndefined();
+    expect(selectors.selectHasOwnRecipe()(snapshot)).toBe(true);
     restoreSnapshot({ ...snapshot, loaded: false });
     expect(selectors.selectRecipe('r1')(getSnapshot())).toBeUndefined();
+    expect(selectors.selectHasOwnRecipe()(getSnapshot())).toBeUndefined();
     expect(selectors.selectRecipeCollectionId('r1')(getSnapshot())).toBeUndefined();
+  });
+
+  it('selectHasOwnRecipe ignores shared rows', () => {
+    replaceFromPullWithShared(
+      {
+        recipes: new Map(),
+        collections: new Map(),
+        chat: new Map(),
+        cook: new Map(),
+        cookLogs: new Map(),
+        remotePhotoIds: new Set(),
+      },
+      {
+        recipes: new Map([['s1', recipe('s1')]]),
+        collections: new Map(),
+        remotePhotoIds: new Set(),
+        recipeOrigins: new Map([['s1', { kind: 'shared', ownerSub: 'alice' }]]),
+        collectionOrigins: new Map(),
+      },
+    );
+    expect(selectors.selectHasOwnRecipe()(getSnapshot())).toBe(false);
+    clearLibrary();
+    expect(selectors.selectHasOwnRecipe()(getSnapshot())).toBe(false);
   });
 
   it('selectRecipeCollectionId returns the list the recipe is filed in', () => {

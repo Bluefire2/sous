@@ -478,6 +478,15 @@ export default function Settings() {
       )}
 
       <footer className="mt-8">
+        {sessionStatus === 'signedIn' && (
+          <Link
+            to="/"
+            state={{ intro: true }}
+            className={`${backLink} inline-block py-3 pr-4`}
+          >
+            {t('settings.showIntro')}
+          </Link>
+        )}
         <a
           href="/about"
           target="_blank"

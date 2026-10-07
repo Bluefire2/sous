@@ -2,13 +2,13 @@
   {
     "id": "library-empty",
     "route": "/",
-    "setup": "Signed in on the Recipes list with no recipes in the account, so the empty-library sentence is showing. Do not type a search to fake this. If the account already has recipes, do not delete them; mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite.",
+    "setup": "Signed in on the Recipes list with no recipes in the account, so the empty-library sentence is showing. Do not type a search to fake this. If the account already has recipes, do not delete them; mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite. The account has already closed the welcome intro, which would otherwise open over an empty library.",
     "needsData": true
   },
   {
     "id": "library-collections-empty",
     "route": "/",
-    "setup": "Signed in on the Recipes list in an account that has no collections at all (yours or shared with you), so a folder icon, the sentence about putting recipes in a collection to share them, and a \"New collection\" link show above the search box and there is no collection chip row. Do not press New collection and do not create a collection. If the account already has any collection, mark skipped: needs data. A signed-in header shows Invite before Cooks. Do not click Invite.",
+    "setup": "Signed in on the Recipes list in an account that has no collections at all (yours or shared with you), so a folder icon, the sentence about putting recipes in a collection to share them, and a \"New collection\" link show above the search box and there is no collection chip row. Do not press New collection and do not create a collection. If the account already has any collection, mark skipped: needs data. A signed-in header shows Invite before Cooks. Do not click Invite. The account has already closed the welcome intro, which would otherwise open over an empty library.",
     "needsData": true
   },
   {
@@ -68,7 +68,7 @@
   {
     "id": "settings",
     "route": "/settings",
-    "setup": "Settings while signed in, with the language picker visible under Appearance. Scroll to the Feedback section above the About, Privacy, and Terms links; it has one line of text and a Suggest a feature button. Do not export, import a backup, refresh in order to force a toast, or sign out.",
+    "setup": "Settings while signed in, with the language picker visible under Appearance. Scroll to the Feedback section above the Show the intro again, About, Privacy, and Terms links; it has one line of text and a Suggest a feature button. Do not export, import a backup, refresh in order to force a toast, or sign out.",
     "needsData": false
   },
   {
@@ -124,6 +124,36 @@
     "route": "/",
     "setup": "Signed in on the Recipes list, open Add a recipe. The sheet shows Import from a link, text, or photos, and Write one from scratch. Do not leave the sheet and do not create a recipe. If this session is signed out, mark skipped: needs data.",
     "needsData": true
+  },
+  {
+    "id": "intro-step-1",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the first step (camera icon, Step 1 of 5, Bring your recipes in) with Next and Skip. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-2",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the second step (pot icon, Step 2 of 5, Cook with help) with Next, Back, and Skip; press Next once to reach it. Ask and Log a cook are the names of buttons on a recipe's page. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-3",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the third step (chat bubble icon, Step 3 of 5, the recipe helper) with Next, Back, and Skip; press Next twice to reach it. The chat button it names is the chat bubble icon in the library header behind the sheet. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-4",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the fourth step (person-with-plus icon, Step 4 of 5, sharing with friends) with Next, Back, and Skip; press Next three times to reach it. The person icon it names is the invite icon in the library header behind the sheet. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
+  },
+  {
+    "id": "intro-step-5",
+    "route": "/",
+    "setup": "Signed in, open Settings and press Show the intro again at the bottom; the welcome intro opens as a sheet over the Recipes list. Review the last step (plus icon, Step 5 of 5, Ready to start?) with Import a recipe, Do it later, and Back; press Next four times to reach it. It says the intro can be seen again in Settings; there is no Skip on this step. Do not press Import a recipe. Close it with Skip or Do it later when done.",
+    "needsData": false
   },
   {
     "id": "library-language-menu",

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLocale, useT } from '../i18n';
 import CollectionSection from '../components/CollectionSection';
 import CreateCollectionSheet from '../components/CreateCollectionSheet';
+import IntroSheet from '../components/IntroSheet';
 import LanguageMenu from '../components/LanguageMenu';
 import NoticeToast, { type Notice } from '../components/NoticeToast';
 import LibrarySortMenu from '../components/LibrarySortMenu';
@@ -39,7 +40,9 @@ import { sortLibraryRecipes } from '../lib/librarySort';
 import { useLastCookedOn } from '../lib/cookLogStore';
 import { lastCookedLabel } from '../lib/relativeTime';
 import { isLibrarySearchShortcut } from '../lib/librarySearchShortcut';
-import { recipeStore, useRecipes } from '../lib/recipeStore';
+import { recipeStore, useHasOwnRecipe, useRecipes } from '../lib/recipeStore';
+import { arrivedWithoutOwnRecipe, noteLibraryOnArrival, shouldAskAboutIntro } from '../lib/intro';
+import { introSeenFor, markIntroSeen } from '../lib/introApi';
 import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
 import { useMountedFlow } from '../lib/useMountedFlow';
@@ -77,8 +80,10 @@ export default function Library() {
   const fullPull = useFullPull();
   const { status: sessionStatus, user } = useSession();
   const syncStatus = useSyncStatus();
+  const hasOwnRecipe = useHasOwnRecipe();
   const { collectionId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const named =
     collectionId && collections
       ? collections.find((c) => c.id === collectionId)
@@ -245,6 +250,52 @@ export default function Library() {
   };
 
   const closeSheets = () => dispatch({ type: 'close' });
+
+  // New-member intro (docs/plans/new-member-intro.md). Library asks the
+  // server only for a member with no recipe of their own, once per page
+  // load; Settings can reopen it with router state `{ intro: true }`.
+  const askIntro = shouldAskAboutIntro({
+    sessionStatus,
+    fullPull,
+    hasOwnRecipe,
+    sheetClosed: sheet.kind === 'closed',
+  });
+  const userSub = user?.sub;
+  // Remember whether the member arrived at an empty library, before the ask
+  // effect below reads it in the same commit.
+  useEffect(() => {
+    if (sessionStatus !== 'signedIn' || !fullPull || hasOwnRecipe === undefined) return;
+    if (userSub !== undefined) noteLibraryOnArrival(userSub, hasOwnRecipe);
+  }, [sessionStatus, fullPull, hasOwnRecipe, userSub]);
+  useEffect(() => {
+    if (!askIntro || userSub === undefined || !arrivedWithoutOwnRecipe(userSub)) return;
+    let live = true;
+    void introSeenFor(userSub).then((seen) => {
+      // openIntro is ignored unless every sheet is closed.
+      if (live && seen === false) dispatch({ type: 'openIntro' });
+    });
+    return () => {
+      live = false;
+    };
+  }, [askIntro, userSub]);
+
+  const introRequested = (location.state as { intro?: unknown } | null)?.intro === true;
+  useEffect(() => {
+    if (!introRequested) return;
+    dispatch({ type: 'openIntro' });
+    // Clear the state so a reload or Back doesn't reopen it.
+    navigate(location.pathname, { replace: true, state: null });
+  }, [introRequested, location.pathname, navigate]);
+
+  // Every way the intro closes marks it seen: its own buttons, Escape and
+  // the backdrop, a collection change that resets the sheets, Back, or
+  // leaving Library. The cleanup runs before the ask effect re-runs in the
+  // same commit, so the closed intro does not open again.
+  const introOpen = sheet.kind === 'intro';
+  useEffect(() => {
+    if (!introOpen || userSub === undefined) return;
+    return () => markIntroSeen(userSub);
+  }, [introOpen, userSub]);
 
   const submitCreate = () => {
     if (sheet.kind !== 'create') return;
@@ -1022,6 +1073,18 @@ export default function Library() {
         >
           <PlusIcon className="block h-8 w-8" />
         </button>
+      )}
+
+      {sheet.kind === 'intro' && (
+        <IntroSheet
+          step={sheet.step}
+          onStep={(step) => dispatch({ type: 'introStep', step })}
+          onClose={closeSheets}
+          onImport={() => {
+            closeSheets();
+            navigate(importHref(addCollectionId));
+          }}
+        />
       )}
 
       {sheet.kind === 'add' && (

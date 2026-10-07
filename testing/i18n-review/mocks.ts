@@ -407,6 +407,14 @@ export const MOCKS = {
   disconnectFails: async (context) => {
     await context.route('**/api/mcp/grants/revoke', (route) => json(route, 500, { error: 'Internal error' }));
   },
+  /**
+   * The account has already closed the new-member intro, so an empty library
+   * shows the empty state instead of the intro sheet, and no capture has to
+   * close it (closing writes `introSeenAt`).
+   */
+  introSeen: async (context) => {
+    await context.route('**/api/intro', (route) => json(route, 200, { seen: true }));
+  },
   /** Library writes succeed without reaching the emulator, so other captures still see the seed. */
   pushAccepted: async (context) => {
     await context.route('**/api/sync/push', (route) => json(route, 200, { results: [] }));

@@ -82,3 +82,19 @@ export function selectPendingBlob(
 ): (snapshot: LibrarySnapshot) => Blob | undefined {
   return (snapshot) => (id ? snapshot.pendingBlobs.get(id) : undefined);
 }
+
+/**
+ * Whether the member has a live recipe of their own (shared rows don't
+ * count). `undefined` while loading. Takes no id; the factory shape matches
+ * the other selectors. Used by the new-member intro
+ * (`docs/plans/new-member-intro.md`).
+ */
+export function selectHasOwnRecipe(): (snapshot: LibrarySnapshot) => boolean | undefined {
+  return (snapshot) => {
+    if (!snapshot.loaded) return undefined;
+    for (const id of snapshot.recipes.keys()) {
+      if (snapshot.recipeOrigins.get(id)?.kind !== 'shared') return true;
+    }
+    return false;
+  };
+}

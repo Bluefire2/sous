@@ -160,8 +160,10 @@ amended.
    skipping `<a>`, which would focus Cancel on the add sheet and the
    email field on a coarse pointer). Then:
 
-   - if the panel contains an enabled `[autofocus]` element, `focus()`
-     that element and do not `select()` its text;
+   - if the panel contains an enabled `[autofocus]` or `[data-autofocus]`
+     element, `focus()` that element and do not `select()` its text
+     (`data-autofocus` marks a non-control, such as the new-member intro's
+     step heading, so a sheet that opens on its own shows no focus ring);
    - otherwise `focus({ preventScroll: true })` the panel.
 
    The panel is `tabIndex={-1}` via `FocusScope` `asChild`. Focusing it

@@ -36,7 +36,12 @@ export type LibrarySheet =
   /** `name` is kept so the sheet can still title itself once the collection has left the list. */
   | { kind: 'leave'; collectionId: string; name: string; error?: string }
   | { kind: 'share' }
-  | { kind: 'inviteConfirm' };
+  | { kind: 'inviteConfirm' }
+  /** The new-member intro (`docs/plans/new-member-intro.md`); `step` is 0-based. */
+  | { kind: 'intro'; step: number };
+
+/** How many steps the new-member intro has. */
+export const INTRO_STEP_COUNT = 5;
 
 export type LibraryFlow = { token: number; sheet: LibrarySheet };
 
@@ -51,6 +56,9 @@ export type LibraryFlowAction =
   | { type: 'openLeave'; collectionId: string; name: string }
   | { type: 'openShare' }
   | { type: 'openInviteConfirm' }
+  /** Ignored unless every sheet is closed, so it never replaces one the person opened. */
+  | { type: 'openIntro' }
+  | { type: 'introStep'; step: number }
   | { type: 'setName'; name: string }
   | { type: 'submitting'; token: number }
   | { type: 'created'; token: number; created: { id: string; name: string } }
@@ -104,6 +112,15 @@ export function libraryFlowReducer(
       return open(state, { kind: 'share' });
     case 'openInviteConfirm':
       return open(state, { kind: 'inviteConfirm' });
+    case 'openIntro':
+      return sheet.kind === 'closed' ? open(state, { kind: 'intro', step: 0 }) : state;
+    case 'introStep': {
+      if (sheet.kind !== 'intro') {
+        return state;
+      }
+      const step = Math.min(Math.max(Math.trunc(action.step), 0), INTRO_STEP_COUNT - 1);
+      return step === sheet.step || Number.isNaN(step) ? state : { ...state, sheet: { kind: 'intro', step } };
+    }
     case 'setName':
       if (sheet.kind !== 'create' && sheet.kind !== 'rename') {
         return state;

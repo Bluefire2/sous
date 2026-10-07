@@ -78,6 +78,34 @@ async function selectAllInCollection(page: Page, ctx: CaptureContext): Promise<v
 }
 
 const weeknights = (ctx: CaptureContext) => `/collections/${ctx.ids.member.weeknights}`;
+
+/**
+ * The new-member intro, reopened from Settings so `member` (who has recipes
+ * and never gets it on their own) shows it without a write. Next `step`
+ * times; nothing closes it.
+ */
+function introStep(step: number): Capturable {
+  const titles = [
+    'intro.importTitle',
+    'intro.cookTitle',
+    'intro.assistantTitle',
+    'intro.shareTitle',
+    'intro.readyTitle',
+  ] as const;
+  return {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      await page.getByRole('link', { name: ctx.t('settings.showIntro'), exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.waitFor();
+      for (let i = 0; i < step; i += 1) {
+        await dialog.getByRole('button', { name: ctx.t('intro.next'), exact: true }).click();
+      }
+      await dialog.getByRole('heading', { name: ctx.t(titles[step]), exact: true }).waitFor();
+    },
+  };
+}
 const baking = (ctx: CaptureContext) => `/collections/${ctx.ids.member.baking}`;
 /** A recipe whose language label differs from the UI language, so its translate chip shows. */
 const labelledRecipe = (ctx: CaptureContext) =>
@@ -146,8 +174,8 @@ async function ask(page: Page, ctx: CaptureContext, question: string): Promise<v
 }
 
 export const STATES: Record<string, StateEntry> = {
-  'library-empty': { persona: 'empty', path: '/' },
-  'library-collections-empty': { persona: 'empty', path: '/' },
+  'library-empty': { persona: 'empty', path: '/', mocks: ['introSeen'] },
+  'library-collections-empty': { persona: 'empty', path: '/', mocks: ['introSeen'] },
   'collections-index': { persona: 'member', path: '/collections' },
   'library-populated': { persona: 'member', path: '/' },
   'library-collection-menu': {
@@ -253,6 +281,11 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByRole('dialog').waitFor();
     },
   },
+  'intro-step-1': introStep(0),
+  'intro-step-2': introStep(1),
+  'intro-step-3': introStep(2),
+  'intro-step-4': introStep(3),
+  'intro-step-5': introStep(4),
   'library-language-menu': {
     persona: 'member',
     path: '/',

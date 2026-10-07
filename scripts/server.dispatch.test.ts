@@ -34,6 +34,8 @@ const ANONYMOUS_STATUS: Record<string, number> = {
   'POST /api/import': 401,
   'POST /api/import-feedback': 401,
   'POST /api/feature-request': 401,
+  'GET /api/intro': 401,
+  'POST /api/intro/seen': 401,
   'POST /api/stt': 401,
   'POST /api/agent': 401,
   'POST /api/translate': 401,

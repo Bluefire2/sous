@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { POST as chatPost } from '../api/chat.ts';
 import { importPost } from '../server/importRoute.ts';
 import { featureRequestPost } from '../server/featureRequest.ts';
+import { introGet, introSeenPost } from '../server/intro.ts';
 import { importFeedbackPost } from '../server/importFeedback.ts';
 import {
   authCallbackGoogle,
@@ -87,6 +88,8 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/import', handler: withMembership(importPost) },
   { method: 'POST', path: '/api/import-feedback', handler: withMembership(importFeedbackPost) },
   { method: 'POST', path: '/api/feature-request', handler: withMembership(featureRequestPost) },
+  { method: 'GET', path: '/api/intro', handler: introGet },
+  { method: 'POST', path: '/api/intro/seen', handler: introSeenPost },
   { method: 'POST', path: '/api/stt', handler: sttPost },
   { method: 'POST', path: '/api/agent', handler: agentPost },
   { method: 'POST', path: '/api/translate', handler: translatePost },

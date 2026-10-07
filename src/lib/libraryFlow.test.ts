@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import {
+  INTRO_STEP_COUNT,
   initialLibraryFlow,
   libraryFlowReducer,
   runCreate,
@@ -15,6 +16,37 @@ function run(...actions: LibraryFlowAction[]): LibraryFlow {
 }
 
 describe('libraryFlowReducer', () => {
+  it('opens the intro at its first step only when no sheet is open', () => {
+    const opened = run({ type: 'openIntro' });
+    expect(opened.sheet).toEqual({ kind: 'intro', step: 0 });
+    expect(opened.token).toBe(initialLibraryFlow.token + 1);
+
+    const adding = run({ type: 'openAdd' });
+    expect(libraryFlowReducer(adding, { type: 'openIntro' })).toBe(adding);
+    expect(libraryFlowReducer(opened, { type: 'openIntro' })).toBe(opened);
+  });
+
+  it('moves between intro steps within range, keeping the token', () => {
+    const opened = run({ type: 'openIntro' });
+    const second = libraryFlowReducer(opened, { type: 'introStep', step: 1 });
+    expect(second.sheet).toEqual({ kind: 'intro', step: 1 });
+    expect(second.token).toBe(opened.token);
+    expect(libraryFlowReducer(second, { type: 'introStep', step: 99 }).sheet).toEqual({
+      kind: 'intro',
+      step: INTRO_STEP_COUNT - 1,
+    });
+    expect(libraryFlowReducer(second, { type: 'introStep', step: -1 }).sheet).toEqual({
+      kind: 'intro',
+      step: 0,
+    });
+    expect(libraryFlowReducer(second, { type: 'introStep', step: Number.NaN })).toBe(second);
+    expect(libraryFlowReducer(second, { type: 'introStep', step: 1 })).toBe(second);
+
+    const adding = run({ type: 'openAdd' });
+    expect(libraryFlowReducer(adding, { type: 'introStep', step: 1 })).toBe(adding);
+    expect(libraryFlowReducer(second, { type: 'close' }).sheet).toEqual({ kind: 'closed' });
+  });
+
   it('carries the moved recipe into a new-collection create', () => {
     const state = run({ type: 'openMove', recipeIds: ['r1'] }, { type: 'startCreate' });
     expect(state.sheet).toEqual({ kind: 'create', name: '', saving: false, moveRecipeIds: ['r1'] });

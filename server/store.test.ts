@@ -52,11 +52,25 @@ import {
   tombstoneChunk,
   type TombstoneRefs,
   emailLowerBackfill,
+  introSeenFromProfile,
   userProfileUpsertFields,
   validatePushOp,
   isKnownPushKind,
 } from './store.ts';
 import { translationCacheDocIds } from './recipeTranslation.ts';
+
+describe('introSeenFromProfile', () => {
+  it('is seen only for a positive finite introSeenAt', () => {
+    expect(introSeenFromProfile({ introSeenAt: 1_700_000_000_000 })).toBe(true);
+    expect(introSeenFromProfile(undefined)).toBe(false);
+    expect(introSeenFromProfile({})).toBe(false);
+    expect(introSeenFromProfile({ introSeenAt: 0 })).toBe(false);
+    expect(introSeenFromProfile({ introSeenAt: -1 })).toBe(false);
+    expect(introSeenFromProfile({ introSeenAt: Number.NaN })).toBe(false);
+    expect(introSeenFromProfile({ introSeenAt: '1700000000000' })).toBe(false);
+    expect(introSeenFromProfile({ introSeenAt: true })).toBe(false);
+  });
+});
 
 describe('emailLowerBackfill', () => {
   it('returns the normalized address when emailLower is missing or stale', () => {

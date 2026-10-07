@@ -835,6 +835,45 @@ export async function upsertUser(
   });
 }
 
+/**
+ * Whether a stored profile says its member has closed the new-member intro
+ * (`docs/plans/new-member-intro.md`). A missing profile, a missing field, or
+ * a value that isn't a positive finite number reads as not seen.
+ */
+export function introSeenFromProfile(profile: Record<string, unknown> | undefined): boolean {
+  const at = profile?.introSeenAt;
+  return typeof at === 'number' && Number.isFinite(at) && at > 0;
+}
+
+/** Whether `users/{uid}` records that the member closed the intro. */
+export async function readIntroSeen(uid: string): Promise<boolean> {
+  const snap = await userRef(uid).get();
+  return introSeenFromProfile(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
+}
+
+/**
+ * Records that the member closed the intro. A repeat is a no-op. A missing
+ * profile (sign-in's best-effort `upsertUser` failed) is created here with
+ * the same fields sign-in writes, from the session's email, so closing the
+ * intro always sticks instead of it reopening on every visit.
+ */
+export async function markIntroSeen(
+  uid: string,
+  profile: { email: string },
+  now: number,
+): Promise<void> {
+  const ref = userRef(uid);
+  await getFirestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      tx.set(ref, { ...userProfileUpsertFields(profile, now, true), introSeenAt: now });
+      return;
+    }
+    if (introSeenFromProfile(snap.data() as Record<string, unknown>)) return;
+    tx.update(ref, { introSeenAt: now });
+  });
+}
+
 /** The `emailLower` a stored profile is missing, or null when it already matches or has no email. */
 export function emailLowerBackfill(profile: Record<string, unknown>): string | null {
   const email = profile.email;

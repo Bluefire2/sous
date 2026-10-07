@@ -25,6 +25,7 @@ import {
   type LibraryAccess,
 } from './libraryMemory';
 import {
+  selectHasOwnRecipe,
   selectRecipe,
   selectRecipeAccess,
   selectRecipeCollectionId,
@@ -877,6 +878,16 @@ export function useRecipes(): Recipe[] | undefined {
 /** Reactive single recipe. `undefined` while loading, `null` if not found. */
 export function useRecipe(id: string | undefined): Recipe | null | undefined {
   return useLibrarySelect(selectRecipe(id));
+}
+
+const hasOwnRecipe = selectHasOwnRecipe();
+
+/**
+ * Reactive: whether the member has a live recipe of their own. `undefined`
+ * while the library loads.
+ */
+export function useHasOwnRecipe(): boolean | undefined {
+  return useLibrarySelect(hasOwnRecipe);
 }
 
 /** Reactive email of whoever shared this recipe with you, when known. */
