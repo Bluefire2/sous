@@ -9,6 +9,7 @@ import {
   IMPORT_RETRY_DEADLINE_MS,
   MAX_GENERATE_BRIEF_CHARS,
   MAX_GENERATE_SOURCES,
+  MAX_IMPORT_MINUTES,
   MAX_IMPORT_RETRIES,
   MAX_PAGE_HTML_CHARS,
   MAX_PAGE_REDIRECTS,
@@ -26,6 +27,7 @@ import {
   type RecipeImportDeps,
   type RecipeTranslator,
 } from './recipeImport.ts';
+import { RECIPE_LIMITS } from './mcp/recipeInput.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
 
 // Drift guard: the server cannot import `src/` at runtime, so ImportedRecipe
@@ -448,6 +450,24 @@ describe('normalizeImportedRecipe', () => {
 
   it('drops a duration that would round to 0 from a positive or negative value', () => {
     for (const raw of [5.000000000000001e-5, 0.4, -0.4]) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
+      expect(recipe, String(raw)).not.toHaveProperty('cookMinutes');
+    }
+  });
+
+  it('reads -0 as 0', () => {
+    const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: -0, cookMinutes: -0 });
+    expect(Object.is(recipe?.prepMinutes, 0)).toBe(true);
+    expect(Object.is(recipe?.cookMinutes, 0)).toBe(true);
+  });
+
+  it('drops a duration over the MCP limit, so a whole-number run-on is not kept', () => {
+    expect(MAX_IMPORT_MINUTES).toBe(RECIPE_LIMITS.maxMinutes);
+    expect(normalizeImportedRecipe({ ...MINIMAL, prepMinutes: MAX_IMPORT_MINUTES })).toMatchObject({
+      prepMinutes: MAX_IMPORT_MINUTES,
+    });
+    for (const raw of [MAX_IMPORT_MINUTES + 1, 305106198964720960, 1e21]) {
       const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
       expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
       expect(recipe, String(raw)).not.toHaveProperty('cookMinutes');
@@ -1346,6 +1366,22 @@ describe('generateFromBrief', () => {
     // The page schema keeps the same order and only appends its two booleans.
     const pageOrder = (page.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering;
     expect(pageOrder).toEqual([...order, 'instructionsOnPage', 'ingredientsOnPage']);
+    // Pinned as written before the recipe schema had an order: changing it changes the page request,
+    // which needs its own measurement (evals/AGENTS.md).
+    expect(pageOrder).toEqual([
+      'title',
+      'description',
+      'servings',
+      'prepMinutes',
+      'cookMinutes',
+      'ingredientSections',
+      'steps',
+      'tags',
+      'notes',
+      'lang',
+      'instructionsOnPage',
+      'ingredientsOnPage',
+    ]);
   });
 
   it('with search, researches with the Google Search tool first, then writes from the notes', async () => {

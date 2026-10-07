@@ -603,19 +603,25 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/** Longest prep or cook time an import keeps; the same bound as MCP's `RECIPE_LIMITS.maxMinutes`. */
+export const MAX_IMPORT_MINUTES = 10_000;
+
 /**
- * A duration as whole minutes, or `undefined` to drop it. A negative value is
- * dropped before rounding, so -0.4 never becomes -0. A number the model let
- * run on reads as a whole number (20.000000000000004 is 20), but a positive
- * value that would round to 0 (5.000000000000001e-05) is dropped: no time is
- * better than a wrong "0 min". An exact 0 is kept, for a dish with no cooking
+ * A duration as whole minutes, or `undefined` to drop it. Negative values and
+ * values over `MAX_IMPORT_MINUTES` are dropped, which catches a whole-number
+ * run-on (305106198964720960). A fractional run-on rounds to the number it
+ * started as (20.000000000000004 is 20), but a positive value that would
+ * round to 0 (5.000000000000001e-05) is dropped: no time is better than a
+ * wrong "0 min". 0 is kept, for a dish with no cooking, and -0 reads as 0
  * (evals/EXPERIMENTS.md, 2026-10-06).
  */
 function wholeMinutes(value: unknown): number | undefined {
   const minutes = finiteNumber(value);
   if (minutes === undefined || minutes < 0) return undefined;
   const rounded = Math.round(minutes);
-  return rounded === 0 && minutes > 0 ? undefined : rounded;
+  if (rounded > MAX_IMPORT_MINUTES) return undefined;
+  if (rounded === 0) return minutes > 0 ? undefined : 0;
+  return rounded;
 }
 
 function normalizeIngredient(item: unknown): ImportedIngredient | undefined {

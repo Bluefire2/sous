@@ -30,18 +30,26 @@ summary, approach A.
   `PAGE_RECIPE_SCHEMA` now builds its order from it plus its two booleans;
   the resulting list is the same as before, so the page and paste request
   is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
-  `cookMinutes` to whole minutes for every import path. Negative values are
-  still dropped before rounding, and a positive value that would round to 0
-  (such as 5.000000000000001e-05) is dropped, not shown as "0 min"; an
-  exact 0 is kept. Prompts, model settings, retries and goldens are
-  unchanged. Commits `21a5a48`, then the review follow-up that added the
-  drop rule (a normalizer change only; no eval reads minutes).
+  `cookMinutes` to whole minutes for every import path. Negative values and
+  values over 10,000 (MCP's `RECIPE_LIMITS.maxMinutes`) are dropped, a
+  positive value that would round to 0 (such as 5.000000000000001e-05) is
+  dropped rather than shown as "0 min", and 0 is kept. Prompts, model
+  settings, retries and goldens are unchanged. Commits: `21a5a48` (order and
+  rounding, the measured version), then review follow-ups `4b6fa54` (drop a
+  value that rounds to 0) and the commit after it (drop values over 10,000).
+  The follow-ups were not re-measured. They change only values under 0.5
+  or over 10,000. The judge does compare times (`evals/judge.ts`), but no
+  raw time in the generate probe below was in either range; the one
+  recorded run-on of that size is the 305106198964720960 in the 2026-10-01
+  entry.
 - Reason (not fixture-specific): the 2026-10-01 rule that no free-form
   number should be the last token of the object, which only the page schema
   followed. Without an order the model writes the required fields, then
-  the optional ones alphabetically, so `prepMinutes` comes last. Rounding
-  is a backstop for a number that runs on but still parses. A recipe time
-  is whole minutes, whatever the source.
+  the optional ones alphabetically, so `prepMinutes` comes last. The
+  normalizer rules are a backstop for a run-on that still parses: rounding
+  catches a fractional one, the 10,000 cap a whole-number one. Imported
+  times are whole minutes; the recipe form, MCP, chat Apply and backup
+  import still accept fractions, and nothing depends on whole minutes.
 - Reported: a live Generate run ("shrimp gumbo in a pressure cooker for 6",
   search on) showed prepMinutes as 20.000… in the preview and had no
   description.
@@ -77,6 +85,32 @@ summary, approach A.
   varies between runs (2/3 in the 2026-09-27 entry, 0/3 here before the
   change), so the photo result is read as "no regression", not as a fix.
   The generate probe is the evidence for the change.
+- Review check, dev split only: does the new order make photo imports
+  write a description or times the card does not have? (The photo prompt
+  allows them only if written; the order now asks for them before the
+  ingredients, and the judge treats them as soft.) A scratch script ran
+  `importFromImages` on the dev cards with the `21a5a48` request ("after")
+  and with `propertyOrdering` removed, which is byte-for-byte the
+  `33c0c16` request ("before"), counting fields present only. Three runs,
+  all recorded: every dev card 5× per side; then lemon-tea-bread and
+  sweet-sour-pork 6× and 8× per side, to find out why "after" had
+  non-`ok` runs in the first. Sums, 53 runs per side:
+  - `description`, on cards whose golden has none (all five): before 0,
+    after 0.
+  - A time the golden does not have: before 11 (5 prep on
+    choc-pie-tea-towel and lemon-tea-bread; 6 cook, 5 of them on
+    hundred-good-cookies, 1 on sweet-sour-pork); after 5 (cook on
+    hundred-good-cookies, 5/5 on both sides). blueberry-muffins, whose
+    golden has a cook time, returned it in 5/5 on both sides, matching.
+  - Not `ok`: before 1 (sweet-sour-pork, `MAX_TOKENS` at 3,543 tokens,
+    `parse_error`); after 3 (first run, 1 lemon-tea-bread and 2
+    sweet-sour-pork, kind not recorded because the script did not record
+    it yet; the 14 later "after" runs on those cards were all `ok`). Summed
+    with ocrCompare and test:import (every A run `ok` on both sides),
+    1/73 before against 3/73 after: too few to tell apart, and worth
+    watching.
+  - Read: the order did not add descriptions and wrote fewer invented
+    times, so the photo path keeps it.
 - Run by: agent, default model (`gemini-3.7-flash`).
 
 ## 2026-10-05 — Recipe from a brief: search as a research call, not on the structured call
