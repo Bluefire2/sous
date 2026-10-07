@@ -260,7 +260,9 @@ a malformed lane and any other step key. `doneSteps` is normalized by
 when empty. Import never produces lanes; Ask Apply, save-as-variant and a
 replacement import keep stored lanes when the new steps have none
 (`carryStepLanes`, per step: a lane is kept as given, an empty lane removes
-it, and a step with no lane field gets the stored lane back by text). Keep progress a
+it, and a step with no lane field gets the lane of a stored step with the
+same text, the same position first). Ask is told to state every step's lane
+when a recipe has lanes; the carry is the fallback. Keep progress a
 set of done steps (a prefix plus `doneSteps`), never one pointer: a later
 shared cooking session merges two cooks' progress by union.
 Collections are a separate store kind. Grants live under

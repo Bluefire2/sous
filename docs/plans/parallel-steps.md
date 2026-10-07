@@ -20,14 +20,18 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   "I'm on" as "Моя частина" / "Моя часть" / "我负责".
 - **The library agent sees lanes**, since `parseSteps` now keeps them; it
   needs no prompt change.
-- **Ask removes lanes with an empty lane, and the carry is per step** (from
-  review). `carryStepLanes` decides each step alone: a lane is taken as
-  given, `lane: ""` removes it, and a step with no lane field gets the stored
-  lane back where its text is unchanged at the same index. The prompt and
-  schema say the same. `normalizeRecipeDraft` keeps the `''` so the carry can
-  see it; the carry strips it. This replaces the plan's "a proposal with any
-  lane is taken as is", which contradicted "leaving the field out keeps the
-  lane" and removed every lane when Ask emptied one.
+- **Ask states every lane; the carry is per step and a fallback** (from
+  three reviews). When a recipe has lanes, the prompt and schema tell Ask to
+  give every step its lane, copying existing ones, and `""` for a shared
+  step. `carryStepLanes` decides each step alone: a lane is taken as given,
+  `""` removes it, and a step with no lane field gets the lane of a stored
+  step with the same text, the same position first, otherwise the first
+  unmatched one, so an inserted step does not shift the others out of their
+  lanes. `normalizeRecipeDraft` keeps the `''` so the carry can see it; the
+  carry strips it. This replaces the plan's "a proposal with any lane is
+  taken as is", which removed every lane when Ask emptied one, and the
+  first fix's same-index match, which dropped every lane after an inserted
+  step.
 - **A replacement import keeps lanes** where a step's text is unchanged
   (from review), with the same `carryStepLanes` as Ask Apply.
 
@@ -58,7 +62,7 @@ Reading: a recipe without lanes renders exactly as today. A block renders as one
   - lane step `i` in block `[s, e)`, lane `L`: done → `(D ∩ [0, e)) \ { j ∈ L : j ≥ i }`; not done → `D ∪ [0, s) ∪ { j ∈ L : j ≤ i }`.
   - then `currentStep` = smallest index not in `D'`, `doneSteps` = sorted `D' ∩ [currentStep, ∞)`. With no lanes this is exactly today's `onStep(i === currentStep ? i + 1 : i)`.
 - **Active set** `activeSteps`: for the block containing the first undone step, each lane's first undone step; for a sync step, that step; empty when done. "Done — enjoy!" still keys off `currentStep >= steps.length`.
-- **Lane carry** `carryStepLanes(stored, proposed)`: if any proposed step has a lane, trust the proposal; otherwise copy `stored[i].lane` onto `proposed[i]` when the text matches at the same index. Ask can move or remove lanes on request, and a model that forgot them while editing something else does not wipe them.
+- **Lane carry** `carryStepLanes(stored, proposed)`, as built (see "Where the build departs from this plan"): each step is decided alone. A lane is taken as given and `''` removes it. A step with no lane field gets the lane of a stored step with exactly the same text: the same position if it matches, otherwise the first unmatched one. When a recipe has lanes, Ask is told to state every step's lane, so the carry is only a fallback.
 
 ## Built to extend: multi-device coop later
 

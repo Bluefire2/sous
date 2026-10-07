@@ -238,9 +238,25 @@ describe('carryStepLanes', () => {
     ]);
   });
 
-  it('carries nothing across a shifted index', () => {
+  it('follows unchanged text when a step is inserted before the others', () => {
     const proposed = [{ text: 'New first step' }, ...pasta.map(({ text }) => ({ text }))];
-    expect(carryStepLanes(pasta, proposed).some((s) => s.lane !== undefined)).toBe(false);
+    expect(carryStepLanes(pasta, proposed).map((s) => s.lane)).toEqual([
+      undefined,
+      ...pasta.map((s) => s.lane),
+    ]);
+  });
+
+  it('prefers the same position, then the first unmatched step with that text', () => {
+    const stored = [
+      { text: 'Stir', lane: 'A' },
+      { text: 'Stir', lane: 'B' },
+    ];
+    expect(carryStepLanes(stored, [{ text: 'Stir' }, { text: 'Stir' }])).toEqual(stored);
+    expect(carryStepLanes(stored, [{ text: 'New' }, { text: 'Stir' }, { text: 'Stir' }])).toEqual([
+      { text: 'New' },
+      { text: 'Stir', lane: 'B' },
+      { text: 'Stir', lane: 'A' },
+    ]);
   });
 
   it('removes every lane when the proposal sets them to empty', () => {

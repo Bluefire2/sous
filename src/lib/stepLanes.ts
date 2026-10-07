@@ -204,21 +204,40 @@ export function tapStep(
 
 /**
  * Keeps lanes through an edit that left them out, deciding each step on its
- * own, as the Ask prompt describes:
+ * own. Ask is told to state every step's lane; this is the safety net for a
+ * step where it did not:
  * - a lane on the step is that lane, so Ask can move a step between lanes;
  * - an empty lane means "no lane", so Ask can remove one lane or all of them;
- * - no lane field gets the stored step's lane back where the step's text is
- *   unchanged at the same position, so an edit about something else keeps
- *   the lanes.
+ * - no lane field gets the lane of a stored step with exactly the same
+ *   text: the one at the same position if it matches, otherwise the first
+ *   such step not already matched. So inserting or moving a step keeps the
+ *   others' lanes; a reworded step without a lane field loses its lane.
  */
 export function carryStepLanes(
   stored: readonly RecipeStep[],
   proposed: readonly RecipeStep[],
 ): RecipeStep[] {
+  const matched = new Map<number, number>();
+  const used = new Set<number>();
+  proposed.forEach((step, i) => {
+    if (step.lane === undefined && stored[i]?.text === step.text) {
+      matched.set(i, i);
+      used.add(i);
+    }
+  });
+  proposed.forEach((step, i) => {
+    if (step.lane !== undefined || matched.has(i)) return;
+    const j = stored.findIndex((candidate, k) => !used.has(k) && candidate.text === step.text);
+    if (j >= 0) {
+      matched.set(i, j);
+      used.add(j);
+    }
+  });
   return proposed.map((step, i) => {
     if (step.lane === '') return { text: step.text };
     if (step.lane !== undefined) return step;
-    const lane = stored[i]?.text === step.text ? stored[i].lane : undefined;
+    const j = matched.get(i);
+    const lane = j === undefined ? undefined : stored[j].lane;
     return lane === undefined ? step : { ...step, lane };
   });
 }
