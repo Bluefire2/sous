@@ -607,15 +607,15 @@ function finiteNumber(value: unknown): number | undefined {
 
 /**
  * Longest prep or cook time an import keeps: about 69 days, so a real cure,
- * ferment or extract (21 days is 30 240) survives. It is not MCP's
- * `RECIPE_LIMITS.maxMinutes` (10 000, about 7 days), which would drop those.
+ * ferment or extract (21 days is 30,240) survives. It is not MCP's
+ * `RECIPE_LIMITS.maxMinutes` (10,000, about 7 days), which would drop those.
  */
 export const MAX_IMPORT_MINUTES = 100_000;
 
 /**
  * A duration as whole minutes, or `undefined` to drop it. Negative values and
- * values over `MAX_IMPORT_MINUTES` are dropped, which catches a whole-number
- * run-on (305106198964720960). A fractional run-on rounds to the number it
+ * values that round to over `MAX_IMPORT_MINUTES` are dropped, which catches a
+ * large whole-number run-on (305106198964720960). A fractional run-on rounds to the number it
  * started as (20.000000000000004 is 20), but a positive value that would
  * round to 0 (5.000000000000001e-05) is dropped: no time is better than a
  * wrong "0 min". 0 is kept, for a dish with no cooking, and -0 reads as 0

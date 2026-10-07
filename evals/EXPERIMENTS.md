@@ -31,7 +31,7 @@ summary, approach A.
   the resulting list is the same as before, so the page and paste request
   is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
   `cookMinutes` to whole minutes for every import path. Negative values and
-  values over 100,000 (about 69 days) are dropped, a positive value that
+  values that round to over 100,000 (about 69 days) are dropped, a positive value that
   would round to 0 (such as 5.000000000000001e-05) is dropped rather than
   shown as "0 min", and 0 is kept. The cap is deliberately above MCP's
   `RECIPE_LIMITS.maxMinutes` (10,000, about 7 days): cures, ferments and
@@ -42,10 +42,11 @@ summary, approach A.
   version), then review follow-ups `4b6fa54` (drop a value that rounds to
   0), `dfa87f4` (cap at 10,000) and the commit after it (cap raised to
   100,000). The follow-ups were not re-measured. They change only values
-  under 0.5 or over 100,000. The judge does compare times (`evals/judge.ts`), but no
-  raw time in the generate probe below was in either range; the one
-  recorded run-on of that size is the 305106198964720960 in the 2026-10-01
-  entry.
+  under 0.5 or that round to over 100,000. The judge compares times on the
+  photo and page runs (`evals/judge.ts`), and the raw times of those runs
+  were not recorded, so whether any fell in either range is unknown; the
+  one recorded run-on that size is the 305106198964720960 in the
+  2026-10-01 entry.
 - Reason (not fixture-specific): the 2026-10-01 rule that no free-form
   number should be the last token of the object, which only the page schema
   followed. Without an order the model writes the required fields, then
@@ -63,7 +64,8 @@ summary, approach A.
   - Before (`33c0c16`): key order always ended `…,tags,cookMinutes,[description,lang,notes,]prepMinutes`.
     2/16 runaways, both with search: one `prepMinutes`
     20.000000000000004 (parsed, shown as a float) and one run of zeros to
-    `MAX_TOKENS` (3,241 output tokens, `parse_error`). 5/16 had no
+    `MAX_TOKENS` (3,241 candidate tokens, not counting thinking tokens;
+    `parse_error`). 5/16 had no
     `description`, `notes` or `lang` (2 without search, 3 with), including
     the parsed runaway.
   - After (`21a5a48`): 16/16 `STOP` in the schema order, raw times all integers, and
@@ -80,8 +82,7 @@ summary, approach A.
 - `npm run test:import` (31 tests, once per side): before 30/31 (failure:
   translate judge, marmiton-boeuf-bourguignon → uk, which does not use the
   import schema); after 30/31 (failure: dev sweet-sour-pork photo,
-  ingredient count 1 vs golden 9, the same derailment as its baseline runs,
-  `STOP` and not a runaway). `recipeGenerate.eval.ts` was 4/4 on both sides.
+  ingredient count 1 vs golden 9, `STOP` and not a runaway). `recipeGenerate.eval.ts` was 4/4 on both sides.
   Summed photo runs, ocrCompare A plus test:import: dev 16/20 → 18/20,
   holdout 20/20 → 20/20.
 - Decision: kept. Holdout did not drop and dev rose, which passes the
@@ -95,10 +96,11 @@ summary, approach A.
   ingredients, and the judge treats them as soft.) A scratch script ran
   `importFromImages` on the dev cards with the `21a5a48` request ("after")
   and with `propertyOrdering` removed, which is byte-for-byte the
-  `33c0c16` request ("before"), counting fields present only. Three runs,
-  all recorded: every dev card 5× per side; then lemon-tea-bread and
-  sweet-sour-pork 6× and 8× per side, to find out why "after" had
-  non-`ok` runs in the first. Sums, 53 runs per side:
+  `33c0c16` request ("before"), counting fields present only. Three
+  batches, all recorded: every dev card 5× per side; then both
+  lemon-tea-bread and sweet-sour-pork 6× each per side; then both 8× each
+  per side. The second and third batches were to find out why "after" had
+  non-`ok` imports in the first. Sums, 53 imports per side (25 + 12 + 16):
   - `description`, on cards whose golden has none (all five): before 0,
     after 0.
   - A time the golden does not have: before 11 (5 prep on
@@ -106,10 +108,10 @@ summary, approach A.
     hundred-good-cookies, 1 on sweet-sour-pork); after 5 (cook on
     hundred-good-cookies, 5/5 on both sides). blueberry-muffins, whose
     golden has a cook time, returned it in 5/5 on both sides, matching.
-  - Not `ok`: before 1 (sweet-sour-pork, `MAX_TOKENS` at 3,543 tokens,
-    `parse_error`); after 3 (first run, 1 lemon-tea-bread and 2
+  - Not `ok`: before 1 (sweet-sour-pork, `MAX_TOKENS` at 3,543 candidate
+    tokens, `parse_error`); after 3 (first batch, 1 lemon-tea-bread and 2
     sweet-sour-pork, kind not recorded because the script did not record
-    it yet; the 28 later "after" runs on those cards, 14 per card, were
+    it yet; the 28 later "after" imports on those cards, 14 per card, were
     all `ok`). Summed with the dev photo runs of ocrCompare (15) and
     test:import (5), where every A run was `ok` on both sides: dev only,
     73 runs per side, 1/73 not `ok` before against 3/73 after. Too few to

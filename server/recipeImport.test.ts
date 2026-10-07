@@ -461,7 +461,7 @@ describe('normalizeImportedRecipe', () => {
     expect(Object.is(recipe?.cookMinutes, 0)).toBe(true);
   });
 
-  it('keeps multi-day times and drops a duration over the cap, so a whole-number run-on is not kept', () => {
+  it('keeps multi-day times and drops a duration over the cap (a large whole-number run-on)', () => {
     expect(MAX_IMPORT_MINUTES).toBe(100_000);
     for (const minutes of [10_080, 30_240, MAX_IMPORT_MINUTES]) {
       expect(normalizeImportedRecipe({ ...MINIMAL, prepMinutes: minutes })).toMatchObject({
@@ -518,7 +518,7 @@ describe('importFromSource', () => {
     expect(outcome.kind === 'ok' && outcome.recipe).not.toHaveProperty('instructionsOnPage');
   });
 
-  it('orders every page-schema field, ending on the two booleans so no number comes last', async () => {
+  it('pins the page-schema order, ending on the two booleans so no number comes last', async () => {
     const { deps, calls } = fakeImportDeps(JSON.stringify(MINIMAL));
     await importFromSource('soup', deps);
     const schema = calls[0].config?.responseSchema as {
@@ -526,7 +526,22 @@ describe('importFromSource', () => {
       propertyOrdering: string[];
     };
     expect([...schema.propertyOrdering].sort()).toEqual(Object.keys(schema.properties).sort());
-    expect(schema.propertyOrdering.slice(-2)).toEqual(['instructionsOnPage', 'ingredientsOnPage']);
+    // Literal on purpose: the page order is built from RECIPE_SCHEMA's, and changing either
+    // changes the page request, which needs its own measurement (evals/AGENTS.md).
+    expect(schema.propertyOrdering).toEqual([
+      'title',
+      'description',
+      'servings',
+      'prepMinutes',
+      'cookMinutes',
+      'ingredientSections',
+      'steps',
+      'tags',
+      'notes',
+      'lang',
+      'instructionsOnPage',
+      'ingredientsOnPage',
+    ]);
   });
 
   it('reports output that is not a JSON object as a parse error', async () => {
@@ -1367,22 +1382,7 @@ describe('generateFromBrief', () => {
     // The page schema keeps the same order and only appends its two booleans.
     const pageOrder = (page.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering;
     expect(pageOrder).toEqual([...order, 'instructionsOnPage', 'ingredientsOnPage']);
-    // Pinned as written before the recipe schema had an order: changing it changes the page request,
-    // which needs its own measurement (evals/AGENTS.md).
-    expect(pageOrder).toEqual([
-      'title',
-      'description',
-      'servings',
-      'prepMinutes',
-      'cookMinutes',
-      'ingredientSections',
-      'steps',
-      'tags',
-      'notes',
-      'lang',
-      'instructionsOnPage',
-      'ingredientsOnPage',
-    ]);
+    // The page order itself is pinned literally in the importFromSource tests.
   });
 
   it('with search, researches with the Google Search tool first, then writes from the notes', async () => {
