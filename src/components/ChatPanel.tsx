@@ -654,7 +654,7 @@ export default function ChatPanel({
           </div>
         )}
 
-        <div className="flex items-end gap-2 border-t border-line px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-end gap-2 border-t border-line px-3 py-2.5 pb-[max(0.625rem,var(--sheet-safe-bottom,env(safe-area-inset-bottom)))]">
           <input
             ref={fileInputRef}
             type="file"

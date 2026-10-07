@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -136,10 +137,19 @@ function DialogFrame({
   };
 
   // Overrides the overlay's inset-0 so it covers what is visible, not the
-  // part of the layout viewport under the on-screen keyboard.
+  // part of the layout viewport under the on-screen keyboard. Panels pad
+  // their bottom with --sheet-safe-bottom, which drops the home-indicator
+  // inset while the keyboard sits below them.
   const viewport = useVisualViewport();
   const fit = viewport
-    ? { top: viewport.top, height: viewport.height, bottom: 'auto' }
+    ? ({
+        top: viewport.top,
+        height: viewport.height,
+        bottom: 'auto',
+        '--sheet-safe-bottom': viewport.coveredBelow
+          ? '0px'
+          : 'env(safe-area-inset-bottom)',
+      } as CSSProperties)
     : undefined;
 
   return (
