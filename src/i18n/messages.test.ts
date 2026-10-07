@@ -46,6 +46,17 @@ describe('catalog parity', () => {
     }
   });
 
+  // A Latin letter that looks Cyrillic ("i" for "і") reads fine and breaks
+  // search and screen readers; date-fns shipped one in uk (relativeTime.ts).
+  it.each(['uk', 'ru'] as const)('%s has no Latin letter inside a Cyrillic word', (locale) => {
+    const mixedScript = /\p{Script=Cyrillic}\p{Script=Latin}|\p{Script=Latin}\p{Script=Cyrillic}/u;
+    for (const [key, entry] of Object.entries(CATALOGS[locale])) {
+      for (const text of isPlural(entry) ? Object.values(entry) : [entry]) {
+        expect(text, `${locale}.${key}`).not.toMatch(mixedScript);
+      }
+    }
+  });
+
   it('zh-Hans plural keys have other', () => {
     for (const entry of Object.values(CATALOGS['zh-Hans'])) {
       if (isPlural(entry)) {

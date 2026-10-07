@@ -112,11 +112,23 @@ describe('readImportFeedback', () => {
     expect(hasUndefined(parsed)).toBe(false);
   });
 
-  it('keeps pastedText only for paste and photos only for photos', () => {
+  it('keeps pastedText only for paste and generate, and photos only for photos', () => {
     const url = readImportFeedback({ id: UUID, trigger: 'failed', via: 'url', pastedText: 'x' });
     expect(url.kind === 'report' && 'pastedText' in url.fields).toBe(false);
     const paste = readImportFeedback({ id: UUID, trigger: 'failed', via: 'paste', photos: 2 });
     expect(paste.kind === 'report' && 'photos' in paste.fields).toBe(false);
+    const generate = readImportFeedback({
+      id: UUID,
+      trigger: 'down',
+      via: 'generate',
+      pastedText: 'gumbo in a pressure cooker',
+      photos: 2,
+    });
+    expect(generate.kind === 'report' && generate.fields).toMatchObject({
+      via: 'generate',
+      pastedText: 'gumbo in a pressure cooker',
+    });
+    expect(generate.kind === 'report' && 'photos' in generate.fields).toBe(false);
   });
 
   it('truncates pasted text and recipe JSON as a backstop', () => {

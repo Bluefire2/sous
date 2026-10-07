@@ -4,9 +4,23 @@ import { translate } from '../i18n';
 import type { Locale } from '../i18n/lang';
 import { settings } from './settings';
 
+// date-fns 4.4.0 writes the genitive singular of "day" as "днi" with a Latin
+// "i" (U+0069), not Cyrillic "і" (U+0456): `xDays.singularGenitive` in
+// date-fns/locale/uk/_lib/formatDistance.js, line 151 (line 154 of the .cjs),
+// still there in 5.0.0-alpha.0. So "4 днi тому" for 2–4, 22–24, … days.
+// Swap a Latin "i" that touches a Cyrillic letter; drop this once upstream
+// ships the fix.
+const LATIN_I_IN_CYRILLIC = /(?<=\p{Script=Cyrillic})i|i(?=\p{Script=Cyrillic})/gu;
+
+const ukCyrillic: DateFnsLocale = {
+  ...uk,
+  formatDistance: (token, count, options) =>
+    uk.formatDistance(token, count, options).replace(LATIN_I_IN_CYRILLIC, '\u0456'),
+};
+
 const DATE_FNS_LOCALES: Readonly<Record<Locale, DateFnsLocale>> = {
   en: enUS,
-  uk,
+  uk: ukCyrillic,
   ru,
   'zh-Hans': zhCN,
 };

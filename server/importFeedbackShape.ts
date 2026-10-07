@@ -7,7 +7,8 @@
  */
 import type { ImportWarning } from './importWarnings.ts';
 
-export const IMPORT_FEEDBACK_VIAS = ['url', 'paste', 'photos'] as const;
+/** `generate` is a recipe written from a brief; its report carries the brief as `pastedText`. */
+export const IMPORT_FEEDBACK_VIAS = ['url', 'paste', 'photos', 'generate'] as const;
 export type ImportFeedbackVia = (typeof IMPORT_FEEDBACK_VIAS)[number];
 export const IMPORT_FEEDBACK_TRIGGERS = ['failed', 'warnings', 'down'] as const;
 export type ImportFeedbackTrigger = (typeof IMPORT_FEEDBACK_TRIGGERS)[number];
@@ -37,6 +38,7 @@ export interface ImportFeedbackReport {
   trigger: ImportFeedbackTrigger;
   via: ImportFeedbackVia;
   url?: string;
+  /** The pasted text (`paste`) or the brief (`generate`). */
   pastedText?: string;
   pastedTruncated?: true;
   photos?: number;

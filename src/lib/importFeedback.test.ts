@@ -93,6 +93,13 @@ describe('buildImportFeedback', () => {
     expect(report.pastedTruncated).toBe(true);
   });
 
+  it('sends the brief of a generated recipe as pastedText', () => {
+    const report = build({ source: { via: 'generate', pastedText: 'gumbo in a pressure cooker' } });
+    expect(report.via).toBe('generate');
+    expect(report.pastedText).toBe('gumbo in a pressure cooker');
+    expect('photos' in report).toBe(false);
+  });
+
   it('keeps photo notes out', () => {
     const report = build({ source: { via: 'photos', photos: 2, pastedText: 'private notes' } });
     expect(report.photos).toBe(2);
@@ -175,6 +182,12 @@ describe('includedSummary', () => {
       chars: 300,
     });
     expect(includedSummary({ via: 'photos', photos: 1 })).toStrictEqual({ kind: 'photos' });
+    expect(includedSummary({ via: 'generate', pastedText: 'gumbo' })).toStrictEqual({
+      kind: 'brief',
+      preview: 'gumbo',
+      chars: 5,
+    });
+    expect(includedSummary({ via: 'generate' })).toStrictEqual({ kind: 'none' });
     expect(includedSummary({ via: 'url', url: 'nope' })).toStrictEqual({ kind: 'none' });
   });
 });

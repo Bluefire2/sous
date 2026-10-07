@@ -2,8 +2,8 @@
 
 A personal, allowlisted recipe book that runs as an installed PWA on a phone.
 It holds a readable recipe view, a cooking assistant attached to that recipe,
-and one-tap import of recipes from a URL, pasted text, or photos of
-handwritten notes.
+one-tap import of recipes from a URL, pasted text, or photos of handwritten
+notes, and a Create mode that writes a recipe from an idea you type.
 
 Live at <https://sous.kyrylo.lol>.
 
@@ -328,7 +328,7 @@ is untouched. Chat and import there return 401.
 api/chat.ts               streaming Gemini proxy + the update_recipe tool
 api/import.ts             Vercel-only stub; always 401
 server/recipeImport.ts    import pipeline: page fetch, JSON-LD/region extraction, Gemini, cleanup
-server/importRoute.ts     POST /api/import: URL, pasted text, or up to 4 photos in, recipe draft out
+server/importRoute.ts     POST /api/import: URL, pasted text, up to 4 photos, or an idea to write from in, recipe draft out
 extension/                Chrome extension: import the page you are reading
 server/stt.ts             Ask dictation: raw audio in, `{ text }` out via Gemini
 server/auth.ts            Google OAuth and session cookie

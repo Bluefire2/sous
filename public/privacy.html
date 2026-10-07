@@ -51,7 +51,7 @@
   </head>
   <body>
     <h1>Privacy policy</h1>
-    <p class="muted">Last updated: 1 October 2026</p>
+    <p class="muted">Last updated: 5 October 2026</p>
 
     <h2>What is stored</h2>
     <p>
@@ -83,7 +83,8 @@
       owner reads it, to fix recipe import. It holds your account id
       (<code>sub</code>); how the recipe arrived; the full link you imported,
       including anything after a <code>?</code> or <code>#</code>; for pasted
-      text, the text you pasted; for photos, how many there were; the error
+      text, the text you pasted; for a recipe written from an idea, the idea
+      you typed; for photos, how many there were; the error
       you saw, if any; what the import returned, including the recipe text it
       extracted and codes for any problems the import check found; whether
       translation worked; the note you add, if any; and the app language. It
@@ -154,10 +155,11 @@
       from the page's structured recipe data or from its text, and how each
       attempt to read it went; whether the import worked and, if not, why;
       codes for any problems the import check found, such as missing steps;
-      how many ingredients and steps came out; whether a requested
-      translation worked; and how long it took. It never includes your email
-      address, the recipe text, the page itself, pasted text, notes, or
-      photos.
+      for a recipe written from an idea, whether Search the web was on and
+      how many searches ran; how many ingredients and steps came out; whether
+      a requested translation worked; and how long it took. It never includes
+      your email address, the recipe text, the page itself, pasted text, the
+      idea you typed, the searches, notes, or photos.
     </p>
     <p>
       Rating an import or sending an import report writes one more line: your
@@ -291,9 +293,13 @@
       translation, including at import. Photos you add on the Import screen
       are uploaded to Sous, which sends them to Google's Gemini API to extract
       the recipe. They are not stored and are not attached to the saved
-      recipe. Gemini processes these requests on Google's infrastructure,
-      which is not limited to the <code>europe-west1</code> region. Recipe
-      import fetches the URL you paste. If you press Request access, the
+      recipe. When you ask Sous to write a recipe from an idea, the text you
+      type is sent to Google's Gemini API. With Search the web on, Gemini may
+      run Google searches based on it; the pages it used are shown to you
+      with the result and are not stored. Gemini processes these requests on
+      Google's infrastructure, which is not limited to the
+      <code>europe-west1</code> region. Recipe import fetches the URL you
+      paste. If you press Request access, the
       notification email to the owner is sent through Resend and contains
       your email address, display name and the time of the request; it
       includes no one-click approval link — approval only ever happens on the

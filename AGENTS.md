@@ -23,9 +23,24 @@ stub that always returns 401; Cloud Run serves `/api/import` from
 
 Recipe import (web URL/paste, extension, evals) is one pipeline in
 `server/recipeImport.ts`: `importFromHtml` / `importFromSource` /
-`importFromImages` take the Gemini client and model as arguments and return an
-`ImportOutcome`; routes map outcomes to HTTP. `normalizeImportedRecipe` is the
-only cleanup of model output for import. Page and paste imports are checked by
+`importFromImages` / `generateFromBrief` take the Gemini client and model as
+arguments and return an `ImportOutcome`; routes map outcomes to HTTP.
+`normalizeImportedRecipe` is the only cleanup of model output for import.
+`generateFromBrief` (`docs/plans/recipe-generation.md`, Create mode on
+`/import`, body field `brief`) is the one path where the model writes the
+recipe instead of extracting it: one structured call with `RECIPE_SCHEMA`
+and its own prompt, no import checks (a recipe with no ingredients or no steps
+is `unusable`; parse and unusable failures answer `import-generate-failed`, not
+the extraction wording). With `search: true` a free-text
+research call with the Google Search tool runs first and the structured call
+writes from its notes (the tool on the structured call itself never fired
+for a known dish; `evals/EXPERIMENTS.md` 2026-10-05); the pages it used and
+Google's Search Suggestions chip come back as `grounding`; the research notes
+never leave the server, and the queries are only a count in the log, on
+every outcome after the research call (they are visible to the member inside Google's chip, shown as provided). Searched calls are rate-limited to
+`MAX_IMPORT_SEARCHES_PER_HOUR` (20) per member per instance (429
+`import-search-rate-limited`); a brief is `via: 'generate'` in the log and
+in import feedback. Page and paste imports are checked by
 `server/importChecks.ts` (pure, no I/O) against the page (`server/pageScan.ts`,
 one parse5 pass shared with `extractRecipeSource`); `ok` carries typed
 `warnings` (codes only; the words are in the catalogs), and a thrown Gemini
@@ -43,9 +58,10 @@ refused address logs `fetch: 'blocked'` and answers the same 422
 Both import routes write one `event: 'import'` JSON log line per request
 (`server/importLog.ts`, `withImportLog`): the session `sub`, how the import
 arrived, the URL as `origin + pathname`, for page and paste imports `source`
-(`jsonld` | `text`) and `attempts` (each call's result), warning `codes`, the
-outcome, counts, a thrown error's numeric `status`, and timing. Never the
-email, recipe or pasted text, HTML, photo bytes, a query string, or an error
+(`jsonld` | `text`) and `attempts` (each call's result), warning `codes`, for
+a brief `search` and `searchQueries` (a count), the outcome, counts, a thrown
+error's numeric `status`, and timing. Never the email, recipe or pasted text,
+the brief, the search queries, HTML, photo bytes, a query string, or an error
 message. A Gemini throw on a page or paste import is a logged `model_error`,
 not a throw. A body the client abandons mid-upload (`readBoundedText` throws
 `RequestBodyError`) is a logged `aborted` 400, also not a throw; the
@@ -65,7 +81,8 @@ import, or a 👎 on a clean preview, the person can send a report
 live in top-level Firestore `importFeedback/{id}` (client-generated UUID
 written with `create()`; ALREADY_EXISTS, gRPC code 6, is success), never under
 `users/{uid}`, never synced or backed up. A report may hold the full link,
-pasted text, and the extracted recipe as capped JSON, but never photos, the
+pasted text (or, for `via: 'generate'`, the brief, in the same `pastedText`
+field), and the extracted recipe as capped JSON, but never photos, the
 notes typed with photos, or an email. `expireAt` drives a 180-day Firestore
 TTL policy (owner step in the plan). A 👍 stores nothing and only writes the
 `import_feedback` log line (`sub`, trigger, via, host, warning codes,
@@ -692,6 +709,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/mcp-collection-writes.md` | Built on `claude/mcp-collection-writes`, not deployed. `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
 | `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
+| `docs/plans/recipe-generation.md` | Built on `claude/ai-recipe-generation-0f49e5`, not deployed. Create mode on `/import`: `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148), not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` built on `claude/mcp-create-variant` (#149). |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
 | `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |
@@ -861,3 +879,9 @@ sends rendered page HTML, possibly from a page behind a login, to the server
 and on to Gemini; `/privacy` and `/terms` must describe that before the
 extension is offered beyond the owner. Photos sent for import go to Gemini and
 are not stored; `/privacy` and `/terms` say so.
+
+UI copy never names the model or its maker, because the model can change:
+an AI feature is Sous ("Sous generates…", "Pages Sous used"), never Gemini
+(owner, 2026-10-05). Google Search may be named, since the search really is
+Google's and its chip is shown. `/privacy` and `/terms` are the exception:
+they name Google's Gemini API as the provider that receives the data.

@@ -150,6 +150,48 @@
     "needsData": false
   },
   {
+    "id": "import-create-idle",
+    "route": "/import",
+    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-preview",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Search the web checked, Generate recipe pressed with the model call mocked: the preview shows the \"Pages Sous used\" list (three links, the last one labelled as an untitled page) above the language line and the editable recipe form, with the thumbs up / down rating row at the bottom.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-no-recipe",
+    "route": "/import",
+    "setup": "Generate mode, a brief that is not about food, Generate recipe pressed with the model call mocked to answer 422 import-no-recipe-brief: the error line under the form says a recipe could not be made from that, and the import report card is offered with its note field and its What's included list open (the list names the idea that was typed).",
+    "needsData": false
+  },
+  {
+    "id": "import-create-writing",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the button reads Generating… with its spinner, the textarea is read-only, and the status line under the button says the recipe is being generated.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-too-long",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 400 import-brief-too-long: the error line says the idea is too long for 2,000 characters.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-rate-limited",
+    "route": "/import",
+    "setup": "Generate mode with Search the web checked, Generate recipe pressed with the call mocked to answer 429 import-search-rate-limited: the error line says there were too many web searches and suggests turning Search the web off.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-failed",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 502 import-generate-failed: the error line says the recipe could not be written, and the import report card is offered.",
+    "needsData": false
+  },
+  {
     "id": "import-bulk",
     "route": "/import",
     "setup": "Import with the bulk-import checkbox on, so the bulk placeholder and hint are visible. Choose a collection stays under the title. Do not press it, do not paste links, and do not extract. Bulk extract saves recipes and has no preview.",
