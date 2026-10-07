@@ -440,7 +440,56 @@ async function dispatchFetch(
   });
 
   const response = await handler(request);
+  if (!nodeReq.complete) {
+    await discardUnreadBody(request.body);
+  }
   await writeFetchResponse(nodeRes, response);
+}
+
+/** How much of a body a route left unread the dispatcher drops before answering. */
+export const UNREAD_BODY_LIMITS = { bytes: 16 * 1024 * 1024, ms: 10_000 };
+
+/**
+ * Reads and drops the rest of a request body the route answered without
+ * reading to the end: one over a route's limit (`readBoundedText` stops there),
+ * or one refused before it was read (a 401, a 413 by Content-Length).
+ * Answered with the upload still arriving, a `Connection: close` request has
+ * its socket closed with data unread, which resets the connection and throws
+ * the answer away, and a kept-alive one waits on a body nobody reads, so the
+ * client hangs. Only the current chunk is held. Past
+ * `limits.bytes` or `limits.ms` the body is cancelled, which destroys the
+ * socket: a client may not hold the server to an endless upload. A body a
+ * route still holds is left alone, and a client that hangs up ends the drain.
+ */
+export async function discardUnreadBody(
+  body: ReadableStream<Uint8Array> | null,
+  limits: { bytes: number; ms: number } = UNREAD_BODY_LIMITS,
+): Promise<void> {
+  if (body === null || body.locked) {
+    return;
+  }
+  const reader = body.getReader();
+  const timer = setTimeout(() => {
+    void reader.cancel().catch(() => {});
+  }, limits.ms);
+  try {
+    let dropped = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return;
+      }
+      dropped += value.byteLength;
+      if (dropped > limits.bytes) {
+        await reader.cancel();
+        return;
+      }
+    }
+  } catch {
+    // The client hung up mid-upload; the response goes nowhere either way.
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SESSION_COOKIE_NAME, signSession } from './session.ts';
 import { SUPPORTED_LOCALES, type Locale } from './lang.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 import {
   MAX_STT_BYTES,
   clipRecipeTitle,
@@ -204,6 +205,25 @@ describe('sttPost error codes', () => {
       error: 'That language is not supported.',
       code: 'stt-bad-language',
     });
+  });
+
+  it('returns stt-too-long past the cap without Content-Length, and leaves the rest unread', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const endless = endlessBody();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const response = await sttPost(
+      new Request('http://localhost/api/stt', {
+        method: 'POST',
+        headers: { cookie: `${SESSION_COOKIE_NAME}=${token}`, 'content-type': 'audio/webm' },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ code: 'stt-too-long' });
+    // The dispatcher drops the rest; cancelling would reset the socket under the 413.
+    expect(endless.cancelled()).toBe(false);
+    expect(endless.read()).toBeLessThan(MAX_STT_BYTES + 256 * 1024);
   });
 
   it('accepts X-Sous-Language when Fetch lowercases the name', async () => {

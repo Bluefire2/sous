@@ -205,8 +205,9 @@ export interface ChatRequestBody {
 
 // NOTE: The request limits and checks below follow server/importRoute.ts
 // (MAX_IMPORT_*, IMPORT_IMAGE_TYPES, checkImportImages) and the bounded reader
-// follows readBoundedText in server/membership.ts. They are copied, not
-// imported, for the same Vercel reason as the session gate above.
+// follows readBoundedText in server/membership.ts (past the limit it releases
+// the body for the dispatcher to drop rather than cancelling it). They are
+// copied, not imported, for the same Vercel reason as the session gate above.
 
 /**
  * Photos per message. The client sends photos only on the newest message,
@@ -262,7 +263,7 @@ async function readBoundedBody(req: Request, limit: number): Promise<string | nu
     if (value) {
       total += value.byteLength;
       if (total > limit) {
-        await reader.cancel();
+        reader.releaseLock();
         return null;
       }
       chunks.push(value);

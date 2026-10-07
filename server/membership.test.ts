@@ -9,9 +9,11 @@ import {
   clearMembershipCache,
   lookupMemberForTest,
   memberFromIdentity,
+  readBoundedText,
   visitorMembership,
 } from './membership.ts';
 import { signSession } from './session.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -443,5 +445,37 @@ describe('architecture lock', () => {
       expect(found.get(rel), `${rel} must contain authorizedSub`).toBe(expected);
     }
     expect(found.size).toBe(allowed.size);
+  });
+});
+
+describe('readBoundedText', () => {
+  function post(body: string | ReadableStream<Uint8Array>): Request {
+    return new Request('http://localhost/api/x', { method: 'POST', body, duplex: 'half' } as RequestInit);
+  }
+
+  it('returns a body within the limit', async () => {
+    expect(await readBoundedText(post('hello'), 5)).toBe('hello');
+  });
+
+  it('refuses a declared Content-Length over the limit without reading', async () => {
+    const endless = endlessBody();
+    const req = new Request('http://localhost/api/x', {
+      method: 'POST',
+      headers: { 'Content-Length': '6' },
+      body: endless.body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(await readBoundedText(req, 5)).toBeNull();
+    expect(endless.cancelled()).toBe(false);
+  });
+
+  it('stops reading past the limit and leaves the rest unlocked, not cancelled', async () => {
+    const endless = endlessBody();
+    const req = post(endless.body);
+    expect(await readBoundedText(req, 100_000)).toBeNull();
+    // Cancelling would destroy the socket under the 413; the dispatcher drops the rest.
+    expect(endless.cancelled()).toBe(false);
+    expect(req.body?.locked).toBe(false);
+    expect(endless.read()).toBeLessThan(100_000 + 256 * 1024);
   });
 });

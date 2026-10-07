@@ -229,6 +229,14 @@ export function storeUnavailable(): Response {
   });
 }
 
+/**
+ * The body as text, or null when it is longer than `limit` bytes. Past the
+ * limit it stops reading and releases the body without cancelling it: in the
+ * server, cancelling `Readable.toWeb(nodeReq)` destroys the socket, and the
+ * 413 never reaches a client that is still uploading. The dispatcher
+ * (`dispatchFetch` in `scripts/server.ts`) drops what is left, within a bound,
+ * before it answers. Nothing past the limit is kept here.
+ */
 export async function readBoundedText(req: Request, limit: number): Promise<string | null> {
   const contentLength = req.headers.get('content-length');
   if (contentLength !== null) {
@@ -255,7 +263,7 @@ export async function readBoundedText(req: Request, limit: number): Promise<stri
     if (value) {
       total += value.byteLength;
       if (total > limit) {
-        await reader.cancel();
+        reader.releaseLock();
         return null;
       }
       chunks.push(value);

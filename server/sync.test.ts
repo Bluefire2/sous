@@ -87,7 +87,7 @@ describe('syncPush body size', () => {
     const res = await syncPush(ownerRequest(endless.body));
     expect(res.status).toBe(413);
     expect(await res.json()).toEqual({ error: 'Payload too large; batch your ops' });
-    expect(endless.cancelled()).toBe(true);
+    expect(endless.cancelled()).toBe(false);
     expect(endless.read()).toBeLessThan(4_000_000);
   });
 

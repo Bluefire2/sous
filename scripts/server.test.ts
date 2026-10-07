@@ -1,6 +1,7 @@
 import { PassThrough, Readable, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { isClientHangUp, pipeFile, pipeResponseBody } from './server.ts';
+import { endlessBody } from '../test/endlessBody.ts';
+import { discardUnreadBody, isClientHangUp, pipeFile, pipeResponseBody } from './server.ts';
 
 function goneClient(): Writable {
   const client = new Writable({
@@ -161,5 +162,67 @@ describe('pipeFile', () => {
     await pipeFile(() => Readable.from([Buffer.from('<!doctype '), Buffer.from('html>')]), client);
     expect(Buffer.concat(chunks).toString()).toBe('<!doctype html>');
     expect(client.writableFinished).toBe(true);
+  });
+});
+
+describe('discardUnreadBody', () => {
+  it('reads a finite body to its end without cancelling it', async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 3) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await discardUnreadBody(body, { bytes: 1_000_000, ms: 1_000 });
+    expect(pulls).toBe(4);
+    expect(cancelled).toBe(false);
+  });
+
+  it('cancels a body that goes past the byte bound', async () => {
+    const endless = endlessBody();
+    await discardUnreadBody(endless.body, { bytes: 1_000_000, ms: 10_000 });
+    expect(endless.cancelled()).toBe(true);
+    expect(endless.read()).toBeLessThan(1_000_000 + 256 * 1024);
+  });
+
+  it('cancels a body that stalls past the time bound', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await discardUnreadBody(body, { bytes: 1_000_000, ms: 20 });
+    expect(cancelled).toBe(true);
+  });
+
+  it('ends quietly when the client hangs up mid-upload', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(Object.assign(new Error('aborted'), { code: 'ECONNRESET' }));
+      },
+    });
+    await expect(discardUnreadBody(body)).resolves.toBeUndefined();
+  });
+
+  it('leaves alone a body a route still holds, and no body', async () => {
+    const endless = endlessBody();
+    const reader = endless.body.getReader();
+    await discardUnreadBody(endless.body);
+    expect(endless.cancelled()).toBe(false);
+    reader.releaseLock();
+    await expect(discardUnreadBody(null)).resolves.toBeUndefined();
   });
 });

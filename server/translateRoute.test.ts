@@ -141,7 +141,7 @@ describe('translatePost body size', () => {
       error: 'This recipe is too long to translate.',
       code: TRANSLATE_TOO_LARGE,
     });
-    expect(endless.cancelled()).toBe(true);
+    expect(endless.cancelled()).toBe(false);
     expect(endless.read()).toBeLessThan(2_000_000);
   });
 });

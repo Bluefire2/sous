@@ -20,6 +20,7 @@ vi.mock('@google/genai', async (importOriginal) => {
   return { ...actual, GoogleGenAI: FakeGoogleGenAI };
 });
 
+import { endlessBody } from '../test/endlessBody';
 import { MAX_CHAT_BODY_BYTES, MAX_CHAT_IMAGES, MAX_CHAT_IMAGE_BYTES, POST, parseChatRequest } from './chat';
 
 const SECRET_TEXT = 'secret-recipe-text-quoted-by-the-sdk';
@@ -108,6 +109,19 @@ describe('POST /api/chat request checks', () => {
     const req = chatRequest(big);
     expect(req.headers.get('content-length')).toBeNull();
     await expectJsonError(await POST(req, ctx), 413, 'Request too large');
+  });
+
+  it('stops reading past the cap and leaves the rest unread, not cancelled', async () => {
+    const endless = endlessBody();
+    const req = new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: endless.body,
+      duplex: 'half',
+    } as RequestInit);
+    await expectJsonError(await POST(req, ctx), 413, 'Request too large');
+    expect(endless.cancelled()).toBe(false);
+    expect(endless.read()).toBeLessThan(MAX_CHAT_BODY_BYTES + 256 * 1024);
   });
 
   it('answers 503 for a valid body when GEMINI_API_KEY is unset, before building a client', async () => {

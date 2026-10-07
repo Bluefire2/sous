@@ -8,11 +8,13 @@
  * endpoints, photo reads) stay with `.github/scripts/smoke-server.sh`.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, request as httpRequest, type Server } from 'node:http';
+import { Agent as HttpAgent, createServer, request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MAX_IMPORT_BODY_BYTES } from '../server/importRoute.ts';
+import { SESSION_COOKIE_NAME, signSession } from '../server/session.ts';
 import * as sync from '../server/sync.ts';
 import { apiRoutes, createRequestListener } from './server.ts';
 
@@ -93,6 +95,55 @@ function rawStatus(base: string, path: string): Promise<number> {
     });
     req.on('error', reject);
     req.end();
+  });
+}
+
+type UploadResult = { status: number; body: string; reusedSocket: boolean } | { error: string };
+
+/**
+ * A POST of `bytes` bytes (forever when `Infinity`) written as fast as the
+ * socket takes them, chunked unless `contentLength` is set. Resolves with the
+ * response, or the client's error code when the connection fails first.
+ */
+function upload(
+  base: string,
+  path: string,
+  options: { bytes: number; contentLength?: boolean; agent?: HttpAgent | false; headers?: Record<string, string> },
+): Promise<UploadResult> {
+  const { hostname, port } = new URL(base);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    ...options.headers,
+  };
+  if (options.contentLength) {
+    headers['Content-Length'] = String(options.bytes);
+  }
+  return new Promise((resolve) => {
+    const req = httpRequest(
+      { hostname, port, path, method: 'POST', headers, agent: options.agent ?? false },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => (body += chunk));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body, reusedSocket: req.reusedSocket }));
+        res.on('error', (err: NodeJS.ErrnoException) => resolve({ error: err.code ?? err.message }));
+      },
+    );
+    req.on('error', (err: NodeJS.ErrnoException) => resolve({ error: err.code ?? err.message }));
+    const piece = 'a'.repeat(16 * 1024);
+    let sent = 0;
+    const pump = (): void => {
+      while (sent < options.bytes && !req.destroyed) {
+        const next = piece.slice(0, Math.min(piece.length, options.bytes - sent));
+        sent += next.length;
+        if (!req.write(next)) {
+          req.once('drain', pump);
+          return;
+        }
+      }
+      req.end();
+    };
+    pump();
   });
 }
 
@@ -303,6 +354,62 @@ describe('static files', () => {
     for (const path of ['/', '/privacy', '/p/sometoken', '/settings']) {
       expect((await send(apiBase, 'GET', path)).status, path).toBe(404);
     }
+  });
+});
+
+// `POST /api/access-request` reads up to 4096 bytes of form body before any
+// store read, and `POST /api/import` refuses a caller with no cookie before
+// reading the body at all. 4 MiB is far more than the socket buffers hold, so
+// the client is still uploading when the route answers.
+describe('a route that answers before the body is read', () => {
+  const OVER = 4 * 1024 * 1024;
+
+  it('delivers the 413 for a chunked body over the limit instead of resetting', async () => {
+    expect(await upload(apiBase, '/api/access-request', { bytes: OVER })).toEqual({
+      status: 413,
+      body: 'Payload too large',
+      reusedSocket: false,
+    });
+  });
+
+  it('delivers import-body-too-large to an owner whose chunked import is over the cap', async () => {
+    const cookie = `${SESSION_COOKIE_NAME}=${signSession({ sub: 'owner-sub', email: 'owner@example.com' }, Date.now())}`;
+    const result = await upload(apiBase, '/api/import', {
+      bytes: MAX_IMPORT_BODY_BYTES + 1024 * 1024,
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    });
+    expect(result).toMatchObject({ status: 413 });
+    expect(JSON.parse((result as { body: string }).body)).toMatchObject({ code: 'import-body-too-large' });
+  });
+
+  it('delivers the 413 for a Content-Length over the limit', async () => {
+    expect(await upload(apiBase, '/api/access-request', { bytes: OVER, contentLength: true })).toMatchObject({
+      status: 413,
+      body: 'Payload too large',
+    });
+  });
+
+  it('delivers a refusal from a route that never reads the body', async () => {
+    expect(await upload(apiBase, '/api/import', { bytes: OVER })).toMatchObject({ status: 401 });
+  });
+
+  it('keeps a kept-alive connection usable after the 413', async () => {
+    const agent = new HttpAgent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const first = await upload(apiBase, '/api/access-request', { bytes: OVER, agent });
+      const second = await upload(apiBase, '/api/access-request', { bytes: OVER, agent });
+      expect(first).toMatchObject({ status: 413, reusedSocket: false });
+      expect(second).toMatchObject({ status: 413, reusedSocket: true });
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  it('cuts off a body that never ends, and keeps answering', async () => {
+    const result = await upload(apiBase, '/api/access-request', { bytes: Infinity });
+    expect(result).toHaveProperty('error');
+    // A small body with no access token is read in full and refused as expired.
+    expect(await upload(apiBase, '/api/access-request', { bytes: 10 })).toMatchObject({ status: 400 });
   });
 });
 
