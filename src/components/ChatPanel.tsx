@@ -540,9 +540,12 @@ export default function ChatPanel({
       await chatStore.append({
         recipeId: recipe.id,
         role: 'assistant',
+        // A complete reply with no text and no usable proposal (one that
+        // normalizeRecipeDraft rejected) must not be saved as an empty bubble
+        // that stays in the thread and goes back to the model as an empty turn.
         content: reply.truncated
           ? `${assistantContent}\n\n${t('chat.replyCutOff')}`
-          : assistantContent,
+          : assistantContent || `⚠️ ${t('common.somethingWentWrong')}`,
         proposedRecipe: reply.proposedRecipe,
       });
     } catch (e) {

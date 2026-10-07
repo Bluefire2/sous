@@ -34,6 +34,23 @@ export function recipeForChat(recipe: Recipe): Recipe {
   return posted;
 }
 
+/**
+ * The proposal with the viewed recipe's `servings` when the model left the
+ * field out. The update_recipe schema in `api/chat.ts` marks it required, but
+ * Gemini does not enforce `required` on function-call arguments, and it often
+ * omits an unchanged `servings` (seen on "split the steps for two cooks").
+ * Without this, `normalizeRecipeDraft` drops the whole proposal and the turn
+ * ends with no text and no Apply. Only an absent field is filled; a present
+ * but invalid one is still rejected.
+ */
+export function withUnchangedServings(proposal: unknown, recipe: Recipe): unknown {
+  if (typeof proposal !== 'object' || proposal === null || Array.isArray(proposal)) {
+    return proposal;
+  }
+  if ('servings' in proposal) return proposal;
+  return { ...proposal, servings: recipe.servings };
+}
+
 export interface ChatReply {
   text: string;
   /** Present when the assistant proposed a recipe modification. */
@@ -94,7 +111,9 @@ export async function streamChatReply(params: {
   let proposedRecipe: RecipeDraft | undefined;
   if (complete && parts[1]) {
     try {
-      proposedRecipe = normalizeRecipeDraft(JSON.parse(parts[1]));
+      proposedRecipe = normalizeRecipeDraft(
+        withUnchangedServings(JSON.parse(parts[1]), params.recipe),
+      );
     } catch {
       // Truncated/malformed proposal — keep the text reply.
     }
