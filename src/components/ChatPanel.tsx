@@ -537,6 +537,7 @@ export default function ChatPanel({
       const assistantContent =
         reply.text.trim() ||
         (reply.proposedRecipe ? t('chat.proposalIntro') : '');
+      const emptyReply = !reply.truncated && assistantContent === '';
       await chatStore.append({
         recipeId: recipe.id,
         role: 'assistant',
@@ -548,6 +549,9 @@ export default function ChatPanel({
           : assistantContent || `⚠️ ${t('common.somethingWentWrong')}`,
         proposedRecipe: reply.proposedRecipe,
       });
+      if (emptyReply) {
+        setError(t('common.somethingWentWrong'));
+      }
     } catch (e) {
       // Half an answer beats a question left hanging in the thread. An abort is
       // the user's own doing, so it needs no bubble of its own and no error.
