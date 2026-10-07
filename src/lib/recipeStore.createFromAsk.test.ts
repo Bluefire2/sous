@@ -399,14 +399,19 @@ describe('step lanes through Ask (docs/plans/parallel-steps.md)', () => {
     ]);
   });
 
-  it('Apply takes a proposal that sets lanes as it is', async () => {
+  it('Apply takes a lane the proposal sets and keeps the ones it leaves out', async () => {
     upsertRecipe(laned());
     vi.mocked(pushOps).mockResolvedValue('ok');
-    const steps = [{ text: 'Boil.', lane: 'Pasta' }, { text: 'Fry garlic.' }];
 
-    await recipeStore.applyDraft(PARENT_ID, { ...draft, steps });
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: [{ text: 'Boil.', lane: 'Pasta' }, { text: 'Fry garlic.' }],
+    });
 
-    expect(getRecipe(PARENT_ID)?.steps).toEqual(steps);
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.', lane: 'Pasta' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+    ]);
   });
 
   it('Apply removes every lane when the proposal empties them', async () => {

@@ -20,10 +20,14 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   "I'm on" as "Моя частина" / "Моя часть" / "我负责".
 - **The library agent sees lanes**, since `parseSteps` now keeps them; it
   needs no prompt change.
-- **Ask removes lanes with an empty lane** (from review). A lane-less
-  proposal still means "forgot", so the prompt and schema tell the model to
-  set `lane: ""` to take a step out of its lane; `normalizeRecipeDraft` keeps
-  that `''` and `carryStepLanes` strips it, so removing every lane works.
+- **Ask removes lanes with an empty lane, and the carry is per step** (from
+  review). `carryStepLanes` decides each step alone: a lane is taken as
+  given, `lane: ""` removes it, and a step with no lane field gets the stored
+  lane back where its text is unchanged at the same index. The prompt and
+  schema say the same. `normalizeRecipeDraft` keeps the `''` so the carry can
+  see it; the carry strips it. This replaces the plan's "a proposal with any
+  lane is taken as is", which contradicted "leaving the field out keeps the
+  lane" and removed every lane when Ask emptied one.
 - **A replacement import keeps lanes** where a step's text is unchanged
   (from review), with the same `carryStepLanes` as Ask Apply.
 

@@ -248,8 +248,34 @@ describe('carryStepLanes', () => {
     expect(carryStepLanes(pasta, proposed)).toEqual(pasta.map(({ text }) => ({ text })));
   });
 
-  it('takes a proposal that has any lane as is', () => {
-    const proposed = [{ text: 'Boil water', lane: 'Pasta' }, { text: 'Fry garlic' }];
-    expect(carryStepLanes(pasta, proposed)).toEqual(proposed);
+  it('decides each step on its own: a lane, an empty lane, or no field', () => {
+    const proposed = [
+      { text: 'Boil water', lane: 'Pasta' },
+      { text: 'Fry garlic', lane: '' },
+      { text: 'Add tomatoes' },
+      { text: 'Cook pasta', lane: 'Sauce' },
+      { text: 'Drain' },
+      { text: 'Toss' },
+    ];
+    expect(carryStepLanes(pasta, proposed)).toEqual([
+      { text: 'Boil water', lane: 'Pasta' },
+      { text: 'Fry garlic' },
+      { text: 'Add tomatoes', lane: 'Sauce' },
+      { text: 'Cook pasta', lane: 'Sauce' },
+      { text: 'Drain', lane: 'Pasta' },
+      { text: 'Toss' },
+    ]);
+  });
+
+  it('removes only the lane the proposal empties', () => {
+    const proposed = pasta.map(({ text }, i) => (i === 1 ? { text, lane: '' } : { text }));
+    expect(carryStepLanes(pasta, proposed).map((step) => step.lane)).toEqual([
+      undefined,
+      undefined,
+      'Sauce',
+      'Pasta',
+      'Pasta',
+      undefined,
+    ]);
   });
 });

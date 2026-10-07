@@ -259,7 +259,8 @@ a malformed lane and any other step key. `doneSteps` is normalized by
 `normalizeStepProgress` (`src/lib/stepLanes.ts`) on every write and left out
 when empty. Import never produces lanes; Ask Apply, save-as-variant and a
 replacement import keep stored lanes when the new steps have none
-(`carryStepLanes`), and an Ask proposal removes a lane with an empty one. Keep progress a
+(`carryStepLanes`, per step: a lane is kept as given, an empty lane removes
+it, and a step with no lane field gets the stored lane back by text). Keep progress a
 set of done steps (a prefix plus `doneSteps`), never one pointer: a later
 shared cooking session merges two cooks' progress by union.
 Collections are a separate store kind. Grants live under
