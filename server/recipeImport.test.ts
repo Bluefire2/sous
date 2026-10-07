@@ -9,6 +9,7 @@ import {
   IMPORT_RETRY_DEADLINE_MS,
   MAX_GENERATE_BRIEF_CHARS,
   MAX_GENERATE_SOURCES,
+  MAX_IMPORT_MINUTES,
   MAX_IMPORT_RETRIES,
   MAX_PAGE_HTML_CHARS,
   MAX_PAGE_REDIRECTS,
@@ -430,6 +431,49 @@ describe('normalizeImportedRecipe', () => {
     expect('prepMinutes' in (recipe ?? {})).toBe(false);
     expect(recipe).toMatchObject({ cookMinutes: 0 });
   });
+
+  it('rounds durations to whole minutes', () => {
+    const cases: [number, number][] = [
+      [20.000000000000004, 20],
+      [12.5, 13],
+      [7.4, 7],
+      [0.5, 1],
+      [45, 45],
+      [0, 0],
+    ];
+    for (const [raw, minutes] of cases) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).toMatchObject({ prepMinutes: minutes, cookMinutes: minutes });
+    }
+  });
+
+  it('drops a positive duration that would round to 0, and a small negative one without making it -0', () => {
+    for (const raw of [5.000000000000001e-5, 0.4, -0.4]) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
+      expect(recipe, String(raw)).not.toHaveProperty('cookMinutes');
+    }
+  });
+
+  it('reads -0 as 0', () => {
+    const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: -0, cookMinutes: -0 });
+    expect(Object.is(recipe?.prepMinutes, 0)).toBe(true);
+    expect(Object.is(recipe?.cookMinutes, 0)).toBe(true);
+  });
+
+  it('keeps multi-day times and drops a duration over the cap (a large whole-number run-on)', () => {
+    expect(MAX_IMPORT_MINUTES).toBe(100_000);
+    for (const minutes of [10_080, 30_240, MAX_IMPORT_MINUTES]) {
+      expect(normalizeImportedRecipe({ ...MINIMAL, prepMinutes: minutes })).toMatchObject({
+        prepMinutes: minutes,
+      });
+    }
+    for (const raw of [MAX_IMPORT_MINUTES + 1, 305106198964720960, 1e21]) {
+      const recipe = normalizeImportedRecipe({ ...MINIMAL, prepMinutes: raw, cookMinutes: raw });
+      expect(recipe, String(raw)).not.toHaveProperty('prepMinutes');
+      expect(recipe, String(raw)).not.toHaveProperty('cookMinutes');
+    }
+  });
 });
 
 describe('importFromSource', () => {
@@ -474,7 +518,7 @@ describe('importFromSource', () => {
     expect(outcome.kind === 'ok' && outcome.recipe).not.toHaveProperty('instructionsOnPage');
   });
 
-  it('orders every page-schema field, ending on the two booleans so no number comes last', async () => {
+  it('pins the page-schema order, ending on the two booleans so no number comes last', async () => {
     const { deps, calls } = fakeImportDeps(JSON.stringify(MINIMAL));
     await importFromSource('soup', deps);
     const schema = calls[0].config?.responseSchema as {
@@ -482,7 +526,22 @@ describe('importFromSource', () => {
       propertyOrdering: string[];
     };
     expect([...schema.propertyOrdering].sort()).toEqual(Object.keys(schema.properties).sort());
-    expect(schema.propertyOrdering.slice(-2)).toEqual(['instructionsOnPage', 'ingredientsOnPage']);
+    // Literal on purpose: the page order is built from RECIPE_SCHEMA's, and changing either
+    // changes the page request, which needs its own measurement (evals/AGENTS.md).
+    expect(schema.propertyOrdering).toEqual([
+      'title',
+      'description',
+      'servings',
+      'prepMinutes',
+      'cookMinutes',
+      'ingredientSections',
+      'steps',
+      'tags',
+      'notes',
+      'lang',
+      'instructionsOnPage',
+      'ingredientsOnPage',
+    ]);
   });
 
   it('reports output that is not a JSON object as a parse error', async () => {
@@ -1298,6 +1357,32 @@ describe('generateFromBrief', () => {
     expect(config.responseSchema).toBe(photo.calls[0].config?.responseSchema);
     expect('tools' in config).toBe(false);
     expect('mediaResolution' in config).toBe(false);
+  });
+
+  it('orders every field of its schema, times before the lists, and photos get the same order', async () => {
+    const generate = fakeImportDeps(JSON.stringify(GENERATED));
+    await generateFromBrief(BRIEF, generate.deps, { search: false });
+    const page = fakeImportDeps(JSON.stringify(MINIMAL));
+    await importFromSource('soup', page.deps);
+    const photo = fakeImportDeps(JSON.stringify(MINIMAL));
+    await importFromImages([{ mediaType: 'image/jpeg', base64: 'AAAA' }], '', photo.deps);
+    type OrderedSchema = {
+      properties: Record<string, { type: string }>;
+      propertyOrdering: string[];
+    };
+    const schema = generate.calls[0].config?.responseSchema as OrderedSchema;
+    const order = schema.propertyOrdering;
+    expect([...order].sort()).toEqual(Object.keys(schema.properties).sort());
+    expect(order.indexOf('description')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(order.indexOf('prepMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(order.indexOf('cookMinutes')).toBeLessThan(order.indexOf('ingredientSections'));
+    expect(schema.properties[order[order.length - 1]].type).toBe('STRING');
+    // The photo request is the one the image-import constitution protects; check it directly.
+    expect((photo.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering).toEqual(order);
+    // The page schema keeps the same order and only appends its two booleans.
+    const pageOrder = (page.calls[0].config?.responseSchema as OrderedSchema).propertyOrdering;
+    expect(pageOrder).toEqual([...order, 'instructionsOnPage', 'ingredientsOnPage']);
+    // The page order itself is pinned literally in the importFromSource tests.
   });
 
   it('with search, researches with the Google Search tool first, then writes from the notes', async () => {

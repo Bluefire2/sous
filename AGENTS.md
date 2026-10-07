@@ -66,8 +66,12 @@ message. A Gemini throw on a page or paste import is a logged `model_error`,
 not a throw. A body the client abandons mid-upload (`readBoundedText` throws
 `RequestBodyError`) is a logged `aborted` 400, also not a throw; the
 dispatcher logs nothing for a route that throws on a request whose body was
-cut off before it arrived (`isRequestAbort`: a client hang-up, or a reader
-that cancelled the body). Any other throw from either
+cut off before it arrived (`isRequestAbort`: a client hang-up, or Node's
+request timeout). Past its limit, `readBoundedText` releases the body
+rather than cancelling it (cancelling aborts the request under the upload,
+and the client usually sees a reset instead of the 413); `dispatchFetch`
+drops the unread rest, within a bound, before it answers
+(`discardUnreadBody`). Any other throw from either
 route is rethrown as `sanitizedImportError` (class name and status only),
 because the dispatcher in `scripts/server.ts` `console.error`s whatever
 escapes and an SDK message can quote the request; never let the original
@@ -727,7 +731,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
 | `docs/plans/parallel-steps.md` | Built on `claude/parallel-recipe-steps-857b23`, not deployed. Optional `RecipeStep.lane` groups steps two people cook at once; per-lane progress in `CookStateRow.doneSteps`; an "I'm on" lane chip; lanes authored in the edit form, Ask, and MCP. Amends cook-log principle 1. |
-| `docs/plans/recipe-generation.md` | Built on `claude/ai-recipe-generation-0f49e5`, not deployed. Create mode on `/import`: `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
+| `docs/plans/recipe-generation.md` | Merged (#153), not deployed. Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148), not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` built on `claude/mcp-create-variant` (#149). |
 | `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
 | `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |

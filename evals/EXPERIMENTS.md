@@ -22,6 +22,104 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-06 — RECIPE_SCHEMA property order (times early), whole-minute rounding
+
+- Change: `RECIPE_SCHEMA` (photo import and `generateFromBrief`) gets a
+  `propertyOrdering`: title, description, servings, prepMinutes,
+  cookMinutes, ingredientSections, steps, tags, notes, lang.
+  `PAGE_RECIPE_SCHEMA` now builds its order from it plus its two booleans;
+  the resulting list is the same as before, so the page and paste request
+  is unchanged. `normalizeImportedRecipe` rounds `prepMinutes` and
+  `cookMinutes` to whole minutes for every import path. Negative values and
+  values that round to over 100,000 (about 69 days) are dropped, a positive value that
+  would round to 0 (such as 5.000000000000001e-05) is dropped rather than
+  shown as "0 min", and 0 is kept. The cap is deliberately above MCP's
+  `RECIPE_LIMITS.maxMinutes` (10,000, about 7 days): cures, ferments and
+  extracts honestly run to weeks (21 days is 30,240), and the first cap of
+  10,000 (`dfa87f4`) dropped them. The cost is that a run-on under 100,000
+  (30 becoming 30000) is kept. Prompts, model settings, retries and goldens
+  are unchanged. Commits: `21a5a48` (order and rounding, the measured
+  version), then review follow-ups `4b6fa54` (drop a value that rounds to
+  0), `dfa87f4` (cap at 10,000) and the commit after it (cap raised to
+  100,000). The follow-ups were not re-measured. They change only values
+  under 0.5 or that round to over 100,000. The judge compares times on the
+  photo and page runs (`evals/judge.ts`), and the raw times of those runs
+  were not recorded, so whether any fell in either range is unknown; the
+  one recorded run-on that size is the 305106198964720960 in the
+  2026-10-01 entry.
+- Reason (not fixture-specific): the 2026-10-01 rule that no free-form
+  number should be the last token of the object, which only the page schema
+  followed. Without an order the model writes the required fields, then
+  the optional ones alphabetically, so `prepMinutes` comes last. The
+  normalizer rules are a backstop for a run-on that still parses: rounding
+  catches a fractional one, the 100,000 cap a large whole-number one. Imported
+  times are whole minutes; the recipe form, MCP, chat Apply and backup
+  import still accept fractions, and nothing depends on whole minutes.
+- Reported: a live Generate run ("shrimp gumbo in a pressure cooker for 6",
+  search on) showed prepMinutes as 20.000… in the preview and had no
+  description.
+- Probe: `generateFromBrief` on that brief, 8 runs without search and 8
+  with, on the real code path. The structured call was wrapped to record its
+  finish reason, key order, and the raw time literals.
+  - Before (`33c0c16`): key order always ended `…,tags,cookMinutes,[description,lang,notes,]prepMinutes`.
+    2/16 runaways, both with search: one `prepMinutes`
+    20.000000000000004 (parsed, shown as a float) and one run of zeros to
+    `MAX_TOKENS` (3,241 candidate tokens, not counting thinking tokens;
+    `parse_error`). 5/16 had no
+    `description`, `notes` or `lang` (2 without search, 3 with), including
+    the parsed runaway.
+  - After (`21a5a48`): 16/16 `STOP` in the schema order, raw times all integers, and
+    `description`, `notes` and `lang` present in 16/16.
+- Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per side
+- Before (`33c0c16`): dev 11/15 (blueberry-muffins 3/3, choc-pie-tea-towel
+  3/3, hundred-good-cookies 3/3, lemon-tea-bread 2/3, sweet-sour-pork 0/3),
+  holdout 15/15; every A run `STOP`, calls 1.
+- After (`21a5a48`): dev 14/15 (blueberry-muffins 3/3, choc-pie-tea-towel 3/3,
+  hundred-good-cookies 3/3, lemon-tea-bread 3/3, sweet-sour-pork 2/3),
+  holdout 15/15; every A run `STOP`, calls 1. Approach B sends the page
+  schema, whose request did not change: dev 9/15 → 9/15, holdout
+  10/15 → 9/15.
+- `npm run test:import` (31 tests, once per side): before 30/31 (failure:
+  translate judge, marmiton-boeuf-bourguignon → uk, which does not use the
+  import schema); after 30/31 (failure: dev sweet-sour-pork photo,
+  ingredient count 1 vs golden 9, `STOP` and not a runaway). `recipeGenerate.eval.ts` was 4/4 on both sides.
+  Summed photo runs, ocrCompare A plus test:import: dev 16/20 → 18/20,
+  holdout 20/20 → 20/20.
+- Decision: kept. Holdout did not drop and dev rose, which passes the
+  acceptance rule. The dev gain is mostly sweet-sour-pork, a card that
+  varies between runs (2/3 in the 2026-09-27 entry, 0/3 here before the
+  change), so the photo result is read as "no regression", not as a fix.
+  The generate probe is the evidence for the change.
+- Review check, dev split only: does the new order make photo imports
+  write a description or times the card does not have? (The photo prompt
+  allows them only if written; the order now asks for them before the
+  ingredients, and the judge treats them as soft.) A scratch script ran
+  `importFromImages` on the dev cards with the `21a5a48` request ("after")
+  and with `propertyOrdering` removed, which is byte-for-byte the
+  `33c0c16` request ("before"), counting fields present only. Three
+  batches, all recorded: every dev card 5× per side; then both
+  lemon-tea-bread and sweet-sour-pork 6× each per side; then both 8× each
+  per side. The second and third batches were to find out why "after" had
+  non-`ok` imports in the first. Sums, 53 imports per side (25 + 12 + 16):
+  - `description`, on cards whose golden has none (all five): before 0,
+    after 0.
+  - A time the golden does not have: before 11 (5 prep on
+    choc-pie-tea-towel and lemon-tea-bread; 6 cook, 5 of them on
+    hundred-good-cookies, 1 on sweet-sour-pork); after 5 (cook on
+    hundred-good-cookies, 5/5 on both sides). blueberry-muffins, whose
+    golden has a cook time, returned it in 5/5 on both sides, matching.
+  - Not `ok`: before 1 (sweet-sour-pork, `MAX_TOKENS` at 3,543 candidate
+    tokens, `parse_error`); after 3 (first batch, 1 lemon-tea-bread and 2
+    sweet-sour-pork, kind not recorded because the script did not record
+    it yet; the 28 later "after" imports on those cards, 14 per card, were
+    all `ok`). Summed with the dev photo runs of ocrCompare (15) and
+    test:import (5), where every A run was `ok` on both sides: dev only,
+    73 runs per side, 1/73 not `ok` before against 3/73 after. Too few to
+    tell apart, and worth watching.
+  - Read: the order did not add descriptions and wrote fewer invented
+    times, so the photo path keeps it.
+- Run by: agent, default model (`gemini-3.7-flash`).
+
 ## 2026-10-05 — Recipe from a brief: search as a research call, not on the structured call
 
 - Change: `generateFromBrief` (new, `docs/plans/recipe-generation.md`). With

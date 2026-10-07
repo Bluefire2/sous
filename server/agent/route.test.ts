@@ -108,7 +108,7 @@ describe('POST /api/agent gates', () => {
     const res = await agentPost(post(endless.body));
     expect(res.status).toBe(413);
     expect(endless.read()).toBeLessThan(MAX_AGENT_BODY_BYTES + 128 * 1024);
-    expect(endless.cancelled()).toBe(true);
+    expect(endless.cancelled()).toBe(false);
     expect(loadAgentLibrary).not.toHaveBeenCalled();
   });
 

@@ -1,7 +1,9 @@
 /**
  * A request body that never ends: a route that reads it whole never answers.
- * Body-cap tests use it to prove a route stops reading (and cancels) past its
- * limit instead of buffering forever.
+ * Body-cap tests use it to prove a route stops reading past its limit instead
+ * of buffering forever. A route leaves the rest uncancelled for the dispatcher
+ * to drop (`discardUnreadBody` in scripts/server.ts), which cancels it past its
+ * own bound.
  */
 export function endlessBody(): { body: ReadableStream<Uint8Array>; read: () => number; cancelled: () => boolean } {
   let bytes = 0;

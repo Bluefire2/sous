@@ -241,7 +241,8 @@ const MAX_SOURCE_CHARS = 60000;
 
 // NOTE: `api/chat.ts` still carries its own copy of this schema for
 // `update_recipe`. Keep the two in sync until chat gets the same treatment,
-// except `lang`: it is import-only and must not be copied into `api/chat.ts`.
+// except `lang` and `propertyOrdering`: they are import-only and must not be
+// copied into `api/chat.ts`, whose Gemini request shape is frozen (AGENTS.md).
 const RECIPE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -300,6 +301,28 @@ const RECIPE_SCHEMA: Schema = {
     },
   },
   required: ['title', 'servings', 'ingredientSections', 'steps', 'tags'],
+  // Times before the required lists, so a free-form number is never the last
+  // token: the lists always follow it, and the optional `notes` and `lang`
+  // after them are strings. Left to itself the model writes the required
+  // fields first and the optional ones after them, so `prepMinutes` came last
+  // and sometimes ran on (20.000000000000004, or zeros until MAX_TOKENS,
+  // which is a `parse_error`), and some runs dropped `description`, `notes`
+  // and `lang` (evals/EXPERIMENTS.md, 2026-10-06).
+  // `PAGE_RECIPE_SCHEMA` appends its two booleans to this order, so changing
+  // it changes the page and paste request too and needs measuring
+  // (evals/AGENTS.md).
+  propertyOrdering: [
+    'title',
+    'description',
+    'servings',
+    'prepMinutes',
+    'cookMinutes',
+    'ingredientSections',
+    'steps',
+    'tags',
+    'notes',
+    'lang',
+  ],
 };
 
 const RECIPE_OUTPUT_CONFIG = {
@@ -327,24 +350,11 @@ const PAGE_RECIPE_SCHEMA: Schema = {
     },
   },
   required: [...(RECIPE_SCHEMA.required ?? []), 'instructionsOnPage', 'ingredientsOnPage'],
-  // Times early and the two booleans last. Left to itself the model wrote
+  // The recipe order, then the two booleans. Without an order the model wrote
   // `prepMinutes` last, and a trailing number sometimes ran on until
   // MAX_TOKENS (`parse_error`) or came back as 5.000000000000001e-05;
   // a boolean cannot run on (evals/EXPERIMENTS.md, 2026-10-01).
-  propertyOrdering: [
-    'title',
-    'description',
-    'servings',
-    'prepMinutes',
-    'cookMinutes',
-    'ingredientSections',
-    'steps',
-    'tags',
-    'notes',
-    'lang',
-    'instructionsOnPage',
-    'ingredientsOnPage',
-  ],
+  propertyOrdering: [...(RECIPE_SCHEMA.propertyOrdering ?? []), 'instructionsOnPage', 'ingredientsOnPage'],
 };
 
 const PAGE_RECIPE_OUTPUT_CONFIG = { ...RECIPE_OUTPUT_CONFIG, responseSchema: PAGE_RECIPE_SCHEMA };
@@ -595,6 +605,31 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * Longest prep or cook time an import keeps: about 69 days, so a real cure,
+ * ferment or extract (21 days is 30,240) survives. It is not MCP's
+ * `RECIPE_LIMITS.maxMinutes` (10,000, about 7 days), which would drop those.
+ */
+export const MAX_IMPORT_MINUTES = 100_000;
+
+/**
+ * A duration as whole minutes, or `undefined` to drop it. Negative values and
+ * values that round to over `MAX_IMPORT_MINUTES` are dropped, which catches a
+ * large whole-number run-on (305106198964720960). A fractional run-on rounds to the number it
+ * started as (20.000000000000004 is 20), but a positive value that would
+ * round to 0 (5.000000000000001e-05) is dropped: no time is better than a
+ * wrong "0 min". 0 is kept, for a dish with no cooking, and -0 reads as 0
+ * (evals/EXPERIMENTS.md, 2026-10-06).
+ */
+function wholeMinutes(value: unknown): number | undefined {
+  const minutes = finiteNumber(value);
+  if (minutes === undefined || minutes < 0) return undefined;
+  const rounded = Math.round(minutes);
+  if (rounded > MAX_IMPORT_MINUTES) return undefined;
+  if (rounded === 0) return minutes > 0 ? undefined : 0;
+  return rounded;
+}
+
 function normalizeIngredient(item: unknown): ImportedIngredient | undefined {
   if (!isPlainObject(item)) return undefined;
   const itemText = nonEmptyString(item.item);
@@ -679,11 +714,11 @@ export function normalizeImportedRecipe(raw: unknown): ImportedRecipe | null {
   const notes = nonEmptyString(raw.notes);
   if (notes !== undefined) recipe.notes = notes;
 
-  const prepMinutes = finiteNumber(raw.prepMinutes);
-  if (prepMinutes !== undefined && prepMinutes >= 0) recipe.prepMinutes = prepMinutes;
+  const prepMinutes = wholeMinutes(raw.prepMinutes);
+  if (prepMinutes !== undefined) recipe.prepMinutes = prepMinutes;
 
-  const cookMinutes = finiteNumber(raw.cookMinutes);
-  if (cookMinutes !== undefined && cookMinutes >= 0) recipe.cookMinutes = cookMinutes;
+  const cookMinutes = wholeMinutes(raw.cookMinutes);
+  if (cookMinutes !== undefined) recipe.cookMinutes = cookMinutes;
 
   const lang = normalizeLang(raw.lang);
   if (lang !== undefined) recipe.lang = lang;

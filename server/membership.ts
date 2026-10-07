@@ -243,7 +243,16 @@ export class RequestBodyError extends Error {
   }
 }
 
-/** The body as text, or null when it is longer than `limit` bytes. Throws `RequestBodyError` when the body fails. */
+/**
+ * The body as text, or null when it is longer than `limit` bytes. Throws
+ * `RequestBodyError` when the body fails. Past the limit it stops reading and
+ * releases the body without cancelling it: in the server, cancelling
+ * `Readable.toWeb(nodeReq)` aborts the request, and Node closes the connection
+ * under the arriving upload, so a client still uploading usually sees a reset
+ * instead of the 413. The dispatcher (`dispatchFetch` in
+ * `scripts/server.ts`) drops what is left, within a bound, before it answers.
+ * Nothing past the limit is kept here.
+ */
 export async function readBoundedText(req: Request, limit: number): Promise<string | null> {
   const contentLength = req.headers.get('content-length');
   if (contentLength !== null) {
@@ -272,7 +281,7 @@ export async function readBoundedText(req: Request, limit: number): Promise<stri
     if (value) {
       total += value.byteLength;
       if (total > limit) {
-        await reader.cancel();
+        reader.releaseLock();
         return null;
       }
       chunks.push(value);
