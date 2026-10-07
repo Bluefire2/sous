@@ -34,6 +34,51 @@ export function recipeForChat(recipe: Recipe): Recipe {
   return posted;
 }
 
+/**
+ * The recipe fields an Ask proposal may leave out (the update_recipe schema
+ * in `api/chat.ts`). `title` is not one: a reply without a title is not
+ * taken as a recipe, so `{"steps":[]}` cannot become an edit that clears
+ * every step.
+ */
+const FILLED_PROPOSAL_FIELDS = [
+  'description',
+  'servings',
+  'prepMinutes',
+  'cookMinutes',
+  'ingredientSections',
+  'steps',
+  'tags',
+  'notes',
+] as const;
+
+/**
+ * The proposal with every field the model left out, except the title, taken
+ * from the viewed recipe, so a missing field reads as "unchanged". The schema asks for the
+ * complete recipe and marks some fields required, but Gemini does not
+ * enforce `required` on function-call arguments and often omits unchanged
+ * ones (seen with `servings` on "split the steps for two cooks"). Without
+ * this, a missing `servings` dropped the whole proposal (no text, no Apply),
+ * and any other missing field would be cleared by Apply without showing in
+ * the diff.
+ *
+ * Only an absent key is filled. A present but invalid value is still
+ * rejected by `normalizeRecipeDraft`, and an empty string still clears an
+ * optional text field. One known gap: if the model scales the quantities
+ * but leaves out `servings`, the old count is kept.
+ */
+export function withUnchangedFields(proposal: unknown, recipe: Recipe): unknown {
+  if (typeof proposal !== 'object' || proposal === null || Array.isArray(proposal)) {
+    return proposal;
+  }
+  const filled: Record<string, unknown> = { ...proposal };
+  for (const field of FILLED_PROPOSAL_FIELDS) {
+    if (!(field in filled) && recipe[field] !== undefined) {
+      filled[field] = recipe[field];
+    }
+  }
+  return filled;
+}
+
 export interface ChatReply {
   text: string;
   /** Present when the assistant proposed a recipe modification. */
@@ -94,7 +139,9 @@ export async function streamChatReply(params: {
   let proposedRecipe: RecipeDraft | undefined;
   if (complete && parts[1]) {
     try {
-      proposedRecipe = normalizeRecipeDraft(JSON.parse(parts[1]));
+      proposedRecipe = normalizeRecipeDraft(
+        withUnchangedFields(JSON.parse(parts[1]), params.recipe),
+      );
     } catch {
       // Truncated/malformed proposal — keep the text reply.
     }

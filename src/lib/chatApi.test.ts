@@ -185,6 +185,88 @@ describe('streamChatReply', () => {
     expect(reply.truncated).toBe(false);
   });
 
+  it('keeps every field the proposal leaves out, so Apply clears nothing it did not show', async () => {
+    const recipe: Recipe = {
+      ...RECIPE,
+      description: 'Simple.',
+      prepMinutes: 5,
+      cookMinutes: 20,
+      notes: 'Salt to taste.',
+    };
+    const proposal = JSON.stringify({ title: 'Soup', steps: [{ text: 'Boil well.' }] });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(streamFromChunks([`\x1E${proposal}\x1E`]), { status: 200 })),
+    );
+
+    const reply = await streamChatReply({ messages: [], recipe, onDelta: () => {} });
+
+    expect(reply.proposedRecipe).toEqual({
+      title: 'Soup',
+      description: 'Simple.',
+      servings: 4,
+      prepMinutes: 5,
+      cookMinutes: 20,
+      ingredientSections: [{ items: [{ item: 'water' }] }],
+      steps: [{ text: 'Boil well.' }],
+      tags: ['lunch'],
+      notes: 'Salt to taste.',
+    });
+  });
+
+  it('still clears an optional field the proposal empties', async () => {
+    const recipe: Recipe = { ...RECIPE, notes: 'Salt to taste.' };
+    const proposal = JSON.stringify({ title: 'Soup', notes: '' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(streamFromChunks([`\x1E${proposal}\x1E`]), { status: 200 })),
+    );
+
+    const reply = await streamChatReply({ messages: [], recipe, onDelta: () => {} });
+
+    expect(reply.proposedRecipe).not.toHaveProperty('notes');
+    expect(reply.proposedRecipe?.steps).toEqual(RECIPE.steps);
+  });
+
+  it('takes servings from the viewed recipe when the proposal leaves it out', async () => {
+    // Gemini does not enforce the schema's `required` on function-call
+    // arguments; this is the shape it returned for "split the steps".
+    const proposal = JSON.stringify({
+      title: 'Soup',
+      ingredientSections: [{ items: [{ item: 'water' }] }],
+      steps: [{ text: 'Boil.' }],
+      tags: ['lunch'],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(streamFromChunks([`\x1E${proposal}\x1E`]), { status: 200 })),
+    );
+
+    const reply = await streamChatReply({ messages: [], recipe: RECIPE, onDelta: () => {} });
+
+    expect(reply.text).toBe('');
+    expect(reply.truncated).toBe(false);
+    expect(reply.proposedRecipe).toEqual({
+      title: 'Soup',
+      servings: 4,
+      ingredientSections: [{ items: [{ item: 'water' }] }],
+      steps: [{ text: 'Boil.' }],
+      tags: ['lunch'],
+    });
+  });
+
+  it('still drops a proposal whose servings is present but invalid', async () => {
+    const proposal = JSON.stringify({ title: 'Soup', servings: 0, steps: [], tags: [] });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(streamFromChunks([`\x1E${proposal}\x1E`]), { status: 200 })),
+    );
+
+    const reply = await streamChatReply({ messages: [], recipe: RECIPE, onDelta: () => {} });
+
+    expect(reply.proposedRecipe).toBeUndefined();
+  });
+
   it('rejects unauthorized and server error responses', async () => {
     const invalidateSpy = vi.spyOn(session, 'invalidateSession').mockImplementation(() => {});
     vi.stubGlobal(

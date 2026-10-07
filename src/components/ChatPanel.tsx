@@ -537,14 +537,21 @@ export default function ChatPanel({
       const assistantContent =
         reply.text.trim() ||
         (reply.proposedRecipe ? t('chat.proposalIntro') : '');
+      const emptyReply = !reply.truncated && assistantContent === '';
       await chatStore.append({
         recipeId: recipe.id,
         role: 'assistant',
+        // A complete reply with no text and no usable proposal (one that
+        // normalizeRecipeDraft rejected) must not be saved as an empty bubble
+        // that stays in the thread and goes back to the model as an empty turn.
         content: reply.truncated
           ? `${assistantContent}\n\n${t('chat.replyCutOff')}`
-          : assistantContent,
+          : assistantContent || `⚠️ ${t('common.somethingWentWrong')}`,
         proposedRecipe: reply.proposedRecipe,
       });
+      if (emptyReply) {
+        setError(t('common.somethingWentWrong'));
+      }
     } catch (e) {
       // Half an answer beats a question left hanging in the thread. An abort is
       // the user's own doing, so it needs no bubble of its own and no error.
