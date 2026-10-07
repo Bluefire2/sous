@@ -359,7 +359,7 @@ describe('extensionImport body size', () => {
       error: 'Page was too large to import.',
       code: 'import-too-large',
     });
-    expect(endless.cancelled()).toBe(true);
+    expect(endless.cancelled()).toBe(false);
     expect(endless.read()).toBeLessThan(5_000_000);
     expect(recipeImport.importFromHtml).not.toHaveBeenCalled();
     expect(calls).toHaveLength(0);

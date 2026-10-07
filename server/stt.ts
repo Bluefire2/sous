@@ -152,7 +152,9 @@ async function readCappedBytes(
     }
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
+      // Released, not cancelled: the dispatcher drops the rest so the 413
+      // reaches the client (see readBoundedText in membership.ts).
+      reader.releaseLock();
       return { kind: 'too-large' };
     }
     chunks.push(value);

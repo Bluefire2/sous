@@ -8,14 +8,16 @@
  * endpoints, photo reads) stay with `.github/scripts/smoke-server.sh`.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, request as httpRequest, type Server } from 'node:http';
+import { Agent as HttpAgent, createServer, request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MAX_IMPORT_BODY_BYTES } from '../server/importRoute.ts';
 import { readBoundedText, RequestBodyError } from '../server/membership.ts';
+import { SESSION_COOKIE_NAME, signSession } from '../server/session.ts';
 import * as sync from '../server/sync.ts';
-import { apiRoutes, createRequestListener } from './server.ts';
+import { apiRoutes, createRequestListener, UNREAD_BODY_LIMITS } from './server.ts';
 
 vi.mock('../server/sync.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../server/sync.ts')>();
@@ -94,6 +96,73 @@ function rawStatus(base: string, path: string): Promise<number> {
     });
     req.on('error', reject);
     req.end();
+  });
+}
+
+type UploadResult = ({ status: number; body: string; reusedSocket: boolean } | { error: string }) & {
+  /** Bytes written when the upload settled. */
+  sent: number;
+};
+
+/**
+ * A POST of `bytes` bytes (forever when `Infinity`) written as fast as the
+ * socket takes them, chunked unless `contentLength` is set. Resolves with the
+ * response, the client's error code when the connection fails first, or
+ * `timeout` after 4 s, so a server that never answers fails the test rather
+ * than hanging it. An upload still being written when it settles is stopped.
+ */
+function upload(
+  base: string,
+  path: string,
+  options: { bytes: number; contentLength?: boolean; agent?: HttpAgent | false; headers?: Record<string, string> },
+): Promise<UploadResult> {
+  const { hostname, port } = new URL(base);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    ...options.headers,
+  };
+  if (options.contentLength) {
+    headers['Content-Length'] = String(options.bytes);
+  }
+  return new Promise((resolve) => {
+    let sent = 0;
+    let settled = false;
+    const settle = (result: { status: number; body: string; reusedSocket: boolean } | { error: string }): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ ...result, sent });
+      if (sent < options.bytes) {
+        req.destroy();
+      }
+    };
+    const timer = setTimeout(() => settle({ error: 'timeout' }), 4_000);
+    const req = httpRequest(
+      { hostname, port, path, method: 'POST', headers, agent: options.agent ?? false },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => (body += chunk));
+        res.on('end', () => settle({ status: res.statusCode ?? 0, body, reusedSocket: req.reusedSocket }));
+        res.on('error', (err: NodeJS.ErrnoException) => settle({ error: err.code ?? err.message }));
+      },
+    );
+    req.on('error', (err: NodeJS.ErrnoException) => settle({ error: err.code ?? err.message }));
+    const piece = 'a'.repeat(16 * 1024);
+    const pump = (): void => {
+      while (sent < options.bytes && !req.destroyed && !settled) {
+        const next = piece.slice(0, Math.min(piece.length, options.bytes - sent));
+        sent += next.length;
+        if (!req.write(next)) {
+          req.once('drain', pump);
+          return;
+        }
+      }
+      req.end();
+    };
+    pump();
   });
 }
 
@@ -305,6 +374,74 @@ describe('static files', () => {
       expect((await send(apiBase, 'GET', path)).status, path).toBe(404);
     }
   });
+});
+
+// `POST /api/access-request` reads up to 4096 bytes of form body before any
+// store read, and `POST /api/import` refuses a caller with no cookie before
+// reading the body at all. 4 MiB is far more than the socket buffers hold, so
+// the client is still uploading when the route answers.
+describe('a route that answers before the body is read', () => {
+  const OVER = 4 * 1024 * 1024;
+
+  it('delivers the 413 for a chunked body over the limit instead of resetting', async () => {
+    expect(await upload(apiBase, '/api/access-request', { bytes: OVER })).toEqual({
+      status: 413,
+      body: 'Payload too large',
+      reusedSocket: false,
+      sent: OVER,
+    });
+  });
+
+  it('delivers import-body-too-large to an owner whose chunked import is over the cap', async () => {
+    const cookie = `${SESSION_COOKIE_NAME}=${signSession({ sub: 'owner-sub', email: 'owner@example.com' }, Date.now())}`;
+    const result = await upload(apiBase, '/api/import', {
+      bytes: MAX_IMPORT_BODY_BYTES + 1024 * 1024,
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    });
+    expect(result).toMatchObject({ status: 413 });
+    expect(JSON.parse((result as { body: string }).body)).toMatchObject({ code: 'import-body-too-large' });
+  });
+
+  it('delivers the 413 for a Content-Length over the limit', async () => {
+    expect(await upload(apiBase, '/api/access-request', { bytes: OVER, contentLength: true })).toMatchObject({
+      status: 413,
+      body: 'Payload too large',
+    });
+  });
+
+  it('delivers a refusal from a route that never reads the body', async () => {
+    expect(await upload(apiBase, '/api/import', { bytes: OVER })).toMatchObject({ status: 401 });
+  });
+
+  it('keeps a kept-alive connection usable after the 413', async () => {
+    const agent = new HttpAgent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const first = await upload(apiBase, '/api/access-request', { bytes: OVER, agent });
+      const second = await upload(apiBase, '/api/access-request', { bytes: OVER, agent });
+      expect(first).toMatchObject({ status: 413, reusedSocket: false });
+      expect(second).toMatchObject({ status: 413, reusedSocket: true });
+    } finally {
+      agent.destroy();
+    }
+  }, 15_000);
+
+  it('stops reading a body that never ends, and keeps answering', async () => {
+    const result = await upload(apiBase, '/api/access-request', { bytes: Infinity });
+    // Past the bound the server cancels the body and closes the connection
+    // under the upload. Whether the 413 written just before survives that
+    // reset depends on the client's system (Windows drops it, Linux keeps it).
+    if ('error' in result) {
+      expect(result.error).not.toBe('timeout');
+    } else {
+      expect(result.status).toBe(413);
+    }
+    // The client settled soon after the server stopped reading, not after an
+    // endless upload; the slack covers socket buffers.
+    expect(result.sent).toBeGreaterThan(UNREAD_BODY_LIMITS.bytes);
+    expect(result.sent).toBeLessThan(2 * UNREAD_BODY_LIMITS.bytes);
+    // A small body with no access token is read in full and refused as expired.
+    expect(await upload(apiBase, '/api/access-request', { bytes: 10 })).toMatchObject({ status: 400 });
+  }, 15_000);
 });
 
 describe('a handler that throws', () => {

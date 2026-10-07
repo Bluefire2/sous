@@ -296,9 +296,8 @@ async function handleRequest(
 
 /**
  * Whether the request was cut off before its body finished arriving. Usually
- * the client hung up mid-upload; the connection also ends this way when a
- * reader cancels the body (`readBoundedText` past its limit) or Node's request
- * timeout fires. A route that throws then failed on the body it was reading
+ * the client hung up mid-upload; Node's request timeout ends it the same way.
+ * A route that throws then failed on the body it was reading
  * (`readBoundedText`'s `RequestBodyError`, or Node's ECONNRESET "aborted"
  * from another reader), and the connection is gone, so the dispatcher does
  * not log it or send a 500. A request whose body arrived in full is never
@@ -459,7 +458,76 @@ async function dispatchFetch(
   });
 
   const response = await handler(request);
+  if (!nodeReq.complete) {
+    await discardUnreadBody(request.body, declaredLength(nodeReq));
+  }
   await writeFetchResponse(nodeRes, response);
+}
+
+/** How much of a body a route left unread the dispatcher drops before answering. */
+export const UNREAD_BODY_LIMITS = { bytes: 16 * 1024 * 1024, ms: 10_000 };
+
+/** The request's Content-Length, or null when it has none (a chunked body) or it is not a number. */
+function declaredLength(nodeReq: IncomingMessage): number | null {
+  const raw = nodeReq.headers['content-length'];
+  if (raw === undefined || !/^\d+$/.test(raw)) {
+    return null;
+  }
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
+ * Reads and drops the rest of a request body the route answered without
+ * reading to the end: one over a route's limit (`readBoundedText` stops there),
+ * or one refused before it was read (a 401, a 413 by Content-Length).
+ * Answered with the upload still arriving, a `Connection: close` request has
+ * its socket closed with data unread, which resets the connection and, on
+ * some systems (Windows), throws the answer away; a kept-alive one waits on a
+ * body nobody reads, so the client hangs. Only the current chunk is held.
+ *
+ * A client may not hold the server to an endless upload: a body that declares
+ * more than `limits.bytes` is not drained at all, and past `limits.bytes`
+ * dropped or `limits.ms` in total the body is cancelled. Cancelling aborts the
+ * request; Node still writes the answer and then closes the connection under
+ * the arriving upload, so the client may see a reset instead of the answer.
+ * A body a route still holds is left alone, and a client that hangs up ends
+ * the drain.
+ */
+export async function discardUnreadBody(
+  body: ReadableStream<Uint8Array> | null,
+  declared: number | null = null,
+  limits: { bytes: number; ms: number } = UNREAD_BODY_LIMITS,
+): Promise<void> {
+  if (body === null || body.locked) {
+    return;
+  }
+  if (declared !== null && declared > limits.bytes) {
+    await body.cancel().catch(() => {});
+    return;
+  }
+  const reader = body.getReader();
+  const timer = setTimeout(() => {
+    void reader.cancel().catch(() => {});
+  }, limits.ms);
+  try {
+    let dropped = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return;
+      }
+      dropped += value.byteLength;
+      if (dropped > limits.bytes) {
+        await reader.cancel();
+        return;
+      }
+    }
+  } catch {
+    // The client hung up mid-upload; the response goes nowhere either way.
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
