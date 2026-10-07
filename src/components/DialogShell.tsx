@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useVisualViewport } from '../lib/useVisualViewport';
 
 const OPENER_SELECTOR = 'button, a, input, textarea, select';
 
@@ -134,8 +135,19 @@ function DialogFrame({
     event.preventDefault();
   };
 
+  // Overrides the overlay's inset-0 so it covers what is visible, not the
+  // part of the layout viewport under the on-screen keyboard.
+  const viewport = useVisualViewport();
+  const fit = viewport
+    ? { top: viewport.top, height: viewport.height, bottom: 'auto' }
+    : undefined;
+
   return (
-    <div ref={shellRef} className={overlayClassName} style={{ pointerEvents: 'auto' }}>
+    <div
+      ref={shellRef}
+      className={overlayClassName}
+      style={{ pointerEvents: 'auto', ...fit }}
+    >
       <button
         type="button"
         className="flex-1 bg-black/40"
