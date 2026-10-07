@@ -230,12 +230,27 @@ export function storeUnavailable(): Response {
 }
 
 /**
- * The body as text, or null when it is longer than `limit` bytes. Past the
- * limit it stops reading and releases the body without cancelling it: in the
- * server, cancelling `Readable.toWeb(nodeReq)` destroys the socket, and the
- * 413 never reaches a client that is still uploading. The dispatcher
- * (`dispatchFetch` in `scripts/server.ts`) drops what is left, within a bound,
- * before it answers. Nothing past the limit is kept here.
+ * `readBoundedText` throws this when the request body fails partway. In the
+ * server the body is `Readable.toWeb(nodeReq)`, which errors when the client
+ * closes the connection mid-upload (Node's `Error('aborted')`, ECONNRESET):
+ * the client's doing, not a server failure. The message is fixed and the
+ * original error is not kept, so it is safe to log.
+ */
+export class RequestBodyError extends Error {
+  constructor() {
+    super('Request body could not be read');
+    this.name = 'RequestBodyError';
+  }
+}
+
+/**
+ * The body as text, or null when it is longer than `limit` bytes. Throws
+ * `RequestBodyError` when the body fails. Past the limit it stops reading and
+ * releases the body without cancelling it: in the server, cancelling
+ * `Readable.toWeb(nodeReq)` destroys the socket, and the 413 never reaches a
+ * client that is still uploading. The dispatcher (`dispatchFetch` in
+ * `scripts/server.ts`) drops what is left, within a bound, before it answers.
+ * Nothing past the limit is kept here.
  */
 export async function readBoundedText(req: Request, limit: number): Promise<string | null> {
   const contentLength = req.headers.get('content-length');
@@ -256,7 +271,9 @@ export async function readBoundedText(req: Request, limit: number): Promise<stri
   let total = 0;
 
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await reader.read().catch(() => {
+      throw new RequestBodyError();
+    });
     if (done) {
       break;
     }

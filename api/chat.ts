@@ -208,6 +208,9 @@ export interface ChatRequestBody {
 // follows readBoundedText in server/membership.ts (past the limit it releases
 // the body for the dispatcher to drop rather than cancelling it). They are
 // copied, not imported, for the same Vercel reason as the session gate above.
+// Unlike readBoundedText, the copy rethrows a failed body read as is, not as
+// RequestBodyError; on Cloud Run the dispatcher's isRequestAbort
+// (scripts/server.ts) keeps a client hang-up mid-upload out of the log.
 
 /**
  * Photos per message. The client sends photos only on the newest message,

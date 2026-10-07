@@ -1,6 +1,7 @@
 import type { Content } from '@google/genai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeImportDeps } from '../test/fakeGemini.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
 import { fakePageFetch } from '../test/fakePageFetch.ts';
 import {
   IMPORT_IMAGE_TYPES,
@@ -675,6 +676,36 @@ describe('POST /api/import log line', () => {
     await post(undefined, undefined, { rawBody: '{' });
     expect(importLogLines().map((line) => line.entry)).toEqual([
       expect.objectContaining({ sub: 'sub-1', outcome: 'bad_request', status: 400 }),
+    ]);
+  });
+});
+
+describe('POST /api/import when the client hangs up mid-upload', () => {
+  it('answers 400 and logs aborted, never a 500, a throw, or the error', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { deps, calls } = fakeImportDeps(JSON.stringify(RECIPE));
+    const response = await importPost(
+      abortedRequest('http://localhost/api/import'),
+      { authorizedSub: 'sub-1' },
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Bad request', code: 'bad-request' });
+    expect(calls).toHaveLength(0);
+    expect(importLogLines().map((line) => line.entry)).toEqual([
+      { event: 'import', sub: 'sub-1', outcome: 'aborted', status: 400, ms: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('SECRET');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('still treats a body it cannot start reading as a throw, not an abort', async () => {
+    const req = new Request('http://localhost/api/import', { method: 'POST', body: '{}' });
+    req.body?.getReader();
+    const err = await importPost(req, { authorizedSub: 'sub-1' }).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/^Import failed: TypeError; message withheld$/);
+    expect(importLogLines().map((line) => line.entry)).toEqual([
+      expect.objectContaining({ outcome: 'threw', status: 500 }),
     ]);
   });
 });

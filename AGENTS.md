@@ -63,7 +63,14 @@ a brief `search` and `searchQueries` (a count), the outcome, counts, a thrown
 error's numeric `status`, and timing. Never the email, recipe or pasted text,
 the brief, the search queries, HTML, photo bytes, a query string, or an error
 message. A Gemini throw on a page or paste import is a logged `model_error`,
-not a throw. Any other throw from either
+not a throw. A body the client abandons mid-upload (`readBoundedText` throws
+`RequestBodyError`) is a logged `aborted` 400, also not a throw; the
+dispatcher logs nothing for a route that throws on a request whose body was
+cut off before it arrived (`isRequestAbort`: a client hang-up, or a body
+cancelled mid-upload). Past its limit, `readBoundedText` releases the body
+rather than cancelling it (cancelling destroys the socket, so the client
+never sees the 413); `dispatchFetch` drops the unread rest, within a bound,
+before it answers (`discardUnreadBody`). Any other throw from either
 route is rethrown as `sanitizedImportError` (class name and status only),
 because the dispatcher in `scripts/server.ts` `console.error`s whatever
 escapes and an SDK message can quote the request; never let the original
