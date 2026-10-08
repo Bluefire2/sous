@@ -26,7 +26,8 @@ summary, approach A.
 
 - Change: `DEFAULT_MODEL` in `server/recipeImport.ts` and every other
   `CHAT_MODEL` default (chat, dictation, the assistant, `evals/judge.ts`)
-  becomes `gemini-3.8-flash` (`b6b2409`, PR #173). Prompts, schemas,
+  becomes `gemini-3.8-flash` (`b6b2409`, PR #173; import reverted to 3.7 in
+  `35780b7`, see Decision). Prompts, schemas,
   checks, retries, thinking and goldens are unchanged.
 - Reason (not fixture-specific): move to the newer Flash model.
 - Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per
@@ -44,7 +45,8 @@ summary, approach A.
 - Caveat: `evals/judge.ts` also defaults to `CHAT_MODEL`, so the judge
   moved with the importer and the difference mixes the two.
 - Isolating the importer (owner's call, a separate measurement, not a
-  re-run for a better number): the same command with
+  re-run for a better number), at `61a18e5` (the same code as `b6b2409`): the
+  same command with
   `CHAT_MODEL=gemini-3.8-flash` and the eval judge in `evals/judge.ts`
   pinned to `gemini-3.7-flash` (a local edit, not committed), so only the
   importer differs from Before: dev 8/15 (blueberry-muffins 1/3,
