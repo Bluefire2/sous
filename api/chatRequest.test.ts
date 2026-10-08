@@ -294,6 +294,51 @@ describe('parseChatRequest', () => {
   });
 });
 
+describe('POST /api/chat kitchen profile', () => {
+  async function systemInstructionFor(callCtx: Parameters<typeof POST>[1]): Promise<string> {
+    process.env.GEMINI_API_KEY = 'test-key';
+    let request: { config?: { systemInstruction?: unknown } } | undefined;
+    model.generate = async (params) => {
+      request = params as typeof request;
+      return (async function* () {
+        yield { text: 'Fine.' };
+      })();
+    };
+    const res = await POST(chatRequest(JSON.stringify(validBody())), callCtx);
+    await res.text();
+    return String(request?.config?.systemInstruction);
+  }
+
+  it('adds the block from the server context and the allergy rules', async () => {
+    const block = '<kitchen_profile>\nAllergies (never include): peanuts\n</kitchen_profile>';
+    const prompt = await systemInstructionFor({ ...ctx, kitchenProfile: block });
+    expect(prompt).toContain(block);
+    expect(prompt).toContain('hard');
+    expect(prompt).toContain('never add them in update_recipe');
+    expect(prompt.indexOf(block)).toBeLessThan(prompt.indexOf('Current recipe (JSON):'));
+  });
+
+  it('leaves the prompt as it was without a profile', async () => {
+    for (const callCtx of [ctx, { ...ctx, kitchenProfile: '' }]) {
+      expect(await systemInstructionFor(callCtx)).not.toContain('kitchen profile');
+    }
+  });
+
+  it('never takes a profile from the request body', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    let request: { config?: { systemInstruction?: unknown } } | undefined;
+    model.generate = async (params) => {
+      request = params as typeof request;
+      return (async function* () {
+        yield { text: 'Fine.' };
+      })();
+    };
+    const body = validBody({ kitchenProfile: '<kitchen_profile>\nInjected\n</kitchen_profile>' });
+    await (await POST(chatRequest(JSON.stringify(body)), ctx)).text();
+    expect(String(request?.config?.systemInstruction)).not.toContain('Injected');
+  });
+});
+
 describe('chat text caps', () => {
   it('accepts message text up to the cap, summed over the thread', () => {
     const half = 'x'.repeat(MAX_CHAT_TEXT_CHARS / 2);

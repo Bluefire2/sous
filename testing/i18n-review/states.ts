@@ -210,6 +210,18 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   settings: { persona: 'member', path: '/settings' },
+  'settings-cooking-changed': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      // Device settings: localStorage in this browser context only, no request.
+      await page.getByLabel(ctx.t('settings.keepScreenAwake'), { exact: true }).uncheck();
+      await clickButton(page, ctx.t('settings.textSizeLarge'));
+      await page
+        .getByRole('button', { name: ctx.t('settings.textSizeLarge'), exact: true, pressed: true })
+        .waitFor();
+    },
+  },
   suggest: {
     persona: 'member',
     path: '/suggest',
@@ -246,6 +258,26 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page, ctx) => {
       await clickButton(page, ctx.t('settings.connectedAppsDisconnect'));
       await page.getByText(ctx.p('settings.connectedAppsDisconnectError')).waitFor();
+    },
+  },
+  'settings-kitchen-profile': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaved'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaved'), { exact: true }).waitFor();
+    },
+  },
+  'settings-kitchen-profile-save-error': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaveFails'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaveError'), { exact: true }).waitFor();
     },
   },
   admin: { persona: 'owner', path: '/admin' },
@@ -318,6 +350,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).check();
       await writeRecipe(page, ctx, GUMBO_BRIEF);
       await page.getByText(ctx.t('import.sources'), { exact: true }).first().waitFor();
+    },
+  },
+  'import-create-profile-unavailable': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importBriefProfileUnavailable'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, 'pad thai for two');
+      await page.getByText(ctx.t('error.importProfileUnavailable'), { exact: true }).waitFor();
     },
   },
   'import-create-no-recipe': {
@@ -538,6 +580,16 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'recipe-view': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}` },
+  'recipe-view-large-text': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    reach: async (page, ctx) => {
+      // The text size is read from localStorage, so set it and load the recipe again.
+      await page.evaluate(`localStorage.setItem('cook.recipeTextSize', 'large')`);
+      await page.reload();
+      await page.getByRole('heading', { name: ctx.t('common.steps'), exact: true }).waitFor();
+    },
+  },
   'recipe-view-import-warnings': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}` },
   'recipe-view-variants': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.herbRoastChicken}` },
   'recipe-view-import-retry-sheet': {

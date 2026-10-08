@@ -446,9 +446,14 @@ describe('architecture lock', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const serverTs = readFileSync(join(repoRoot, 'scripts/server.ts'), 'utf8');
-    // withChatBudget (server/llmBudget.ts) runs inside the gate, never around it.
-    expect(serverTs.includes('withMembership(withChatBudget(chatPost))')).toBe(true);
+    // The kitchen profile read and withChatBudget (server/llmBudget.ts) run
+    // inside the gate, never around it; the profile is read before the budget.
+    expect(serverTs.includes('withMembership(withKitchenProfile(withChatBudget(chatPost)))')).toBe(true);
     expect(serverTs.includes('withMembership(importPost)')).toBe(true);
+    expect(serverTs.includes('withMembership(kitchenProfileGet)')).toBe(true);
+    expect(serverTs.includes('withMembership(kitchenProfilePost)')).toBe(true);
+    expect(serverTs.includes('handler: kitchenProfile')).toBe(false);
+    expect(serverTs.includes('handler: withKitchenProfile')).toBe(false);
     expect(serverTs.includes('handler: chatPost')).toBe(false);
     expect(serverTs.includes('handler: importPost')).toBe(false);
     expect(serverTs.includes('withMembership(importFeedbackPost)')).toBe(true);
@@ -465,14 +470,18 @@ describe('architecture lock', () => {
   // access, to name the report's sender and its log line; it never decides
   // access either. The feature request route (server/featureRequest.ts) does
   // the same for a suggestion. The chat budget (server/llmBudget.ts) reads it
-  // once, inside withMembership, only to key the member's daily spend.
-  it('assertion 6: authorizedSub in exactly six files with fixed counts', () => {
+  // once, inside withMembership, only to key the member's daily spend. The
+  // kitchen profile (server/kitchenProfile.ts) reads it in its GET and POST
+  // handlers and in the chat wrapper, all behind withMembership, only to name
+  // whose profile to read or write.
+  it('assertion 6: authorizedSub in exactly seven files with fixed counts', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const expectedCounts: Record<string, number> = {
       'api/chat.ts': 5,
       'server/featureRequest.ts': 1,
       'server/importFeedback.ts': 1,
+      'server/kitchenProfile.ts': 3,
       'server/importRoute.ts': 1,
       'server/llmBudget.ts': 1,
       'server/membership.ts': 2,

@@ -60,6 +60,8 @@ const ANONYMOUS_STATUS: Record<string, number> = {
   'OPTIONS /api/extension/import': 403,
   'GET /api/mcp/grants': 401,
   'POST /api/mcp/grants/revoke': 401,
+  'GET /api/settings/kitchen': 401,
+  'POST /api/settings/kitchen': 401,
 };
 
 const UUID = '0b7c9a52-3d7e-4a43-9a43-2f4c5f6f7a10';

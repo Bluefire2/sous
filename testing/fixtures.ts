@@ -473,3 +473,28 @@ export function viewerSharedChat(now: number): ChatMessage[] {
     },
   ];
 }
+
+/**
+ * Kitchen profiles (`docs/plans/kitchen-profile.md`), saved through the real
+ * route. `member` is allergic to eggs, which the egg tarts and banana bread
+ * contain, so Ask has something to flag. `viewer` has one so the deletion
+ * check removes a settings document.
+ */
+export const KITCHEN_PROFILES = {
+  member: {
+    allergens: ['eggs'],
+    diets: [],
+    avoid: 'cilantro',
+    dislikes: 'olives',
+    equipment: 'No stand mixer.',
+    notes: '',
+  },
+  viewer: {
+    allergens: [],
+    diets: ['vegetarian'],
+    avoid: '',
+    dislikes: '',
+    equipment: '',
+    notes: 'Cooking for one.',
+  },
+} as const;

@@ -29,6 +29,7 @@ import type { Recipe } from '../lib/types';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
 import { usePublicLink } from '../lib/usePublicLink';
 import { usePublicJoin } from '../lib/usePublicJoin';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 
 /**
@@ -152,6 +153,7 @@ export function PublicRecipeBody({
 }) {
   const t = useT();
   const locale = useLocale();
+  const textSize = useRecipeTextSize();
   const [servings, setServings] = useState(recipe.servings);
   const [currentStep, setCurrentStep] = useState(0);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -213,6 +215,7 @@ export function PublicRecipeBody({
           onServings={setServings}
           checkedKeys={checkedKeys}
           onToggle={toggleChecked}
+          textSize={textSize}
         />
       </div>
 
@@ -221,6 +224,7 @@ export function PublicRecipeBody({
         displayRecipe={recipe}
         currentStep={currentStep}
         onStep={setCurrentStep}
+        textSize={textSize}
       />
 
       {recipe.notes && <NotesSection notes={recipe.notes} />}

@@ -132,6 +132,18 @@ section in the plan with `FeatureRequestDoc`. Suggestions and import reports
 sit outside `users/{uid}`; `scripts/delete-account-data.ts` removes them with
 the rest of an account (see Account deletion).
 
+Kitchen profile (`docs/plans/kitchen-profile.md`, `server/kitchenProfile.ts`):
+allergen and diet codes plus four short text fields a member sets in
+Settings, stored at `users/{sub}/settings/kitchen` (`GET`/`POST
+/api/settings/kitchen`, `withMembership`). Ask, the library assistant, and
+Generate read it on the server for the session `sub`, never from a request
+body. Chat gets it through `withKitchenProfile` in `scripts/server.ts`,
+because `api/chat.ts` cannot import siblings. A failed read is 503, never a
+reply without the allergies. The research call of a searched brief never
+sees it, and page, paste, and photo import never read it. No log line holds
+any of it. It is not in backups and not on MCP. `/privacy` and `/terms`
+describe it; change them with it.
+
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
 then `--apply`), then the GCS photo prefix. `server/accountDeletion.ts`
@@ -770,9 +782,11 @@ does not record branches or whether something is deployed.
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
 | `docs/plans/failed-cook-tap-lww.md` | Merged (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
+| `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -923,7 +937,9 @@ the `.cursor/skills/i18n-visual-review` skill.
 
 `/about` is a short public page that says what the app is for. `/privacy`
 and `/terms` describe Firestore + GCS and that there is no on-device recipe
-database. Theme preference, the UI language (`cook.locale`), and
+database. Theme preference, the UI language (`cook.locale`), the
+cooking-screen settings (`cook.wakeLock`, `cook.recipeTextSize`; device-local,
+never synced, `docs/plans/cooking-screen-settings.md`), and
 `cook.session` stay in localStorage. Do not
 describe IndexedDB, offline edits, or a local library. The Chrome extension
 sends rendered page HTML, possibly from a page behind a login, to the server
