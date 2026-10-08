@@ -15,6 +15,7 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
+import { readKitchenProfileBlock, type KitchenProfileStore } from './kitchenProfile.ts';
 import {
   RequestBodyError,
   readBoundedText,
@@ -134,6 +135,7 @@ const BODY_TOO_LARGE = "That's too large to import — try fewer photos.";
 const PHOTOS_NOT_A_RECIPE = "Couldn't find a recipe in those photos.";
 const MODEL_FAILED = "Couldn't read that recipe — try again.";
 const BRIEF_TOO_LONG = "That's too long — keep the idea under 2,000 characters.";
+const KITCHEN_PROFILE_UNAVAILABLE = "Couldn't read your kitchen profile, so nothing was generated. Try again.";
 const SEARCH_RATE_LIMITED = 'Too many web searches. Try again later, or turn Search the web off.';
 const BRIEF_NOT_A_RECIPE = "Couldn't make a recipe from that — describe a dish.";
 const GENERATE_FAILED = "Couldn't generate that recipe — try again.";
@@ -305,11 +307,12 @@ export function importPost(
   req: Request,
   ctx?: MembershipHandlerContext,
   deps?: RecipeImportDeps,
+  kitchenStore?: KitchenProfileStore,
 ): Promise<Response> {
   const entry: ImportLogEntry = {};
   // Log line only; `withMembership` has already decided access.
   if (ctx !== undefined) entry.sub = ctx.authorizedSub;
-  return withImportLog(entry, () => handleImport(req, entry, deps));
+  return withImportLog(entry, () => handleImport(req, entry, deps, kitchenStore));
 }
 
 /** `importPost` without the log line; it records what happened on `entry`. */
@@ -317,6 +320,7 @@ async function handleImport(
   req: Request,
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
+  kitchenStore: KitchenProfileStore | undefined,
 ): Promise<Response> {
   let raw: string | null;
   try {
@@ -417,6 +421,17 @@ async function handleImport(
       entry.outcome = 'bad_brief';
       return fail('import-brief-too-long', BRIEF_TOO_LONG, 400);
     }
+    // Read before a search slot or the day's budget is taken. A failed read is
+    // 503: a recipe written without the member's allergies is worse than none.
+    let kitchenProfile = '';
+    if (member !== '') {
+      try {
+        kitchenProfile = await readKitchenProfileBlock(member, kitchenStore);
+      } catch {
+        entry.outcome = 'store_unavailable';
+        return fail('import-profile-unavailable', KITCHEN_PROFILE_UNAVAILABLE, 503);
+      }
+    }
     if (
       search &&
       !admitTranslateCall(searchBuckets, member, Date.now(), MAX_IMPORT_SEARCHES_PER_HOUR, SEARCH_WINDOW_MS)
@@ -428,6 +443,7 @@ async function handleImport(
       const outcome = await generateFromBrief(brief, metered, {
         search,
         translateTo: target.translateTo,
+        kitchenProfile,
       });
       noteImportOutcome(entry, outcome);
       return outcomeResponse(outcome, undefined, {

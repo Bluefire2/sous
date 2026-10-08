@@ -132,6 +132,18 @@ section in the plan with `FeatureRequestDoc`. Suggestions and import reports
 sit outside `users/{uid}`; `scripts/delete-account-data.ts` removes them with
 the rest of an account (see Account deletion).
 
+Kitchen profile (`docs/plans/kitchen-profile.md`, `server/kitchenProfile.ts`):
+allergen and diet codes plus four short text fields a member sets in
+Settings, stored at `users/{sub}/settings/kitchen` (`GET`/`POST
+/api/settings/kitchen`, `withMembership`). Ask, the library assistant, and
+Generate read it on the server for the session `sub`, never from a request
+body. Chat gets it through `withKitchenProfile` in `scripts/server.ts`,
+because `api/chat.ts` cannot import siblings. A failed read is 503, never a
+reply without the allergies. The research call of a searched brief never
+sees it, and page, paste, and photo import never read it. No log line holds
+any of it. It is not in backups and not on MCP. `/privacy` and `/terms`
+describe it; change them with it.
+
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
 then `--apply`), then the GCS photo prefix. `server/accountDeletion.ts`
@@ -780,7 +792,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/mcp-collection-writes.md` | Merged. `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
 | `docs/plans/mcp-server.md` | Merged. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
-| `docs/plans/parallel-steps.md` | Built on `claude/parallel-recipe-steps-857b23`, not deployed. Optional `RecipeStep.lane` groups steps two people cook at once; per-lane progress in `CookStateRow.doneSteps`; an "I'm on" lane chip; lanes authored in the edit form, Ask, and MCP. Amends cook-log principle 1. |
+| `docs/plans/parallel-steps.md` | Merged (#164). Optional `RecipeStep.lane` groups steps two people cook at once; per-lane progress in `CookStateRow.doneSteps`; an "I'm on" lane chip; lanes authored in the edit form, Ask, and MCP. Amends cook-log principle 1. |
 | `docs/plans/recipe-generation.md` | Merged (#153). Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148). `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` merged (#149). |
 | `docs/plans/i18n-review-ci.md` | Merged. PR 1: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6). |
@@ -793,8 +805,10 @@ does not record branches or whether something is deployed.
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
 | `docs/plans/failed-cook-tap-lww.md` | Merged (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
+| `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -945,7 +959,9 @@ the `.cursor/skills/i18n-visual-review` skill.
 
 `/about` is a short public page that says what the app is for. `/privacy`
 and `/terms` describe Firestore + GCS and that there is no on-device recipe
-database. Theme preference, the UI language (`cook.locale`), and
+database. Theme preference, the UI language (`cook.locale`), the
+cooking-screen settings (`cook.wakeLock`, `cook.recipeTextSize`; device-local,
+never synced, `docs/plans/cooking-screen-settings.md`), and
 `cook.session` stay in localStorage. Do not
 describe IndexedDB, offline edits, or a local library. The Chrome extension
 sends rendered page HTML, possibly from a page behind a login, to the server

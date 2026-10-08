@@ -39,6 +39,7 @@ import {
   translateRecipe,
 } from '../lib/translationStore';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 import { recipeLanes } from '../lib/stepLanes';
 import { useCookState } from '../lib/useCookState';
@@ -94,6 +95,7 @@ export default function RecipeView() {
   const location = useLocation();
   const libraryBack = libraryPathFromState(location.state) ?? libraryHref(collectionId);
   useWakeLock();
+  const textSize = useRecipeTextSize();
 
   const {
     servings,
@@ -325,6 +327,7 @@ export default function RecipeView() {
         onServings={setServings}
         checkedKeys={checkedKeys}
         onToggle={toggleChecked}
+        textSize={textSize}
       />
 
       <StepsSection
@@ -334,6 +337,7 @@ export default function RecipeView() {
         doneSteps={doneSteps}
         onTap={tapStep}
         activeLane={activeLane}
+        textSize={textSize}
         lanePicker={
           lanes.length > 0 && (
             <LaneChips

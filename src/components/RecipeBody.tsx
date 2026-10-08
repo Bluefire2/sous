@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { ingredientLine } from '../lib/recipeText';
+import type { RecipeTextSize } from '../lib/settings';
 import { activeSteps, isStepDone, stepBlocks } from '../lib/stepLanes';
 import type { Recipe } from '../lib/types';
 
@@ -25,6 +26,12 @@ export const translateChipClass =
  * room kept clear of the floating Ask pill goes.
  */
 export const recipePageClass = 'mx-auto max-w-xl px-4 pb-24 print:max-w-none print:px-0 print:pb-0';
+
+/**
+ * Ingredient and step rows one size step up for reading from across the
+ * kitchen (Settings → Cooking). Paper keeps the normal size.
+ */
+const largeRowText = 'text-lg print:text-base';
 
 export function SourceCredit({ source }: { source: URL }) {
   const t = useT();
@@ -93,6 +100,7 @@ export function IngredientsSection({
   onServings,
   checkedKeys,
   onToggle,
+  textSize = 'normal',
 }: {
   recipe: Recipe;
   /** The text shown, possibly translated; quantities always come from `recipe`. */
@@ -101,6 +109,8 @@ export function IngredientsSection({
   onServings: (servings: number) => void;
   checkedKeys: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -155,6 +165,8 @@ export function IngredientsSection({
                       type="button"
                       onClick={() => onToggle(key)}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors print:p-0 print:text-ink ${
+                        textSize === 'large' ? `${largeRowText} ` : ''
+                      }${
                         isChecked
                           ? 'bg-surface-muted text-ink-subtle hover:bg-surface active:bg-surface'
                           : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
@@ -198,6 +210,7 @@ function StepButton({
   isCurrent,
   isDone,
   dimmed,
+  large,
   onTap,
 }: {
   index: number;
@@ -205,13 +218,19 @@ function StepButton({
   isCurrent: boolean;
   isDone: boolean;
   dimmed: boolean;
+  /** The device's large recipe text (Settings → Cooking). */
+  large: boolean;
   onTap: (index: number) => void;
 }) {
+  // The current step stays one step above the others at either size.
+  const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
   return (
     <button
       type="button"
       onClick={() => onTap(index)}
       className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition print:px-0 print:py-1 print:text-ink print:opacity-100 ${
+        large ? `${largeRowText} ` : ''
+      }${
         isCurrent
           ? 'bg-surface ring-2 ring-amber-400'
           : isDone
@@ -232,7 +251,7 @@ function StepButton({
           index + 1
         )}
       </span>
-      <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
+      <span className={isCurrent ? currentText : ''}>{text}</span>
     </button>
   );
 }
@@ -298,6 +317,7 @@ export function StepsSection({
   activeLane,
   lanePicker,
   afterDone,
+  textSize = 'normal',
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
@@ -312,11 +332,14 @@ export function StepsSection({
   lanePicker?: ReactNode;
   /** Shown under "Done" once every step is ticked, such as the cook-log link. */
   afterDone?: ReactNode;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
 }) {
   const t = useT();
   // Structure always comes from the stored recipe; a translation only
   // supplies text (i18n principle 4).
   const blocks = useMemo(() => stepBlocks(recipe.steps), [recipe.steps]);
+  const large = textSize === 'large';
   const progress = { currentStep, doneSteps };
   const active = activeSteps(recipe.steps, progress);
   const row = (index: number, dimmed: boolean) => (
@@ -326,6 +349,7 @@ export function StepsSection({
       isCurrent={active.has(index)}
       isDone={isStepDone(progress, index)}
       dimmed={dimmed}
+      large={large}
       onTap={onTap}
     />
   );

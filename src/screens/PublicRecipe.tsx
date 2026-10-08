@@ -31,6 +31,7 @@ import type { Recipe } from '../lib/types';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
 import { usePublicCollection } from '../lib/usePublicCollection';
 import { usePublicJoin } from '../lib/usePublicJoin';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 
 /**
@@ -140,6 +141,7 @@ function PublicRecipeBody({
 }) {
   const t = useT();
   const locale = useLocale();
+  const textSize = useRecipeTextSize();
   const [servings, setServings] = useState(recipe.servings);
   // A visitor has no cook row: progress and the lane pick live here only.
   const [progress, setProgress] = useState<StepProgress>({ currentStep: 0, doneSteps: [] });
@@ -200,6 +202,7 @@ function PublicRecipeBody({
           onServings={setServings}
           checkedKeys={checkedKeys}
           onToggle={toggleChecked}
+          textSize={textSize}
         />
       </div>
 
@@ -210,6 +213,7 @@ function PublicRecipeBody({
         doneSteps={progress.doneSteps}
         onTap={(index) => setProgress((current) => tapStep(recipe.steps, current, index))}
         activeLane={activeLane}
+        textSize={textSize}
         lanePicker={
           lanes.length > 0 && (
             <LaneChips lanes={lanes} active={activeLane} onChange={setActiveLane} />
