@@ -9,7 +9,8 @@ import {
   recipeCopyId,
   resetRecipeLinkSaveRateLimit,
   saveFromRecipeLink,
-  withoutPhotos,
+  withCopiedPhotos,
+  type PhotoCopy,
   type RecipeCopyPlan,
   type RecipeLinkSaveHttpDependencies,
 } from './recipeLinkSave.ts';
@@ -89,7 +90,7 @@ describe('planRecipeCopy', () => {
     now,
   };
 
-  it('copies the visitor fields onto the copy id with new photo ids and savedFrom', () => {
+  it('copies the visitor fields onto the copy id, plans new photo ids, and attaches none yet', () => {
     const plan = writePlan(planRecipeCopy({ ...base, newPhotoId: idSource() }));
     expect(plan.updatedAt).toBe(now);
     expect(plan.payload).toMatchObject({
@@ -104,9 +105,14 @@ describe('planRecipeCopy', () => {
     expect(plan.payload).not.toHaveProperty('importCheck');
     expect(plan.payload).not.toHaveProperty('variantOf');
     expect(plan.payload).not.toHaveProperty('serverUpdatedAt');
-    expect(plan.photos.map((p) => p.srcPhotoId)).toEqual([cover, extra]);
-    expect(plan.payload.photoId).toBe(plan.photos[0].dstPhotoId);
-    expect(plan.payload.galleryPhotoIds).toEqual([plan.photos[1].dstPhotoId]);
+    expect(plan.photos.map((p) => [p.srcPhotoId, p.cover])).toEqual([
+      [cover, true],
+      [extra, false],
+    ]);
+    expect(new Set(plan.photos.map((p) => p.dstPhotoId)).size).toBe(2);
+    // A photo is attached only once it has copied (withCopiedPhotos).
+    expect(plan.payload).not.toHaveProperty('photoId');
+    expect(plan.payload).not.toHaveProperty('galleryPhotoIds');
   });
 
   it('is already when the copy is live', () => {
@@ -136,8 +142,7 @@ describe('planRecipeCopy', () => {
         newPhotoId: idSource(),
       }),
     );
-    expect(plan.photos).toHaveLength(2);
-    expect(plan.payload.galleryPhotoIds).toEqual([plan.photos[1].dstPhotoId]);
+    expect(plan.photos.map((p) => p.srcPhotoId)).toEqual([cover, extra]);
     const bare = writePlan(
       planRecipeCopy({
         ...base,
@@ -151,14 +156,30 @@ describe('planRecipeCopy', () => {
   });
 });
 
-describe('withoutPhotos', () => {
-  it('drops failed cover and gallery ids', () => {
-    expect(
-      withoutPhotos({ photoId: 'a', galleryPhotoIds: ['b', 'c'] }, new Set(['a', 'b'])),
-    ).toEqual({ galleryPhotoIds: ['c'] });
-    expect(withoutPhotos({ photoId: 'a', galleryPhotoIds: ['b'] }, new Set(['b']))).toEqual({
-      photoId: 'a',
+describe('withCopiedPhotos', () => {
+  const coverCopy: PhotoCopy = { srcPhotoId: cover, dstPhotoId: 'c1', cover: true };
+  const extraCopy: PhotoCopy = { srcPhotoId: extra, dstPhotoId: 'g1', cover: false };
+
+  it('attaches the copied cover and gallery', () => {
+    expect(withCopiedPhotos({ title: 'Soup' }, [coverCopy, extraCopy])).toEqual({
+      title: 'Soup',
+      photoId: 'c1',
+      galleryPhotoIds: ['g1'],
     });
+  });
+
+  it('attaches only what copied', () => {
+    expect(withCopiedPhotos({ title: 'Soup' }, [extraCopy])).toEqual({
+      title: 'Soup',
+      galleryPhotoIds: ['g1'],
+    });
+    expect(withCopiedPhotos({ title: 'Soup' }, [])).toEqual({ title: 'Soup' });
+  });
+
+  it("keeps a cover and gallery the saver set meanwhile, and never repeats an id", () => {
+    expect(
+      withCopiedPhotos({ photoId: 'mine', galleryPhotoIds: ['g0', 'g1'] }, [coverCopy, extraCopy]),
+    ).toEqual({ photoId: 'mine', galleryPhotoIds: ['g0', 'g1', 'c1'] });
   });
 });
 
@@ -184,8 +205,8 @@ function saveDeps(overrides: Partial<RecipeLinkSaveHttpDependencies> = {}) {
   const copyPhoto = vi.fn(
     async (_input: { srcUid: string; srcPhotoId: string; dstUid: string }) => true,
   );
-  const dropPhotos = vi.fn(
-    async (_sub: string, _id: string, _version: number, _failed: ReadonlySet<string>) => {},
+  const attachPhotos = vi.fn(
+    async (_sub: string, _id: string, _version: number, _copied: readonly PhotoCopy[]) => {},
   );
   const deps: RecipeLinkSaveHttpDependencies = {
     readRecipeLink: async (id) => (id === hashPublicToken(token) ? link() : null),
@@ -193,17 +214,17 @@ function saveDeps(overrides: Partial<RecipeLinkSaveHttpDependencies> = {}) {
     readRecipe: async () => original,
     writeCopy,
     copyPhoto,
-    dropPhotos,
+    attachPhotos,
     requireMember: async () => member,
     now: () => now,
     ...overrides,
   };
-  return { deps, writeCopy, copyPhoto, dropPhotos };
+  return { deps, writeCopy, copyPhoto, attachPhotos };
 }
 
 describe('saveFromRecipeLink', () => {
-  it('saves and copies every photo from the owner tree', async () => {
-    const { deps, copyPhoto, dropPhotos } = saveDeps();
+  it('saves, copies every photo from the owner tree, then attaches them', async () => {
+    const { deps, copyPhoto, attachPhotos } = saveDeps();
     const outcome = await saveFromRecipeLink('saver', token, now, deps);
     expect(outcome).toMatchObject({ kind: 'ok', result: 'saved', photos: 2, photosCopied: 2 });
     expect(copyPhoto).toHaveBeenCalledTimes(2);
@@ -212,23 +233,30 @@ describe('saveFromRecipeLink', () => {
       srcPhotoId: cover,
       dstUid: 'saver',
     });
-    expect(dropPhotos).not.toHaveBeenCalled();
+    expect(attachPhotos).toHaveBeenCalledTimes(1);
+    const [sub, , version, copied] = attachPhotos.mock.calls[0];
+    expect(sub).toBe('saver');
+    expect(version).toBe(now);
+    expect(copied.map((p) => p.srcPhotoId)).toEqual([cover, extra]);
   });
 
-  it('leaves off photos that fail to copy', async () => {
-    const dropPhotos = vi.fn(
-      async (_sub: string, _id: string, _version: number, _failed: ReadonlySet<string>) => {},
+  it('attaches only the photos that copied, and nothing when none did', async () => {
+    const attachPhotos = vi.fn(
+      async (_sub: string, _id: string, _version: number, _copied: readonly PhotoCopy[]) => {},
     );
     const { deps } = saveDeps({
       copyPhoto: async (input) => input.srcPhotoId !== extra,
-      dropPhotos,
+      attachPhotos,
     });
     const outcome = await saveFromRecipeLink('saver', token, now, deps);
     expect(outcome).toMatchObject({ result: 'saved', photos: 2, photosCopied: 1 });
-    expect(dropPhotos).toHaveBeenCalledTimes(1);
-    const [, , version, failed] = dropPhotos.mock.calls[0];
-    expect(version).toBe(now);
-    expect(failed.size).toBe(1);
+    expect(attachPhotos.mock.calls[0][3].map((p) => p.srcPhotoId)).toEqual([cover]);
+
+    const none = saveDeps({ copyPhoto: async () => false });
+    expect(await saveFromRecipeLink('saver', token, now, none.deps)).toMatchObject({
+      photosCopied: 0,
+    });
+    expect(none.attachPhotos).not.toHaveBeenCalled();
   });
 
   it("is own for the owner's own link and writes nothing", async () => {

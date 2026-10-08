@@ -36,7 +36,7 @@ export type RecipeLinkRecord = {
   ownerSub: string;
   /** The owner's session email when the link was turned on. Never sent to a visitor. */
   ownerEmail: string;
-  /** The owner's Google display name, refreshed each time the link is turned on or read by the owner. Shown to visitors. */
+  /** The owner's Google display name, refreshed each time the owner turns the link on. Shown to visitors. */
   ownerName?: string;
   recipeId: string;
   token: string;

@@ -656,7 +656,7 @@
   {
     "id": "public-link-missing",
     "route": "/p/:token",
-    "setup": "Open /p/ followed by any 43 letters (for example /p/ and \"a\" 43 times) in a signed-out window. No such link exists, so the page shows \"Sous\", the gray chat bubble, Sign in, the language menu, and one sentence saying the link does not work and may have been turned off, or what it shared deleted. Needs no data and writes nothing.",
+    "setup": "Open /p/ followed by any 43 letters (for example /p/ and \"a\" 43 times) in a signed-out window. No such link exists, so the page shows \"Sous\", Sign in, the language menu (no chat bubble: the page cannot tell what kind of link it was), and one sentence saying the link does not work and may have been turned off, or what it shared deleted. Needs no data and writes nothing.",
     "needsData": false
   },
   {

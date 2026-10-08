@@ -1416,12 +1416,15 @@ export async function cascadeRecipeDelete(
     const recipeRef = colRef(uid, 'recipes').doc(recipeId);
     const snap = await tx.get(recipeRef);
     // A deleted recipe's links go off with it, so an undelete never quietly
-    // reopens one. Read before any write, as Firestore requires.
+    // reopens one; a stale delete that loses LWW leaves them on. Read before
+    // any write, as Firestore requires.
     const liveLinks = await tx.get(liveRecipeLinksQuery(uid, recipeId));
-    const linksRevokedAt = Date.now();
-    for (const link of liveLinks.docs) {
-      tx.set(link.ref, { status: 'revoked', revokedAt: linksRevokedAt }, { merge: true });
-    }
+    const revokeLinks = () => {
+      const revokedAt = Date.now();
+      for (const link of liveLinks.docs) {
+        tx.set(link.ref, { status: 'revoked', revokedAt }, { merge: true });
+      }
+    };
     if (snap.exists) {
       const data = snap.data() as Record<string, unknown>;
       if (isLiveDoc(data) && isUuid(data.photoId)) {
@@ -1439,10 +1442,12 @@ export async function cascadeRecipeDelete(
       if (cmp.allow) {
         const serverUpdatedAt = Date.now();
         tx.set(recipeRef, tombstonePayload(recipeId, at, serverUpdatedAt), { merge: false });
+        revokeLinks();
       }
     } else {
       const serverUpdatedAt = Date.now();
       tx.set(recipeRef, tombstonePayload(recipeId, at, serverUpdatedAt), { merge: false });
+      revokeLinks();
     }
     // Derived cache, not a sync doc. Delete on every branch after the one
     // read: tombstone applied, stale reject, and missing doc. A missing

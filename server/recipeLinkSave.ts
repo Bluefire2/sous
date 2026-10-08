@@ -94,7 +94,8 @@ export function recipeCopyId(saverSub: string, linkId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export type PhotoCopy = { srcPhotoId: string; dstPhotoId: string };
+/** One photo to copy: the owner's id, the copy's new id, and whether it is the cover. */
+export type PhotoCopy = { srcPhotoId: string; dstPhotoId: string; cover: boolean };
 
 export type RecipeCopyPlan =
   | { kind: 'already'; recipeId: string }
@@ -110,8 +111,10 @@ export type RecipeCopyPlan =
  * What saving does, given the copy's stored doc (if any). A live copy is
  * `already`. Otherwise the payload is the original's visitor fields (no
  * import check, no `variantOf`, no `savedFrom` of its own) on the copy's id,
- * with every photo on a new id and `savedFrom` set. A copy the saver deleted
- * is written one past its tombstone, so last-write-wins lets it back.
+ * with `savedFrom` set and no photos: each photo is planned on a new id, and
+ * only those that copy are attached afterwards (`withCopiedPhotos`), so a
+ * copy never lists a photo that is not there. A copy the saver deleted is
+ * written one past its tombstone, so last-write-wins lets it back.
  */
 export function planRecipeCopy(input: {
   recipeId: string;
@@ -137,27 +140,14 @@ export function planRecipeCopy(input: {
   delete payload.galleryPhotoIds;
 
   const photos: PhotoCopy[] = [];
-  const copyOf = (srcPhotoId: unknown): string | undefined => {
-    if (!isUuid(srcPhotoId)) return undefined;
-    const existing = photos.find((photo) => photo.srcPhotoId === srcPhotoId);
-    if (existing) return existing.dstPhotoId;
-    const dstPhotoId = input.newPhotoId();
-    photos.push({ srcPhotoId, dstPhotoId });
-    return dstPhotoId;
+  const plan = (srcPhotoId: unknown, cover: boolean): void => {
+    if (!isUuid(srcPhotoId) || photos.some((photo) => photo.srcPhotoId === srcPhotoId)) return;
+    photos.push({ srcPhotoId, dstPhotoId: input.newPhotoId(), cover });
   };
-  const cover = copyOf(input.original.photoId);
-  if (cover !== undefined) {
-    payload.photoId = cover;
-  }
+  plan(input.original.photoId, true);
   if (Array.isArray(input.original.galleryPhotoIds)) {
-    const gallery: string[] = [];
     for (const id of input.original.galleryPhotoIds) {
-      if (id === input.original.photoId) continue;
-      const copied = copyOf(id);
-      if (copied !== undefined && !gallery.includes(copied)) gallery.push(copied);
-    }
-    if (gallery.length > 0) {
-      payload.galleryPhotoIds = gallery;
+      plan(id, false);
     }
   }
   const savedFrom: Record<string, unknown> = { savedAt: input.now };
@@ -168,22 +158,28 @@ export function planRecipeCopy(input: {
   return { kind: 'write', recipeId: input.recipeId, updatedAt, payload, photos };
 }
 
-/** The copy's payload without the photos that did not copy. */
-export function withoutPhotos(
+/**
+ * The stored copy with the photos that copied attached: the cover becomes
+ * the cover unless the copy already has one (the saver set it meanwhile),
+ * and the rest join the gallery after any the copy already lists.
+ */
+export function withCopiedPhotos(
   stored: Record<string, unknown>,
-  failed: ReadonlySet<string>,
+  copied: readonly PhotoCopy[],
 ): Record<string, unknown> {
   const next = { ...stored };
-  if (typeof next.photoId === 'string' && failed.has(next.photoId)) {
-    delete next.photoId;
-  }
-  if (Array.isArray(next.galleryPhotoIds)) {
-    const kept = next.galleryPhotoIds.filter((id) => !failed.has(String(id)));
-    if (kept.length > 0) {
-      next.galleryPhotoIds = kept;
-    } else {
-      delete next.galleryPhotoIds;
+  const gallery = Array.isArray(next.galleryPhotoIds)
+    ? next.galleryPhotoIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  for (const photo of copied) {
+    if (photo.cover && typeof next.photoId !== 'string') {
+      next.photoId = photo.dstPhotoId;
+    } else if (next.photoId !== photo.dstPhotoId && !gallery.includes(photo.dstPhotoId)) {
+      gallery.push(photo.dstPhotoId);
     }
+  }
+  if (gallery.length > 0) {
+    next.galleryPhotoIds = gallery;
   }
   return next;
 }
@@ -202,12 +198,12 @@ export type RecipeLinkSaveDependencies = RecipeLinkReadDependencies & {
     now: number,
   ) => Promise<RecipeCopyPlan>;
   copyPhoto: typeof copyPhotoBetweenOwners;
-  /** Leaves the photos that did not copy off the copy. */
-  dropPhotos: (
+  /** Attaches the photos that copied to the copy (`withCopiedPhotos`). */
+  attachPhotos: (
     saverSub: string,
     recipeId: string,
     version: number,
-    failed: ReadonlySet<string>,
+    copied: readonly PhotoCopy[],
   ) => Promise<void>;
 };
 
@@ -229,26 +225,28 @@ export async function saveFromRecipeLink(
   if (plan.kind === 'already') {
     return { kind: 'ok', recipeId: plan.recipeId, result: 'already', photos: 0, photosCopied: 0 };
   }
-  const failed = new Set<string>();
+  // The copy is live and photo-less now; a photo is attached only once its
+  // bytes and row are in the saver's tree.
+  const copied: PhotoCopy[] = [];
   for (const photo of plan.photos) {
-    const copied = await deps.copyPhoto({
+    const ok = await deps.copyPhoto({
       srcUid: live.link.ownerSub,
       srcPhotoId: photo.srcPhotoId,
       dstUid: saverSub,
       dstPhotoId: photo.dstPhotoId,
       dstRecipeId: plan.recipeId,
     });
-    if (!copied) failed.add(photo.dstPhotoId);
+    if (ok) copied.push(photo);
   }
-  if (failed.size > 0) {
-    await deps.dropPhotos(saverSub, plan.recipeId, plan.updatedAt, failed);
+  if (copied.length > 0) {
+    await deps.attachPhotos(saverSub, plan.recipeId, plan.updatedAt, copied);
   }
   return {
     kind: 'ok',
     recipeId: plan.recipeId,
     result: 'saved',
     photos: plan.photos.length,
-    photosCopied: plan.photos.length - failed.size,
+    photosCopied: copied.length,
   };
 }
 
@@ -278,14 +276,25 @@ async function writeCopyFirestore(
   });
 }
 
-async function dropPhotosFirestore(
+const ATTACH_ATTEMPTS = 3;
+
+async function attachPhotosFirestore(
   saverSub: string,
   recipeId: string,
   version: number,
-  failed: ReadonlySet<string>,
+  copied: readonly PhotoCopy[],
 ): Promise<void> {
-  // A conflict means the saver already edited the copy; their edit stands.
-  await updateOwnRecipe(saverSub, recipeId, version, (stored) => withoutPhotos(stored, failed));
+  // A conflict means the saver edited the copy meanwhile: attach onto their
+  // edit. A deleted copy takes its photos with it (the cascade tombstones
+  // rows by recipeId), so not_found ends here.
+  let expected = version;
+  for (let attempt = 0; attempt < ATTACH_ATTEMPTS; attempt += 1) {
+    const result = await updateOwnRecipe(saverSub, recipeId, expected, (stored) =>
+      withCopiedPhotos(stored, copied),
+    );
+    if (result.kind !== 'conflict') return;
+    expected = result.version;
+  }
 }
 
 const liveSaveDependencies: RecipeLinkSaveDependencies = {
@@ -294,7 +303,7 @@ const liveSaveDependencies: RecipeLinkSaveDependencies = {
   readRecipe: (ownerSub, recipeId) => readDocData(ownerSub, 'recipes', recipeId),
   writeCopy: writeCopyFirestore,
   copyPhoto: copyPhotoBetweenOwners,
-  dropPhotos: dropPhotosFirestore,
+  attachPhotos: attachPhotosFirestore,
 };
 
 // ---------------------------------------------------------------------------

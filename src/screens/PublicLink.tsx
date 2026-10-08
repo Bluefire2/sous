@@ -47,20 +47,25 @@ function PublicCollection({
   const member = status === 'signedIn';
   const join = usePublicJoin(token);
   const [lockedOpen, setLockedOpen] = useState(false);
+  // Until the link reads as a collection (loading, missing, an error), it may
+  // be a recipe link: offer nothing that only a collection can do.
+  const isCollection = result?.kind === 'ok' && result.data.kind === 'collection';
 
   const header = (
     <header className="flex items-center justify-between py-4">
       <span className="text-2xl font-bold">Sous</span>
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
-        <LockedAiButton
-          label={t('assistant.ask')}
-          hint={member ? t('public.aiLockedMember') : t('public.aiLocked')}
-          onOpen={() => setLockedOpen(true)}
-          className={lockedIconBtn}
-          placement="below-end"
-        >
-          <ChatBubbleIcon className="block h-5 w-5" />
-        </LockedAiButton>
+        {isCollection && (
+          <LockedAiButton
+            label={t('assistant.ask')}
+            hint={member ? t('public.aiLockedMember') : t('public.aiLocked')}
+            onOpen={() => setLockedOpen(true)}
+            className={lockedIconBtn}
+            placement="below-end"
+          >
+            <ChatBubbleIcon className="block h-5 w-5" />
+          </LockedAiButton>
+        )}
         {!member && (
           <PublicSignInLink token={token} className={ghostBtn}>
             {t('public.signIn')}
@@ -167,7 +172,7 @@ function PublicCollection({
     <div className="mx-auto max-w-xl px-4 pb-24">
       {header}
       {body}
-      {lockedOpen && (
+      {lockedOpen && isCollection && (
         <AiLockedSheet
           token={token}
           member={member}
