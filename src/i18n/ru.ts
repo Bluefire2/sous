@@ -99,6 +99,8 @@ export const ru: Messages = {
   },
   'library.selectAll': 'Выбрать все',
   'library.selectNone': 'Снять выбор',
+  'library.showMore': 'Показать ещё {count}',
+  'library.shownOfTotal': 'Показано {shown} из {total}',
   'library.moveSelected': 'Переместить',
   'library.moveManyTitle': {
     one: 'Переместить {count} рецепт',

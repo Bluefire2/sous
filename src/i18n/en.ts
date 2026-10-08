@@ -113,6 +113,8 @@ export const en = {
   },
   'library.selectAll': 'Select all',
   'library.selectNone': 'Select none',
+  'library.showMore': 'Show {count} more',
+  'library.shownOfTotal': 'Showing {shown} of {total}',
   'library.moveSelected': 'Move',
   'library.moveManyTitle': {
     one: 'Move {count} recipe',

@@ -100,6 +100,8 @@ export const uk: Messages = {
   },
   'library.selectAll': 'Вибрати всі',
   'library.selectNone': 'Зняти вибір',
+  'library.showMore': 'Показати ще {count}',
+  'library.shownOfTotal': 'Показано {shown} з {total}',
   'library.moveSelected': 'Перемістити',
   'library.moveManyTitle': {
     one: 'Перемістити {count} рецепт',

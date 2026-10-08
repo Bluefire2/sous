@@ -270,6 +270,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.locator('[aria-expanded="true"]').waitFor();
     },
   },
+  'library-show-more': {
+    persona: 'member',
+    path: '/',
+    mocks: ['longLibrary'],
+    reach: async (page, ctx) => {
+      const more = page.getByRole('button', { name: ctx.p('library.showMore') });
+      await more.scrollIntoViewIfNeeded();
+      await page.getByText(ctx.p('library.shownOfTotal')).waitFor();
+    },
+  },
   'import-idle': { persona: 'member', path: '/import' },
   'import-photos': {
     persona: 'member',
