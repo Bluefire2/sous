@@ -749,7 +749,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
-| `docs/plans/cooking-screen-settings.md` | Merged. Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
+| `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
