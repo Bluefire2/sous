@@ -78,6 +78,12 @@
     "needsData": false
   },
   {
+    "id": "settings-cooking-changed",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to the Cooking section (after Appearance, before Language): a heading, a muted line saying these settings apply to this device only, a keep-the-screen-awake checkbox that has been unchecked, a Recipe text size label, and two buttons, Normal and Large, with Large selected. Both settings are stored only in this browser. Do not export, import a backup, or sign out.",
+    "needsData": false
+  },
+  {
     "id": "suggest",
     "route": "/suggest",
     "setup": "Signed in, Suggest a feature page opened from the library link (back link says Library). Shows an intro line, the Your idea box with its placeholder, the email-me checkbox with its hint, a collapsed \"What's included\" disclosure (open it), and a disabled Send suggestion button. Type at least 3850 characters (e.g. repeat a short sentence) so the characters-left count appears under the box, then clear it. Do not press Send.",
@@ -345,6 +351,12 @@
     "id": "recipe-view",
     "route": "/recipe/:id",
     "setup": "An owned recipe as it loads: title, ingredients, and steps. The top row has the Library back link on the left and Share and Edit on the right. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip or Share. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-large-text",
+    "route": "/recipe/:id",
+    "setup": "The same owned recipe with Settings → Cooking → Recipe text size set to Large on this device: ingredient and step rows are one size larger than usual, and the current step larger still; headings, the servings control, and the top row keep their usual size. Check that the larger rows and the servings label still fit without clipping or awkward wrapping. Do not change servings, check ingredients, or advance steps. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
     "needsData": true
   },
   {

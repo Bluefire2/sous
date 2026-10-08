@@ -134,6 +134,12 @@ export const ru: Messages = {
   'settings.appearance': 'Оформление',
   'settings.dark': 'Тёмная',
   'settings.light': 'Светлая',
+  'settings.cooking': 'Готовка',
+  'settings.cookingDeviceOnly': 'Эти настройки действуют только на этом устройстве.',
+  'settings.keepScreenAwake': 'Не выключать экран во время готовки',
+  'settings.recipeTextSize': 'Размер текста рецепта',
+  'settings.textSizeNormal': 'Обычный',
+  'settings.textSizeLarge': 'Крупный',
   'settings.language': 'Язык',
   'settings.backup': 'Резервная копия',
   'settings.backupSignedIn':
