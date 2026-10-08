@@ -18,6 +18,7 @@ import {
   MAX_GENERATE_BRIEF_CHARS,
   type RecipeImportDeps,
 } from './recipeImport.ts';
+import type { KitchenProfileStore } from './kitchenProfile.ts';
 import * as recipeImport from './recipeImport.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
 import {
@@ -67,6 +68,21 @@ interface PostOptions {
   translator?: (input: TranslateInput) => Promise<TranslateOutcome>;
   /** The member the gate admitted; `sub-1` by default. */
   sub?: string;
+  /** Where a brief import reads the kitchen profile; none saved by default. */
+  kitchenStore?: KitchenProfileStore;
+}
+
+/** A kitchen profile store holding `docs` by sub. */
+function kitchenStore(docs: Record<string, unknown> = {}): KitchenProfileStore & { reads: string[] } {
+  const reads: string[] = [];
+  return {
+    reads,
+    read: async (sub) => {
+      reads.push(sub);
+      return docs[sub];
+    },
+    write: async () => {},
+  };
 }
 
 async function post(
@@ -80,7 +96,12 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.rawBody ?? JSON.stringify(body),
   });
-  const response = await importPost(req, { authorizedSub: options.sub ?? 'sub-1' }, options.deps ?? deps);
+  const response = await importPost(
+    req,
+    { authorizedSub: options.sub ?? 'sub-1' },
+    options.deps ?? deps,
+    options.kitchenStore ?? kitchenStore(),
+  );
   return { status: response.status, body: (await response.json()) as unknown, calls };
 }
 
@@ -897,6 +918,77 @@ describe('POST /api/import with a brief', () => {
       expect(line.raw).not.toContain('SECRET');
       expect(line.raw).not.toContain('gumbo');
     }
+  });
+
+  describe('kitchen profile', () => {
+    const PROFILE = {
+      allergens: ['peanuts'],
+      diets: ['vegetarian'],
+      avoid: 'SECRET-AVOID cilantro',
+      dislikes: '',
+      equipment: '',
+      notes: '',
+      updatedAt: 1,
+    };
+
+    it('gives the session member’s profile to the structured call and never to the search', async () => {
+      const grounded = groundedDeps();
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      const { status } = await post({ brief: BRIEF, search: true, sub: 'sub-2' }, undefined, {
+        deps: grounded.deps,
+        kitchenStore: store,
+      });
+      expect(status).toBe(200);
+      expect(store.reads).toEqual(['sub-1']);
+      expect(grounded.calls).toHaveLength(2);
+      expect(String(grounded.calls[0].contents)).not.toContain('kitchen_profile');
+      expect(String(grounded.calls[0].contents)).not.toContain('peanuts');
+      const structured = String(grounded.calls[1].contents);
+      expect(structured).toContain('<kitchen_profile>');
+      expect(structured).toContain('Allergies (never include): peanuts');
+      expect(structured).toContain('Diet: vegetarian');
+      expect(structured).toContain('never include an allergen');
+      expect(structured.indexOf('</kitchen_profile>')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('writes the prompt as before when no profile is saved', async () => {
+      const { calls } = await post({ brief: BRIEF });
+      expect(String(calls[0].contents)).not.toContain('kitchen');
+    });
+
+    it('answers 503 without calling the model or taking a search slot when the profile cannot be read', async () => {
+      const failing: KitchenProfileStore = {
+        read: () => Promise.reject(new Error('firestore down')),
+        write: async () => {},
+      };
+      const { status, body, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
+      expect(status).toBe(503);
+      expect(body).toEqual({
+        code: 'import-profile-unavailable',
+        error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      });
+      expect(calls).toHaveLength(0);
+      expect(importLogLines().at(-1)?.entry).toEqual(
+        expect.objectContaining({ via: 'generate', outcome: 'store_unavailable', status: 503 }),
+      );
+      for (let i = 0; i < MAX_IMPORT_SEARCHES_PER_HOUR; i++) {
+        expect((await post({ brief: BRIEF, search: true })).status, `call ${i + 1}`).toBe(200);
+      }
+    });
+
+    it('never logs the profile', async () => {
+      await post({ brief: BRIEF }, undefined, { kitchenStore: kitchenStore({ 'sub-1': PROFILE }) });
+      for (const line of importLogLines()) {
+        expect(line.raw).not.toContain('SECRET-AVOID');
+        expect(line.raw).not.toContain('peanuts');
+      }
+    });
+
+    it('does not read the profile for a paste, page, or photo import', async () => {
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      await post({ text: 'Tomato soup\n6 tomatoes' }, undefined, { kitchenStore: store });
+      expect(store.reads).toEqual([]);
+    });
   });
 
   it('logs the search count when the searched brief then fails', async () => {

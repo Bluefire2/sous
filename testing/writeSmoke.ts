@@ -5,7 +5,8 @@
  * through the routes the app uses, and every result is read back the same
  * way: last-write-wins and tombstones, the recipe delete cascade, editor and
  * viewer rules on shared recipes, the collection-link hop, public join, and
- * admin approve and revoke against the 60-second membership cache.
+ * admin approve and revoke against the 60-second membership cache, and the
+ * kitchen profile.
  *
  * Fresh UUIDs for every new row; the shared fixtures are put back the way
  * the seed left them (grants and roles) so later checks see the seed.
@@ -37,6 +38,7 @@ export async function checkWrites(baseUrl: string, cookies: ReadonlyMap<string, 
     ['collection link', () => collectionLink(http, cookieOf, check)],
     ['public join', () => publicJoin(http, cookieOf, check)],
     ['admin approve and revoke', () => adminFlow(http, cookieOf, check)],
+    ['kitchen profile', () => kitchenProfile(http, cookieOf, check)],
   ];
   for (const [name, run] of phases) {
     try {
@@ -421,4 +423,29 @@ async function adminFlow(http: Http, cookieOf: (name: string) => string, check: 
   );
   const lists = (await http.get('/api/admin/requests', ownerCookie)).body as Record<string, { rows?: { sub: string }[] }>;
   check('/admin lists them as declined', (lists.denied?.rows ?? []).some((row) => row.sub === sub));
+}
+
+async function kitchenProfile(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
+  const empty = cookieOf('empty');
+  const before = await http.get('/api/settings/kitchen', empty);
+  check('an account with no kitchen profile reads null', before.status === 200 && JSON.stringify(before.body) === '{"profile":null}', JSON.stringify(before.body));
+
+  const profile = { allergens: ['sesame'], diets: ['vegan'], avoid: '', dislikes: 'okra', equipment: '', notes: '', sub: persona('member').sub };
+  const saved = await http.post('/api/settings/kitchen', empty, profile);
+  check('a kitchen profile saves', saved.status === 200, `status ${saved.status}`);
+  const after = (await http.get('/api/settings/kitchen', empty)).body as { profile?: Record<string, unknown> };
+  check(
+    'it reads back as saved',
+    JSON.stringify(after.profile?.allergens) === '["sesame"]' && after.profile?.dislikes === 'okra' && typeof after.profile?.updatedAt === 'number',
+    JSON.stringify(after),
+  );
+  const member = (await http.get('/api/settings/kitchen', cookieOf('member'))).body as { profile?: Record<string, unknown> };
+  check('a sub in the body is ignored: the member’s profile is unchanged', JSON.stringify(member.profile?.allergens) === '["eggs"]', JSON.stringify(member));
+
+  const bad = await http.post('/api/settings/kitchen', empty, { ...profile, allergens: ['shellfish'] });
+  check('an unknown allergen is 400', bad.status === 400, `status ${bad.status}`);
+  const unchanged = (await http.get('/api/settings/kitchen', empty)).body as { profile?: Record<string, unknown> };
+  check('and changes nothing', JSON.stringify(unchanged.profile?.allergens) === '["sesame"]', JSON.stringify(unchanged));
+
+  check('signed out is 401', (await http.get('/api/settings/kitchen')).status === 401);
 }

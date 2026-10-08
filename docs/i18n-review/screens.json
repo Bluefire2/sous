@@ -120,6 +120,18 @@
     "needsData": true
   },
   {
+    "id": "settings-kitchen-profile",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Kitchen profile (after Library, before Connected apps): the intro sentence, the Allergies chips (14, Eggs selected for the member), the Diet chips (7), four labelled boxes with placeholders or saved text (foods to never include, dislikes, equipment, anything else), and Save. After pressing Save, a muted Saved shows beside the button. Only press Save against a dev server using the Firestore emulator (FIRESTORE_EMULATOR_HOST); against real Firestore, capture without saving.",
+    "needsData": false
+  },
+  {
+    "id": "settings-kitchen-profile-save-error",
+    "route": "/settings",
+    "setup": "Settings while signed in, Kitchen profile after Save failed: the form keeps what was entered and a red line beside Save says the kitchen profile could not be saved. Reaching it needs a save request that fails (for example the API dev server stopped after the page loaded). If the state cannot be reached, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "admin",
     "route": "/admin",
     "setup": "The admin page as an owner sees it: pending, approved, declined, and invites. Do not approve, decline, mint, copy in a way that creates an invite, or revoke. If this session is not an owner, capture the error line the page already shows; do not change membership.",
@@ -158,13 +170,19 @@
   {
     "id": "import-create-idle",
     "route": "/import",
-    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
+    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the underlined link line pointing to the kitchen profile for allergies and diets, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
     "needsData": false
   },
   {
     "id": "import-create-preview",
     "route": "/import",
     "setup": "Generate mode, a brief typed, Search the web checked, Generate recipe pressed with the model call mocked: the preview shows the \"Pages Sous used\" list (three links, the last one labelled as an untitled page) above the language line and the editable recipe form, with the thumbs up / down rating row at the bottom.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-profile-unavailable",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the request mocked to answer 503 import-profile-unavailable: the error line under the form says the kitchen profile could not be read, so nothing was generated. Against a real server this needs the profile read to fail; mark skipped: needs data rather than breaking Firestore.",
     "needsData": false
   },
   {

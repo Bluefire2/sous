@@ -286,11 +286,12 @@ export type ChatUsageContext = MembershipHandlerContext & {
  * The chat route's meter, outside `api/chat.ts` (which cannot import
  * siblings). Runs after `withMembership` decided access, and uses the sub only
  * to key the budget. Admits before the handler reads the body, hands it
- * `onUsage`, and releases when the response body ends.
+ * `onUsage`, and releases when the response body ends. Every other field of
+ * the context reaches the handler unchanged (the kitchen profile does).
  */
-export function withChatBudget(
-  handler: (req: Request, ctx: ChatUsageContext) => Promise<Response>,
-): (req: Request, ctx: MembershipHandlerContext) => Promise<Response> {
+export function withChatBudget<C extends MembershipHandlerContext>(
+  handler: (req: Request, ctx: C & ChatUsageContext) => Promise<Response>,
+): (req: Request, ctx: C) => Promise<Response> {
   return async (req, ctx) => {
     const admission = await admitLlm(ctx.authorizedSub, 'chat');
     if (admission.kind !== 'ok') return llmRefusal(admission);
