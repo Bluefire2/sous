@@ -33,8 +33,9 @@ export const MAX_CHAT_HISTORY_CHARS = 120_000;
 /**
  * The newest messages whose text fits `MAX_CHAT_HISTORY_CHARS`, oldest
  * dropped first, so a long thread keeps working; the model just no longer
- * sees its start. The newest message is always kept, even alone over the cap
- * (the server then refuses it).
+ * sees its start. A trimmed thread starts on a user message, as the
+ * conversation does. The newest message is always kept, even alone over the
+ * cap (the server then refuses it).
  */
 export function fitChatHistory(messages: OutgoingMessage[]): OutgoingMessage[] {
   let chars = 0;
@@ -44,6 +45,9 @@ export function fitChatHistory(messages: OutgoingMessage[]): OutgoingMessage[] {
     if (next > MAX_CHAT_HISTORY_CHARS && start < messages.length) break;
     chars = next;
     start -= 1;
+  }
+  if (start > 0) {
+    while (start < messages.length - 1 && messages[start].role === 'assistant') start += 1;
   }
   return messages.slice(start);
 }

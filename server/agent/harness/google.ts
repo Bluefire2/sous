@@ -128,10 +128,15 @@ function clonePart(part: Part): Part {
 
 /**
  * A high estimate of a step's prompt tokens, for a stream that ended before
- * it reported usage: one token per two characters of the request.
+ * it reported usage: one token per character of the request (no script uses
+ * more), tool declarations included.
  */
-export function estimatedStepPromptTokens(systemInstruction: string, contents: Content[]): number {
-  return Math.ceil((systemInstruction.length + JSON.stringify(contents).length) / 2);
+export function estimatedStepPromptTokens(
+  systemInstruction: string,
+  contents: Content[],
+  tools: unknown = [],
+): number {
+  return systemInstruction.length + JSON.stringify(contents).length + JSON.stringify(tools).length;
 }
 
 export function googleModel(opts: {
@@ -141,7 +146,7 @@ export function googleModel(opts: {
   /**
    * Called once per step when its stream ends, with the last usage it
    * reported, or an estimate when it reported none (a stream cut off early
-   * is still billed for its prompt).
+   * is still billed for its prompt and what it already wrote).
    */
   onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata) => void;
 }): ModelClient {
@@ -188,6 +193,7 @@ export function googleModel(opts: {
       let streamDone = false;
 
       let usage: GenerateContentResponseUsageMetadata | undefined;
+      let streamedChars = 0;
 
       async function* eventGenerator(): AsyncGenerator<ModelStepEvent> {
         try {
@@ -196,7 +202,8 @@ export function googleModel(opts: {
           opts.onUsage?.(
             opts.model,
             usage ?? {
-              promptTokenCount: estimatedStepPromptTokens(request.systemInstruction, contents),
+              promptTokenCount: estimatedStepPromptTokens(request.systemInstruction, contents, request.tools),
+              candidatesTokenCount: streamedChars,
             },
           );
         }
@@ -220,6 +227,7 @@ export function googleModel(opts: {
               if (part.functionCall?.name) {
                 sawCalls = true;
                 const fc = part.functionCall;
+                streamedChars += JSON.stringify(fc.args ?? {}).length;
                 const key = fc.id ?? `${fc.name}:${yieldedCallKeys.size}`;
                 if (!yieldedCallKeys.has(key)) {
                   yieldedCallKeys.add(key);
@@ -239,6 +247,7 @@ export function googleModel(opts: {
           // `chunk.text` is this chunk's new text, matching api/chat.ts.
           const chunkText = chunk.text;
           if (chunkText && chunkText.length > 0) {
+            streamedChars += chunkText.length;
             sawText = true;
             yield { kind: 'text', d: chunkText };
           }

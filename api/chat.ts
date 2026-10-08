@@ -381,16 +381,17 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
 
 /**
  * A high estimate of the prompt's tokens, for a stream that ended before it
- * reported usage: one token per two characters, and 1 300 per photo.
+ * reported usage: one token per character (no script uses more), the
+ * update_recipe schema included, and 1 300 per photo.
  */
 export function estimatedPromptTokens(system: string, messages: ChatRequestMessage[]): number {
-  let chars = system.length;
+  let chars = system.length + JSON.stringify(RECIPE_SCHEMA).length;
   let photos = 0;
   for (const m of messages) {
     chars += m.content.length;
     photos += m.images?.length ?? 0;
   }
-  return Math.ceil(chars / 2) + photos * 1300;
+  return chars + photos * 1300;
 }
 
 /**
@@ -533,13 +534,27 @@ export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   const encoder = new TextEncoder();
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
+      // After the client cancels, the stream is already closed and close()
+      // or error() would throw out of this detached task as an unhandled
+      // rejection, which ends the process.
+      const settle = (finish: () => void) => {
+        try {
+          finish();
+        } catch {
+          /* already closed by cancel */
+        }
+      };
       void (async () => {
         let usage: GenerateContentResponseUsageMetadata | undefined;
+        let streamedChars = 0;
         try {
           let proposalArgs: Record<string, unknown> | undefined;
           for await (const chunk of stream) {
             if (chunk.usageMetadata) usage = chunk.usageMetadata;
-            if (chunk.text) controller.enqueue(encoder.encode(chunk.text));
+            if (chunk.text) {
+              streamedChars += chunk.text.length;
+              controller.enqueue(encoder.encode(chunk.text));
+            }
             const update = chunk.functionCalls?.find(
               (call) => call.name === 'update_recipe' && call.args,
             );
@@ -550,16 +565,24 @@ export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
           controller.close();
         } catch (err) {
           if (abort.signal.aborted) {
-            controller.close();
+            settle(() => controller.close());
             return;
           }
           // The dispatcher in scripts/server.ts logs a body error it sees, so
           // pass on a description, never the SDK's error and its message.
-          controller.error(new Error(`Chat stream failed: ${describeThrown(err)}`));
+          const failure = new Error(`Chat stream failed: ${describeThrown(err)}`);
+          settle(() => controller.error(failure));
         } finally {
           // A stream cut off before any usage chunk is still billed for its
-          // prompt, so it is charged an estimate that errs high.
-          ctx?.onUsage?.(MODEL, usage ?? { promptTokenCount: estimatedPromptTokens(system, body.messages) });
+          // prompt and what it already wrote, so it is charged an estimate
+          // that errs high.
+          ctx?.onUsage?.(
+            MODEL,
+            usage ?? {
+              promptTokenCount: estimatedPromptTokens(system, body.messages),
+              candidatesTokenCount: streamedChars,
+            },
+          );
         }
       })();
     },

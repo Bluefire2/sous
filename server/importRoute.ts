@@ -111,7 +111,11 @@ export async function withImportBudget(
   }
 }
 
-/** `deps` (the test seam) or the env deps, with every model client charged to `meter`. */
+/**
+ * `deps` (the test seam) or the env deps, with every model client charged to
+ * `meter`. With `deps`, only `deps.ai` is wrapped: a test's translator is a
+ * plain function with no client to meter.
+ */
 export function meteredImportDeps(deps: RecipeImportDeps | undefined, meter: LlmMeter): RecipeImportDeps {
   const wrap = (ai: RecipeImportDeps['ai']) => meteredAi(ai, meter);
   return deps !== undefined ? { ...deps, ai: wrap(deps.ai) } : recipeImportDepsFromEnv(wrap);

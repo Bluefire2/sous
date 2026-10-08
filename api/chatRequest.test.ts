@@ -313,13 +313,15 @@ describe('chat text caps', () => {
     expect(parseChatRequest(validBody({ cookingState }))).toBeNull();
   });
 
-  it('estimates two characters a token and 1 300 tokens a photo', () => {
+  it('estimates a token per character, the tool schema included, and 1 300 tokens a photo', () => {
+    const textOnly = estimatedPromptTokens('', []);
+    expect(textOnly).toBeGreaterThan(500); // the update_recipe schema
     expect(
       estimatedPromptTokens('abcd', [
         { role: 'user', content: 'ab' },
         { role: 'user', content: 'abc', images: [{ mediaType: 'image/jpeg', base64: JPEG }] },
       ]),
-    ).toBe(Math.ceil(9 / 2) + 1300);
+    ).toBe(textOnly + 9 + 1300);
   });
 });
 
@@ -353,6 +355,46 @@ describe('POST usage reporting', () => {
     expect(onUsage).toHaveBeenCalledTimes(1);
     const usage = onUsage.mock.calls[0][1] as { promptTokenCount: number };
     expect(usage.promptTokenCount).toBeGreaterThan(1300);
+  });
+
+  it('charges what a cut-off stream already wrote', async () => {
+    model.generate = async () =>
+      (async function* () {
+        yield { text: 'Partial' };
+        throw new Error('cut');
+      })();
+    const onUsage = vi.fn();
+    const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+    await res.text().catch(() => {});
+    expect((onUsage.mock.calls[0][1] as { candidatesTokenCount: number }).candidatesTokenCount).toBe(7);
+  });
+
+  it('survives the client cancelling mid-reply, and still reports usage', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      let next!: () => void;
+      model.generate = async () =>
+        (async function* () {
+          yield { text: 'First' };
+          await new Promise<void>((resolve) => {
+            next = resolve;
+          });
+          yield { text: 'Second' };
+        })();
+      const onUsage = vi.fn();
+      const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+      const reader = res.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      next();
+      await vi.waitFor(() => expect(onUsage).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   it('reports nothing when the model call never starts', async () => {

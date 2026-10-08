@@ -311,10 +311,19 @@ describe('fitChatHistory', () => {
 
   it('drops the oldest messages first, keeping the total within the cap', () => {
     const half = MAX_CHAT_HISTORY_CHARS / 2;
-    const thread = [msg(5), msg(half, 'assistant'), msg(half)];
-    expect(fitChatHistory(thread)).toEqual(thread.slice(1));
-    const longer = [msg(half), msg(half, 'assistant'), msg(1)];
-    expect(fitChatHistory(longer)).toEqual(longer.slice(1));
+    const thread = [msg(5), msg(5, 'assistant'), msg(half), msg(half - 10, 'assistant'), msg(5)];
+    expect(fitChatHistory(thread)).toEqual(thread.slice(2));
+  });
+
+  it('starts a trimmed thread on a user message', () => {
+    const half = MAX_CHAT_HISTORY_CHARS / 2;
+    const thread = [msg(half), msg(half, 'assistant'), msg(1)];
+    expect(fitChatHistory(thread)).toEqual([thread[2]]);
+  });
+
+  it('keeps a thread that already starts with the assistant when nothing is trimmed', () => {
+    const thread = [msg(5, 'assistant'), msg(5)];
+    expect(fitChatHistory(thread)).toEqual(thread);
   });
 
   it('always keeps the newest message, even alone over the cap', () => {

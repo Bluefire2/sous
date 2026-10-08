@@ -218,7 +218,7 @@ set `FIRESTORE_EMULATOR_HOST` to a loopback `host:port`; any other host is
 refused.
 
 Open `http://localhost:5173/__test/` and pick a persona (`owner`, `member`,
-`empty`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
+`empty`, `capped`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
 reseeds it; `npm run dev:test -- --keep` keeps the data. `--static --port 4173`
 serves `dist/` as well, for CI and browser automation without Vite;
 `GET /__test/personas` answers 503 until the seed is done and then lists the

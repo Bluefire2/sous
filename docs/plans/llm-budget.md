@@ -52,10 +52,19 @@ the same limit; **$10 per member per UTC day**, plus a cap on chat text.
     `webSearchQueries`; `FieldValue.increment` on `spentMicroUsd` and
     `calls`, plus `expireAt` (the day + 8 days). A failed write is logged
     and never fails the request. A stream cut off before it reported usage is
-    charged an estimate (two characters a token, 1 300 tokens a photo),
-    because Google still bills its prompt.
-  - `meteredAi(ai, meter)` wraps a `generateContent` client. Import, the
-    import translator, `/api/translate`, and STT use it.
+    charged an estimate (a token per character of the request, tool
+    declarations included, 1 300 tokens a photo, and a token per character it
+    already wrote), because Google still bills its prompt and its output so
+    far. No script uses more than a token per character, so the estimate is
+    high.
+  - `meteredAi(ai, meter)` wraps a `generateContent` client and does not wait
+    for the charge's write, so a slow store never delays an answer. Import,
+    the import translator, `/api/translate`, and STT use it.
+  - Known gaps: the translation and searched-generation hourly buckets are
+    taken before `admitLlm`, so a budget refusal still uses one slot; URL
+    import fetches the page before admission. A Stop that lands between a
+    step's stream opening and the harness reading it leaves that step
+    uncharged (an undercount, not a leak).
   - Chat: `api/chat.ts` cannot import siblings, so `withChatBudget` in
     `scripts/server.ts` (`withMembership(withChatBudget(chatPost))`) admits,
     passes `ctx.onUsage`, and releases when the response body ends.

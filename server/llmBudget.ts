@@ -221,8 +221,9 @@ type GenerateContentClient = { models: Pick<GoogleGenAI['models'], 'generateCont
 
 /**
  * The same client, with every `generateContent` call charged to `meter`
- * once it resolves. A call that throws is not charged: nothing reports its
- * usage.
+ * once it resolves. The result does not wait for the charge's write, so a
+ * slow store never holds up an answer the model already gave. A call that
+ * throws is not charged: nothing reports its usage.
  */
 export function meteredAi<T extends GenerateContentClient>(ai: T, meter: LlmMeter): GenerateContentClient {
   return {
@@ -230,7 +231,7 @@ export function meteredAi<T extends GenerateContentClient>(ai: T, meter: LlmMete
       generateContent: async (params) => {
         const result = await ai.models.generateContent(params);
         const queries = result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0;
-        await meter.charge(params.model, result.usageMetadata, queries);
+        void meter.charge(params.model, result.usageMetadata, queries);
         return result;
       },
     },

@@ -93,17 +93,19 @@ export async function agentPost(req: Request): Promise<Response> {
     }
   }
 
-  const admission = await admitLlm(access.sub, 'agent');
-  if (admission.kind !== 'ok') {
-    return llmRefusal(admission);
-  }
-  const { meter } = admission;
-
   const messages = replayCards(parsed.value.messages, library);
   const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
   const stop = new AbortController();
   const deadline = AbortSignal.timeout(AGENT_WALL_MS);
   const signal = AbortSignal.any([deadline, stop.signal]);
+
+  // Admitted last, right before the run, so nothing can throw between taking
+  // the slot and the try that frees it.
+  const admission = await admitLlm(access.sub, 'agent');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
 
   const runStarted = Date.now();
   let agentRun;

@@ -221,8 +221,17 @@ describe('googleModel usage', () => {
     }
     const contents = calls[0]!.contents as Parameters<typeof estimatedStepPromptTokens>[1];
     expect(onUsage).toHaveBeenCalledWith('m', {
-      promptTokenCount: estimatedStepPromptTokens('sys', contents),
+      promptTokenCount: estimatedStepPromptTokens('sys', contents, []),
+      candidatesTokenCount: 1,
     });
+  });
+
+  it('estimates a token per character of the request, tools included', () => {
+    const contents = [{ role: 'user', parts: [{ text: 'hello' }] }];
+    const tools = [{ name: 'search', description: 'find', parameters: { type: 'object', properties: {} } }];
+    expect(estimatedStepPromptTokens('sys', contents, tools)).toBe(
+      3 + JSON.stringify(contents).length + JSON.stringify(tools).length,
+    );
   });
 
   it('reports when the consumer stops early', async () => {
