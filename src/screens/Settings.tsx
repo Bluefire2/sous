@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import KitchenProfileSection from '../components/KitchenProfileSection';
 import { isSupportedLocale, localeDisplayName, SUPPORTED_LOCALES, t as translate, useLocale, useT } from '../i18n';
 import { exportLibrary, importLibrary } from '../lib/backup';
 import {
@@ -380,6 +381,8 @@ export default function Settings() {
           </div>
         </>
       )}
+
+      {sessionStatus === 'signedIn' && <KitchenProfileSection />}
 
       {sessionStatus === 'signedIn' && <ConnectedApps />}
 

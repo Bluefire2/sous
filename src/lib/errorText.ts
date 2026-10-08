@@ -24,6 +24,7 @@ const ERROR_CODES = {
   'import-no-recipe-photos': 'error.importNoRecipePhotos',
   'import-brief-too-long': 'error.importBriefTooLong',
   'import-search-rate-limited': 'error.importSearchRateLimited',
+  'import-profile-unavailable': 'error.importProfileUnavailable',
   'import-no-recipe-brief': 'error.importNoRecipeBrief',
   'import-generate-failed': 'error.importGenerateFailed',
   'import-bad-language': 'error.sttBadLanguage',

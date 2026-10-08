@@ -79,6 +79,15 @@
       session. Photos used only to import a recipe are not kept.
     </p>
     <p>
+      If you fill in Kitchen profile in Settings, the allergies, diets, foods
+      to avoid, dislikes, equipment and notes you enter are stored in
+      Firestore (<code>europe-west1</code>) under your account until you
+      change them or your account is deleted. Allergies and diets can say
+      something about your health or beliefs; leave out anything you would
+      rather not store. The profile is not in backups and connected apps
+      cannot read it.
+    </p>
+    <p>
       Each account has a daily limit on Sous's AI features (Ask, the
       assistant, recipe import, translation, and dictation), so that a
       misused account cannot run up costs. To enforce it, Sous stores one
@@ -316,7 +325,10 @@
       recipe. When you ask Sous to write a recipe from an idea, the text you
       type is sent to Google's Gemini API. With Search the web on, Gemini may
       run Google searches based on it; the pages it used are shown to you
-      with the result and are not stored. Gemini processes these requests on
+      with the result and are not stored. If you saved a kitchen profile, it
+      is sent to Google's Gemini API with each message on a recipe, each
+      library assistant message, and each recipe written from an idea, but
+      not with the web search. Gemini processes these requests on
       Google's infrastructure, which is not limited to the
       <code>europe-west1</code> region. Recipe import fetches the URL you
       paste. If you press Request access, the
@@ -375,8 +387,8 @@
       collection links you created, your connected apps and their tokens,
       and your stored library — recipes, chat
       messages, cooking progress, cook log entries (dates, ratings, notes,
-      lessons and photos), photos, cached translations, and daily AI usage
-      records — and deleting
+      lessons and photos), photos, cached translations, daily AI usage
+      records, and your kitchen profile — and deleting
       these also removes your access. It also covers collection links you
       made, and your email where other members' records hold it: on
       collections you shared and collections shared with you. Revoking
