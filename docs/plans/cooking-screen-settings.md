@@ -41,10 +41,14 @@ the review manifest).
 - `src/lib/useDeviceSettings.ts`: `useWakeLockSetting` and
   `useRecipeTextSize` over `useSyncExternalStore`.
 - `src/lib/useWakeLock.ts`: requests nothing while the setting is off;
-  turning it off releases a held lock; a lock granted after unmount or after
-  the setting went off is released at once.
+  turning it off releases a held lock. The acquire and release rules live in
+  the pure `startWakeLock` (`src/lib/wakeLockController.ts`): no request
+  while a live lock is held, a lock that lands releases the one it replaces,
+  and a lock granted after stop is released at once.
 - Tests in `src/lib/settings.test.ts`: defaults, unknown values, setters
   notifying only their own subscribers, storage that throws or is missing.
+  `src/lib/wakeLockController.test.ts` covers the wake-lock races with a
+  fake API and document.
 
 ### 2. [ui] Settings → Cooking and the recipe screens
 
