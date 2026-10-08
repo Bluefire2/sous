@@ -11,7 +11,7 @@
 import type { BrowserContext, Route } from 'playwright';
 import type { CollectionCreateData, CollectionMoveData, ShoppingListData } from '../../src/agent/cards/parse.ts';
 import type { RecipeDraft } from '../../src/lib/types.ts';
-import { FIXTURE_IDS, memberLibrary } from '../fixtures.ts';
+import { FIXTURE_IDS, KITCHEN_PROFILES, memberLibrary } from '../fixtures.ts';
 import type { Lang } from './catalog.ts';
 
 export interface MockEnv {
@@ -402,6 +402,22 @@ export const MOCKS = {
    */
   suggestionAccepted: async (context) => {
     await context.route('**/api/feature-request', (route) => route.fulfill({ status: 204 }));
+  },
+  /**
+   * Saving the kitchen profile succeeds and echoes the seeded member profile,
+   * without writing, so other captures still see the seed. GET is not routed.
+   */
+  kitchenProfileSaved: async (context) => {
+    await context.route('**/api/settings/kitchen', (route) =>
+      route.request().method() === 'POST'
+        ? json(route, 200, { profile: { ...KITCHEN_PROFILES.member, updatedAt: 0 } })
+        : route.fallback(),
+    );
+  },
+  kitchenProfileSaveFails: async (context) => {
+    await context.route('**/api/settings/kitchen', (route) =>
+      route.request().method() === 'POST' ? json(route, 503, { error: 'Store unavailable' }) : route.fallback(),
+    );
   },
   /** Disconnecting a connected app fails. */
   disconnectFails: async (context) => {

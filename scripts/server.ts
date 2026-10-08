@@ -51,6 +51,7 @@ import {
 } from '../server/collectionLinksHttp.ts';
 import { extensionImport, extensionImportOptions } from '../server/extensionImport.ts';
 import { inviteLandingGet } from '../server/invites.ts';
+import { kitchenProfileGet, kitchenProfilePost, withKitchenProfile } from '../server/kitchenProfile.ts';
 import { withMembership } from '../server/membership.ts';
 import { photosGet, photosPost } from '../server/photos.ts';
 import {
@@ -83,7 +84,7 @@ export interface ApiRoute {
 
 /** Exact-path API routes; exported for scripts/server.dispatch.test.ts. */
 export const apiRoutes: readonly ApiRoute[] = [
-  { method: 'POST', path: '/api/chat', handler: withMembership(chatPost) },
+  { method: 'POST', path: '/api/chat', handler: withMembership(withKitchenProfile(chatPost)) },
   { method: 'POST', path: '/api/import', handler: withMembership(importPost) },
   { method: 'POST', path: '/api/import-feedback', handler: withMembership(importFeedbackPost) },
   { method: 'POST', path: '/api/feature-request', handler: withMembership(featureRequestPost) },
@@ -110,6 +111,8 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'OPTIONS', path: '/api/extension/import', handler: extensionImportOptions },
   { method: 'GET', path: '/api/mcp/grants', handler: mcpGrantsGet },
   { method: 'POST', path: '/api/mcp/grants/revoke', handler: mcpGrantsRevokePost },
+  { method: 'GET', path: '/api/settings/kitchen', handler: withMembership(kitchenProfileGet) },
+  { method: 'POST', path: '/api/settings/kitchen', handler: withMembership(kitchenProfilePost) },
 ];
 
 const PUBLIC_HTML: Record<string, string> = {

@@ -12,9 +12,11 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateFromBrief, recipeImportDepsFromEnv } from '../server/recipeImport.ts';
+import { kitchenProfilePromptBlock, type KitchenProfileFields } from '../server/kitchenProfile.ts';
 import { ingredientCount } from './judge.ts';
 
 const GUMBO = 'shrimp gumbo in a pressure cooker for 6';
+const NO_PROFILE: KitchenProfileFields = { allergens: [], diets: [], avoid: '', dislikes: '', equipment: '', notes: '' };
 
 describe('write a recipe from a brief (live Gemini)', () => {
   beforeAll(() => {
@@ -59,6 +61,34 @@ describe('write a recipe from a brief (live Gemini)', () => {
       { search: false },
     );
     expect(outcome.kind, JSON.stringify(outcome)).toBe('not_a_recipe');
+  }, 60_000);
+
+  it('leaves out an allergen from the kitchen profile even when the dish usually has it', async () => {
+    const kitchenProfile = kitchenProfilePromptBlock({ ...NO_PROFILE, allergens: ['peanuts'] });
+    const outcome = await generateFromBrief('pad thai for two', recipeImportDepsFromEnv(), {
+      search: false,
+      kitchenProfile,
+    });
+    expect(outcome.kind, JSON.stringify(outcome)).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    const items = outcome.recipe.ingredientSections.flatMap((s) => s.items.map((i) => i.item));
+    expect(items.some((item) => /peanut/i.test(item)), JSON.stringify(items)).toBe(false);
+    expect(outcome.recipe.servings).toBe(2);
+  }, 60_000);
+
+  it('follows the kitchen profile diet for a dish that usually has meat', async () => {
+    const kitchenProfile = kitchenProfilePromptBlock({ ...NO_PROFILE, diets: ['vegetarian'] });
+    const outcome = await generateFromBrief('lasagne for 4', recipeImportDepsFromEnv(), {
+      search: false,
+      kitchenProfile,
+    });
+    expect(outcome.kind, JSON.stringify(outcome)).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    const items = outcome.recipe.ingredientSections.flatMap((s) => s.items.map((i) => i.item));
+    expect(
+      items.some((item) => /beef|pork|veal|sausage|pancetta|bacon|chicken|mince|meat/i.test(item)),
+      JSON.stringify(items),
+    ).toBe(false);
   }, 60_000);
 
   it('grounds on web pages when search is on', async () => {

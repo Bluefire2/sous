@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endlessBody } from '../../test/endlessBody.ts';
+import * as kitchen from '../kitchenProfile.ts';
 import * as membership from '../membership.ts';
 import * as run from './harness/run.ts';
 import type { AgentEvent, AgentRunSummary, StartAgentResult } from './harness/types.ts';
@@ -15,6 +16,11 @@ import * as library from './sous/library.ts';
 vi.mock('../membership.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../membership.ts')>();
   return { ...actual, requireMember: vi.fn() };
+});
+
+vi.mock('../kitchenProfile.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../kitchenProfile.ts')>();
+  return { ...actual, readKitchenProfileBlock: vi.fn() };
 });
 
 vi.mock('./sous/library.ts', async (importOriginal) => {
@@ -29,6 +35,7 @@ vi.mock('./harness/run.ts', async (importOriginal) => {
 
 const requireMember = vi.mocked(membership.requireMember);
 const loadAgentLibrary = vi.mocked(library.loadAgentLibrary);
+const readKitchenProfileBlock = vi.mocked(kitchen.readKitchenProfileBlock);
 const startAgent = vi.mocked(run.startAgent);
 
 const LIBRARY = library.buildAgentLibrary([], [], {
@@ -75,6 +82,7 @@ beforeEach(() => {
   vi.stubEnv('GEMINI_API_KEY', 'test-key');
   requireMember.mockReset().mockResolvedValue({ kind: 'ok', sub: 'member-sub', email: 'm@example.com', isOwner: false });
   loadAgentLibrary.mockReset().mockResolvedValue(LIBRARY);
+  readKitchenProfileBlock.mockReset().mockResolvedValue('');
   startAgent.mockReset().mockResolvedValue(fakeRun([{ t: 'text', step: 0, d: 'Soup.' }, { t: 'done' }]));
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -142,6 +150,21 @@ describe('POST /api/agent gates', () => {
     const res = await agentPost(post());
     expect(res.status).toBe(503);
     expect(startAgent).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 when the kitchen profile cannot be read, rather than run without it', async () => {
+    readKitchenProfileBlock.mockRejectedValue(new Error('firestore down'));
+    const res = await agentPost(post());
+    expect(res.status).toBe(503);
+    expect(startAgent).not.toHaveBeenCalled();
+  });
+
+  it('reads the session member’s kitchen profile and puts it in the system prompt', async () => {
+    readKitchenProfileBlock.mockResolvedValue('<kitchen_profile>\nAllergies (never include): peanuts\n</kitchen_profile>');
+    const body = JSON.parse(validBody()) as Record<string, unknown>;
+    await agentPost(post(JSON.stringify({ ...body, sub: 'someone-else' })));
+    expect(readKitchenProfileBlock).toHaveBeenCalledWith('member-sub');
+    expect(startAgent.mock.calls[0]?.[0].systemInstruction).toContain('Allergies (never include): peanuts');
   });
 
   it('answers 503 when the library load outlasts its 90 s budget', async () => {

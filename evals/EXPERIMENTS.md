@@ -22,6 +22,28 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-08 — Kitchen profile in generatePrompt
+
+- Change: `generatePrompt` appends the member's kitchen profile block
+  (`kitchenProfilePromptBlock`, `server/kitchenProfile.ts`) and one rule:
+  never include an allergen or a "never include" food, even if the brief
+  names one; substitute and say so in notes; follow the diet and dislikes
+  unless the brief explicitly asks otherwise. With no profile the prompt is
+  byte-for-byte what it was. The research call is unchanged and never sees
+  the profile. Branch `claude/personal-user-settings-explore-5d149e`
+  (`docs/plans/kitchen-profile.md`).
+- Reason (not fixture-specific): members set allergies and diets once in
+  Settings instead of repeating them in every brief.
+- Command: `npx vitest run --config vitest.eval.config.ts evals/recipeGenerate.eval.ts`
+  (the four existing cases, plus two new ones: "pad thai for two" with a
+  peanut allergy must list no peanut ingredient; "lasagne for 4" with a
+  vegetarian diet must list no meat ingredient).
+- Before: not run. The no-profile prompt is unchanged, so the four existing
+  cases measure the old path.
+- After: 3 runs, 6/6 each (18/18), model default `CHAT_MODEL`.
+- Decision: kept.
+- Run by: agent.
+
 ## 2026-10-06 — RECIPE_SCHEMA property order (times early), whole-minute rounding
 
 - Change: `RECIPE_SCHEMA` (photo import and `generateFromBrief`) gets a

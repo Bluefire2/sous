@@ -244,6 +244,26 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.p('settings.connectedAppsDisconnectError')).waitFor();
     },
   },
+  'settings-kitchen-profile': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaved'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaved'), { exact: true }).waitFor();
+    },
+  },
+  'settings-kitchen-profile-save-error': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaveFails'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaveError'), { exact: true }).waitFor();
+    },
+  },
   admin: { persona: 'owner', path: '/admin' },
   'library-add-sheet': {
     persona: 'member',

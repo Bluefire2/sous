@@ -15,9 +15,11 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
+import { readKitchenProfileBlock, type KitchenProfileStore } from './kitchenProfile.ts';
 import {
   RequestBodyError,
   readBoundedText,
+  storeUnavailable,
   type MembershipHandlerContext,
 } from './membership.ts';
 import {
@@ -269,11 +271,12 @@ export function importPost(
   req: Request,
   ctx?: MembershipHandlerContext,
   deps?: RecipeImportDeps,
+  kitchenStore?: KitchenProfileStore,
 ): Promise<Response> {
   const entry: ImportLogEntry = {};
   // Log line only; `withMembership` has already decided access.
   if (ctx !== undefined) entry.sub = ctx.authorizedSub;
-  return withImportLog(entry, () => handleImport(req, entry, deps));
+  return withImportLog(entry, () => handleImport(req, entry, deps, kitchenStore));
 }
 
 /** `importPost` without the log line; it records what happened on `entry`. */
@@ -281,6 +284,7 @@ async function handleImport(
   req: Request,
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
+  kitchenStore: KitchenProfileStore | undefined,
 ): Promise<Response> {
   let raw: string | null;
   try {
@@ -384,6 +388,17 @@ async function handleImport(
     // `entry.sub` is the membership gate's decision; `withMembership` always
     // passes it, so only direct calls without a context (tests) share the '' bucket.
     const member = entry.sub ?? '';
+    // Read before a search slot is taken. A failed read is 503: a recipe
+    // written without the member's allergies is worse than no recipe.
+    let kitchenProfile = '';
+    if (member !== '') {
+      try {
+        kitchenProfile = await readKitchenProfileBlock(member, kitchenStore);
+      } catch {
+        entry.outcome = 'store_unavailable';
+        return storeUnavailable();
+      }
+    }
     if (
       search &&
       !admitTranslateCall(searchBuckets, member, Date.now(), MAX_IMPORT_SEARCHES_PER_HOUR, SEARCH_WINDOW_MS)
@@ -394,6 +409,7 @@ async function handleImport(
     const outcome = await generateFromBrief(brief, deps ?? recipeImportDepsFromEnv(), {
       search,
       translateTo: target.translateTo,
+      kitchenProfile,
     });
     noteImportOutcome(entry, outcome);
     return outcomeResponse(outcome, undefined, {

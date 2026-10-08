@@ -42,6 +42,7 @@ export type ImportLogOutcome =
   | 'bad_brief'
   | 'rate_limited'
   | 'save_failed'
+  | 'store_unavailable'
   | 'threw';
 
 export interface ImportLogEntry {

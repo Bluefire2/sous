@@ -22,6 +22,7 @@ import {
 } from './seededMcp.ts';
 import {
   FIXTURE_IDS,
+  KITCHEN_PROFILES,
   memberLibrary,
   ownerLibrary,
   viewerLibrary,
@@ -227,6 +228,8 @@ export async function seed(baseUrl: string): Promise<number> {
     cookie: cookies.member,
   });
   await request(baseUrl, '/api/admin/invites', { cookie: cookies.owner });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.member, json: KITCHEN_PROFILES.member });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.viewer, json: KITCHEN_PROFILES.viewer });
 
   await connectApp(baseUrl, now);
   return now;
