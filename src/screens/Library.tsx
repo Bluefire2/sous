@@ -214,6 +214,8 @@ export default function Library() {
           .filter((recipe) => !recipeStore.isShared(recipe.id))
           .map((recipe) => recipe.id);
   const canSelect = ownedVisibleIds.length > 0;
+  // A page of only shared recipes has nothing for Select all to check.
+  const canSelectPage = ownedPageIds.length > 0;
   // The selection the bar, Move, and the header act on. A search can hide a
   // checked recipe one render before the effect below drops it from
   // selectedIds; counting only what the search matches keeps them in
@@ -257,17 +259,14 @@ export default function Library() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of ownedPageIds) {
-        if (allOwnedSelected) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-      }
-      return next;
-    });
+    // Select none clears every check, including any past the last page (a
+    // sort or refresh can push them there), so Move never acts on a recipe
+    // the person can no longer see checked.
+    if (allOwnedSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds((prev) => new Set([...prev, ...ownedPageIds]));
   };
 
   const showMoreRecipes = () => {
@@ -279,7 +278,7 @@ export default function Library() {
     const index = focusCardAt.current;
     if (index === null) return;
     focusCardAt.current = null;
-    listRef.current?.querySelectorAll<HTMLElement>(':scope > li h2 a')[index]?.focus();
+    listRef.current?.querySelectorAll<HTMLElement>('[data-card-title]')[index]?.focus();
   }, [shown]);
 
   // indeterminate is DOM-only. A ref callback also sets it on an input that
@@ -881,7 +880,7 @@ export default function Library() {
         <p className="py-12 text-center text-ink-muted">{emptyCopy()}</p>
       ) : (
         <>
-          {selecting && canSelect && (
+          {selecting && canSelectPage && (
             <label className="mb-1 flex cursor-pointer items-center gap-1">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center">
                 <input
@@ -928,6 +927,7 @@ export default function Library() {
                       <Link
                         to={`/recipe/${recipe.id}`}
                         state={{ from: libraryHref(collectionId) }}
+                        data-card-title=""
                         className="after:absolute after:inset-0 after:rounded-2xl"
                       >
                         {recipe.title}
@@ -1064,7 +1064,7 @@ export default function Library() {
               <button
                 type="button"
                 onClick={toggleSelectAll}
-                disabled={!canSelect}
+                disabled={!canSelectPage}
                 className={`${ghostBtn} disabled:opacity-40`}
               >
                 {allOwnedSelected ? t('library.selectNone') : t('library.selectAll')}
