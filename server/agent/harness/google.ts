@@ -4,6 +4,7 @@ import {
   type Content,
   type GenerateContentParameters,
   type GenerateContentResponse,
+  type GenerateContentResponseUsageMetadata,
   type Part,
   type Schema,
   Type,
@@ -125,10 +126,24 @@ function clonePart(part: Part): Part {
   return structuredClone(part);
 }
 
+/**
+ * A high estimate of a step's prompt tokens, for a stream that ended before
+ * it reported usage: one token per two characters of the request.
+ */
+export function estimatedStepPromptTokens(systemInstruction: string, contents: Content[]): number {
+  return Math.ceil((systemInstruction.length + JSON.stringify(contents).length) / 2);
+}
+
 export function googleModel(opts: {
   apiKey: string;
   model: string;
   generate?: GenerateFn;
+  /**
+   * Called once per step when its stream ends, with the last usage it
+   * reported, or an estimate when it reported none (a stream cut off early
+   * is still billed for its prompt).
+   */
+  onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata) => void;
 }): ModelClient {
   const generate: GenerateFn =
     opts.generate ??
@@ -172,8 +187,26 @@ export function googleModel(opts: {
       const yieldedCallKeys = new Set<string>();
       let streamDone = false;
 
+      let usage: GenerateContentResponseUsageMetadata | undefined;
+
       async function* eventGenerator(): AsyncGenerator<ModelStepEvent> {
+        try {
+          yield* streamEvents();
+        } finally {
+          opts.onUsage?.(
+            opts.model,
+            usage ?? {
+              promptTokenCount: estimatedStepPromptTokens(request.systemInstruction, contents),
+            },
+          );
+        }
+      }
+
+      async function* streamEvents(): AsyncGenerator<ModelStepEvent> {
         for await (const chunk of iterable) {
+          if (chunk.usageMetadata) {
+            usage = chunk.usageMetadata;
+          }
           if (chunk.promptFeedback?.blockReason) {
             promptBlocked = true;
           }

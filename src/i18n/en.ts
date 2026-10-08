@@ -646,6 +646,8 @@ export const en = {
   'error.translateProviderUnavailable': 'This translation provider is not available.',
   'error.translateFailed': "Couldn't translate this recipe.",
   'error.translateRateLimited': 'Too many translations. Try again later.',
+  'error.llmBudgetExceeded': "You've reached today's limit for Sous's AI features. It resets at midnight UTC.",
+  'error.llmBusy': 'Sous is still working on your other requests. Try again in a moment.',
   'assistant.ask': 'Ask',
   'assistant.clear': 'Clear',
   'assistant.stop': 'Stop',

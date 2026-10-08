@@ -664,6 +664,8 @@ export const uk: Messages = {
   'error.translateProviderUnavailable': 'Ця служба перекладу недоступна.',
   'error.translateFailed': 'Не вдалося перекласти цей рецепт.',
   'error.translateRateLimited': 'Забагато перекладів. Спробуйте пізніше.',
+  'error.llmBudgetExceeded': 'Ви досягли денного ліміту функцій ШІ в Sous. Він оновиться опівночі за UTC.',
+  'error.llmBusy': 'Sous ще обробляє ваші інші запити. Спробуйте ще раз за мить.',
   'assistant.ask': 'Запитати',
   'assistant.clear': 'Очистити',
   'assistant.stop': 'Зупинити',

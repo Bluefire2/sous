@@ -23,6 +23,7 @@ import {
   requireMember,
   storeUnavailable,
 } from '../membership.ts';
+import { admitLlm, llmRefusal } from '../llmBudget.ts';
 
 const LIBRARY_LOAD_TIMEOUT_MS = 90_000;
 const AGENT_WALL_MS = 90_000;
@@ -92,6 +93,12 @@ export async function agentPost(req: Request): Promise<Response> {
     }
   }
 
+  const admission = await admitLlm(access.sub, 'agent');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
+
   const messages = replayCards(parsed.value.messages, library);
   const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
   const stop = new AbortController();
@@ -102,7 +109,11 @@ export async function agentPost(req: Request): Promise<Response> {
   let agentRun;
   try {
     agentRun = await startAgent({
-      model: googleModel({ apiKey, model: modelName }),
+      model: googleModel({
+        apiKey,
+        model: modelName,
+        onUsage: (model, usage) => void meter.charge(model, usage),
+      }),
       systemInstruction: buildSystemPrompt({
         library,
         clientNow: parsed.value.clientNow,
@@ -117,6 +128,7 @@ export async function agentPost(req: Request): Promise<Response> {
       signal,
     });
   } catch {
+    meter.release();
     return jsonError('Assistant is unavailable.', 502);
   }
 
@@ -184,7 +196,8 @@ export async function agentPost(req: Request): Promise<Response> {
           })
           .catch(() => {
             /* Stop can close the stream before enqueue or close runs. */
-          });
+          })
+          .finally(meter.release);
       },
       cancel() {
         streamSettled = true;

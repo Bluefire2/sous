@@ -349,6 +349,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.t('error.importSearchRateLimited'), { exact: true }).waitFor();
     },
   },
+  'import-llm-budget': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['llmBudgetExceeded'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('error.llmBudgetExceeded'), { exact: true }).waitFor();
+    },
+  },
   'import-create-failed': {
     persona: 'member',
     path: '/import',
@@ -705,6 +715,15 @@ export const STATES: Record<string, StateEntry> = {
       await clickButton(page, ctx.t('assistant.stop'));
       // Inside the reply's bubble, after its text.
       await page.getByText(new RegExp(`${escapeRegExp(ctx.t('assistant.stopped'))}$`)).waitFor();
+    },
+  },
+  'assistant-llm-budget': {
+    persona: 'member',
+    path: '/assistant',
+    mocks: ['llmBudgetExceeded'],
+    reach: async (page, ctx) => {
+      await ask(page, ctx, 'What can I cook tonight?');
+      await page.getByText(ctx.t('error.llmBudgetExceeded')).first().waitFor();
     },
   },
   'assistant-shopping-list': {

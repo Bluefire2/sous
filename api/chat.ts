@@ -1,5 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { GoogleGenAI, Type, type Content, type Part, type Schema } from '@google/genai';
+import {
+  GoogleGenAI,
+  Type,
+  type Content,
+  type GenerateContentResponseUsageMetadata,
+  type Part,
+  type Schema,
+} from '@google/genai';
 
 // NOTE: Duplicated in server/session.ts + server/allowlist.ts.
 // This inline copy is the Vercel gate and must stay in sync with those files.
@@ -229,6 +236,18 @@ export const MAX_CHAT_IMAGE_BYTES = 3 * 1024 * 1024;
  * exceed it, as with import.
  */
 export const MAX_CHAT_BODY_BYTES = 12 * 1024 * 1024;
+/**
+ * Message text, summed over the thread. Without it the 12 MB body could be
+ * almost all text, enough to fill the model's context in one paid request.
+ * The client drops the oldest messages to fit (`MAX_CHAT_HISTORY_CHARS` in
+ * src/lib/chatApi.ts mirrors it).
+ */
+export const MAX_CHAT_TEXT_CHARS = 120_000;
+/**
+ * `recipe` plus `cookingState` as JSON. A stored recipe is under 200 000 JSON
+ * chars (validateRecipePut in server/store.ts), so any real one fits.
+ */
+export const MAX_CHAT_CONTEXT_CHARS = 210_000;
 const CHAT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const ASSISTANT_UNAVAILABLE = 'Assistant is unavailable.';
@@ -327,6 +346,7 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
     return null;
   }
   const messages: ChatRequestMessage[] = [];
+  let textChars = 0;
   for (const item of raw.messages) {
     if (!isPlainObject(item)) {
       return null;
@@ -335,6 +355,10 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
       return null;
     }
     if (typeof item.content !== 'string') {
+      return null;
+    }
+    textChars += item.content.length;
+    if (textChars > MAX_CHAT_TEXT_CHARS) {
       return null;
     }
     const message: ChatRequestMessage = { role: item.role, content: item.content };
@@ -347,7 +371,26 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
     }
     messages.push(message);
   }
+  const contextChars =
+    JSON.stringify(raw.recipe).length + (JSON.stringify(raw.cookingState) ?? '').length;
+  if (contextChars > MAX_CHAT_CONTEXT_CHARS) {
+    return null;
+  }
   return { messages, recipe: raw.recipe, cookingState: raw.cookingState };
+}
+
+/**
+ * A high estimate of the prompt's tokens, for a stream that ended before it
+ * reported usage: one token per two characters, and 1 300 per photo.
+ */
+export function estimatedPromptTokens(system: string, messages: ChatRequestMessage[]): number {
+  let chars = system.length;
+  let photos = 0;
+  for (const m of messages) {
+    chars += m.content.length;
+    photos += m.images?.length ?? 0;
+  }
+  return Math.ceil(chars / 2) + photos * 1300;
 }
 
 /**
@@ -414,7 +457,16 @@ function toGeminiContents(messages: ChatRequestMessage[]): Content[] {
   });
 }
 
-export async function POST(req: Request, ctx?: { authorizedSub?: string }): Promise<Response> {
+/**
+ * On Cloud Run, `withChatBudget` (server/llmBudget.ts) passes `onUsage`; it is
+ * called once per model call with the stream's last reported usage.
+ */
+export interface ChatContext {
+  authorizedSub?: string;
+  onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata | undefined) => void;
+}
+
+export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   const authorized =
     typeof ctx?.authorizedSub === 'string' && ctx.authorizedSub !== ''
       ? ctx.authorizedSub
@@ -444,6 +496,7 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  const system = systemPrompt(body.recipe, body.cookingState);
   const abort = new AbortController();
 
   let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;
@@ -453,7 +506,7 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
       contents: toGeminiContents(body.messages),
       config: {
         abortSignal: abort.signal,
-        systemInstruction: systemPrompt(body.recipe, body.cookingState),
+        systemInstruction: system,
         maxOutputTokens: 4096,
         tools: [
           {
@@ -481,9 +534,11 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
       void (async () => {
+        let usage: GenerateContentResponseUsageMetadata | undefined;
         try {
           let proposalArgs: Record<string, unknown> | undefined;
           for await (const chunk of stream) {
+            if (chunk.usageMetadata) usage = chunk.usageMetadata;
             if (chunk.text) controller.enqueue(encoder.encode(chunk.text));
             const update = chunk.functionCalls?.find(
               (call) => call.name === 'update_recipe' && call.args,
@@ -501,6 +556,10 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
           // The dispatcher in scripts/server.ts logs a body error it sees, so
           // pass on a description, never the SDK's error and its message.
           controller.error(new Error(`Chat stream failed: ${describeThrown(err)}`));
+        } finally {
+          // A stream cut off before any usage chunk is still billed for its
+          // prompt, so it is charged an estimate that errs high.
+          ctx?.onUsage?.(MODEL, usage ?? { promptTokenCount: estimatedPromptTokens(system, body.messages) });
         }
       })();
     },
