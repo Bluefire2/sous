@@ -344,6 +344,7 @@ export default function ShareCollectionSheet({
               turnOn: 'share.publicTurnOn',
               label: 'share.publicLinkLabel',
               turnOffLabel: 'share.publicTurnOffLabel',
+              offHint: 'share.publicOffHint',
             },
           }}
           onBusyChange={setPublicBusy}

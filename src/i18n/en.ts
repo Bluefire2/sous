@@ -569,6 +569,7 @@ export const en = {
   'shareRecipe.linkTurnOn': 'Create link',
   'shareRecipe.linkLabel': 'Recipe link',
   'shareRecipe.linkTurnOffLabel': 'Turn off the recipe link',
+  'shareRecipe.linkOffHint': 'Turning it off stops the link at once. If you turn it on again, you get a new link, and anyone who saved a copy from the old one can save a second copy from it.',
 
   'sheet.dismiss': 'Dismiss',
 

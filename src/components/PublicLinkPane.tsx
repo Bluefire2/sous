@@ -20,6 +20,8 @@ export type PublicLinkSource = {
     turnOn: MessageKey;
     label: MessageKey;
     turnOffLabel: MessageKey;
+    /** Under Turn off: what turning it off, and on again, does. */
+    offHint: MessageKey;
   };
 };
 
@@ -172,7 +174,7 @@ export default function PublicLinkPane({
           >
             {busy ? t('common.saving') : t('share.publicTurnOff')}
           </button>
-          <p className="mt-2 text-xs text-ink-muted">{t('share.publicOffHint')}</p>
+          <p className="mt-2 text-xs text-ink-muted">{t(text.offHint)}</p>
         </div>
       )}
       {error && (

@@ -102,6 +102,7 @@ function ShareRecipeSheet({
               turnOn: 'shareRecipe.linkTurnOn',
               label: 'shareRecipe.linkLabel',
               turnOffLabel: 'shareRecipe.linkTurnOffLabel',
+              offHint: 'shareRecipe.linkOffHint',
             },
           }}
           onBusyChange={setBusy}

@@ -580,6 +580,7 @@ export const uk: Messages = {
   'shareRecipe.linkTurnOn': 'Створити посилання',
   'shareRecipe.linkLabel': 'Посилання на рецепт',
   'shareRecipe.linkTurnOffLabel': 'Вимкнути посилання на рецепт',
+  'shareRecipe.linkOffHint': 'Після вимкнення посилання одразу перестає працювати. Якщо ввімкнете його знову, буде нове посилання, і ті, хто вже зберіг копію за старим, зможуть зберегти за ним ще одну.',
 
   'sheet.dismiss': 'Закрити',
 

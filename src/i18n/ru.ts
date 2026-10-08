@@ -578,6 +578,7 @@ export const ru: Messages = {
   'shareRecipe.linkTurnOn': 'Создать ссылку',
   'shareRecipe.linkLabel': 'Ссылка на рецепт',
   'shareRecipe.linkTurnOffLabel': 'Выключить ссылку на рецепт',
+  'shareRecipe.linkOffHint': 'После отключения ссылка сразу перестаёт работать. Если включите её снова, будет новая ссылка, и те, кто уже сохранил копию по старой, смогут сохранить по ней ещё одну.',
 
   'sheet.dismiss': 'Закрыть',
 

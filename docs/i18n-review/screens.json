@@ -668,7 +668,7 @@
   {
     "id": "share-recipe-sheet-link",
     "route": "/recipe/:id",
-    "setup": "In the same sheet (see share-recipe-sheet), press \"As a link\". The pane shows a sentence that anyone with the link can read the recipe without signing in, that Sous members can save a copy of their own, that nobody can change yours, and that the link shows your Google name and works until you turn it off. If the recipe has no link it then says \"This recipe has no link.\" and shows a \"Create link\" button: do not press it (it writes). If it already has one it shows a \"Recipe link\" label, the URL in a read-only field, Copy, a red \"Turn off\" button, and a sentence that turning it off stops the link at once: capture that too, but do not press Turn off. Opening the pane only reads.",
+    "setup": "In the same sheet (see share-recipe-sheet), press \"As a link\". The pane shows a sentence that anyone with the link can read the recipe without signing in, that Sous members can save a copy of their own, that nobody can change yours, and that the link shows your Google name and works until you turn it off. If the recipe has no link it then says \"This recipe has no link.\" and shows a \"Create link\" button: do not press it (it writes). If it already has one it shows a \"Recipe link\" label, the URL in a read-only field, Copy, a red \"Turn off\" button, and a sentence that turning it off stops the link at once, and that turning it on again gives a new link from which someone who already saved a copy can save a second one: capture that too, but do not press Turn off. Opening the pane only reads.",
     "needsData": true
   },
   {

@@ -529,6 +529,7 @@ export const zhHans: Messages = {
   'shareRecipe.linkTurnOn': '创建链接',
   'shareRecipe.linkLabel': '食谱链接',
   'shareRecipe.linkTurnOffLabel': '关闭食谱链接',
+  'shareRecipe.linkOffHint': '关闭后链接立即失效。重新开启会生成一个新链接，已通过旧链接保存过副本的人可以用新链接再保存一份。',
 
   'sheet.dismiss': '关闭',
 
