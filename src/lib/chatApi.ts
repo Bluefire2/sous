@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { serverErrorText } from './errorText';
 import type { EncodedImage } from './image';
 import { invalidateSession } from './session';
 import { normalizeRecipeDraft } from './recipeShape';
@@ -22,6 +23,34 @@ export interface CookingState {
  * cap so a message never fails for a fifth photo.
  */
 export const MAX_CHAT_PHOTOS = 4;
+
+/**
+ * Message text per request, summed over the thread. Mirrors
+ * `MAX_CHAT_TEXT_CHARS` in `api/chat.ts`, which answers 400 above it.
+ */
+export const MAX_CHAT_HISTORY_CHARS = 120_000;
+
+/**
+ * The newest messages whose text fits `MAX_CHAT_HISTORY_CHARS`, oldest
+ * dropped first, so a long thread keeps working; the model just no longer
+ * sees its start. A trimmed thread starts on a user message, as the
+ * conversation does. The newest message is always kept, even alone over the
+ * cap (the server then refuses it).
+ */
+export function fitChatHistory(messages: OutgoingMessage[]): OutgoingMessage[] {
+  let chars = 0;
+  let start = messages.length;
+  while (start > 0) {
+    const next = chars + messages[start - 1].content.length;
+    if (next > MAX_CHAT_HISTORY_CHARS && start < messages.length) break;
+    chars = next;
+    start -= 1;
+  }
+  if (start > 0) {
+    while (start < messages.length - 1 && messages[start].role === 'assistant') start += 1;
+  }
+  return messages.slice(start);
+}
 
 /**
  * The recipe posted to `/api/chat`. `lang` and `variantOf` are removed so the
@@ -106,7 +135,7 @@ export async function streamChatReply(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      messages: params.messages,
+      messages: fitChatHistory(params.messages),
       recipe: recipeForChat(params.recipe),
       cookingState: params.cookingState,
     }),
@@ -116,6 +145,11 @@ export async function streamChatReply(params: {
   if (response.status === 401) {
     invalidateSession();
     throw new Error(t('error.sessionExpired'));
+  }
+  if (response.status === 429) {
+    // The daily AI budget or too many requests at once (`server/llmBudget.ts`).
+    const body: unknown = await response.json().catch(() => null);
+    throw new Error(serverErrorText(body, 'error.assistantRequestFailed', { status: 429 }));
   }
   if (!response.ok || !response.body) {
     throw new Error(t('error.assistantRequestFailed', { status: response.status }));

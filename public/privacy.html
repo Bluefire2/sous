@@ -51,7 +51,7 @@
   </head>
   <body>
     <h1>Privacy policy</h1>
-    <p class="muted">Last updated: 5 October 2026</p>
+    <p class="muted">Last updated: 8 October 2026</p>
 
     <h2>What is stored</h2>
     <p>
@@ -74,6 +74,15 @@
       account and are deleted when their recipe is deleted. Translations of
       recipes shared with you are not stored; they are translated again each
       session. Photos used only to import a recipe are not kept.
+    </p>
+    <p>
+      Each account has a daily limit on Sous's AI features (Ask, the
+      assistant, recipe import, translation, and dictation), so that a
+      misused account cannot run up costs. To enforce it, Sous stores one
+      record per account per day (UTC) in Firestore under your account: an
+      estimate of what that day's AI requests cost, and how many calls to the
+      AI model they made.
+      It never holds what you asked or what came back.
     </p>
     <p>
       If an import goes wrong, or you mark an import with a thumbs down, you
@@ -187,6 +196,14 @@
       request, the response, and how long it took. These lines never include
       what the app asked for, recipe text, tokens or codes, your email
       address, or the full address the app returns you to.
+    </p>
+    <p>
+      Each request to an AI feature writes one line per call to Google's
+      Gemini API: your account id, which feature it was, the model, how many
+      tokens went in and came out, how many web searches ran, and the
+      estimated cost. A request refused by the daily limit writes one line
+      with your account id, the feature, and the reason. These lines never
+      include what you asked, the reply, or recipe text.
     </p>
     <p>
       Logs are used only to keep Sous running, to fix problems, and to
@@ -333,12 +350,14 @@
       deleted on a schedule.
     </p>
     <p>
-      Server logs, import reports, suggestions, and connected-app codes and
-      tokens are the exceptions. Google
+      Server logs, import reports, suggestions, daily AI usage records, and
+      connected-app codes and tokens are the exceptions. Google
       Cloud Logging deletes logs automatically 30 days after they are
       written. Logs are not removed earlier, including by an account deletion
       request. Import reports are deleted automatically about 180 days after
       you send them, and suggestions about one year after you send them.
+      Daily AI usage records are deleted automatically about 8 days after
+      their day.
       Fingerprints of connected-app codes and tokens are deleted automatically
       after they expire. A connected app's grant is kept until you disconnect
       it; disconnecting marks it revoked.
@@ -353,7 +372,8 @@
       collection links you created, your connected apps and their tokens,
       and your stored library — recipes, chat
       messages, cooking progress, cook log entries (dates, ratings, notes,
-      lessons and photos), photos, and cached translations — and deleting
+      lessons and photos), photos, cached translations, and daily AI usage
+      records — and deleting
       these also removes your access. It also covers collection links you
       made, and your email where other members' records hold it: on
       collections you shared and collections shared with you. Revoking

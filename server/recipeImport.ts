@@ -1170,23 +1170,29 @@ export function importFromHtml(
  * The only environment read in this module. Call it per request, not at module scope.
  * The translator reads env when it is called, the same way extraction reads the key here.
  */
-export function recipeImportDepsFromEnv(): RecipeImportDeps {
+export function recipeImportDepsFromEnv(wrapAi: WrapAi = (ai) => ai): RecipeImportDeps {
   return {
-    ai: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }),
+    ai: wrapAi(new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })),
     // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
     model: process.env.CHAT_MODEL || DEFAULT_MODEL,
-    translator: translateWithEnv,
+    translator: (input) => translateWithEnv(input, wrapAi),
   };
 }
 
+/**
+ * Wraps each model client the deps build, extraction's and the translator's
+ * alike (the routes pass `meteredAi` from `server/llmBudget.ts`).
+ */
+export type WrapAi = (ai: RecipeImportDeps['ai']) => RecipeImportDeps['ai'];
+
 /** Missing key and provider errors are translation failures, not thrown import errors. */
-async function translateWithEnv(input: TranslateInput): Promise<TranslateOutcome> {
+async function translateWithEnv(input: TranslateInput, wrapAi: WrapAi): Promise<TranslateOutcome> {
   const built = geminiTranslateDepsFromEnv();
   if (!built.ok) {
     return { ok: false, code: TRANSLATE_FAILED };
   }
   try {
-    return await translateSegments(input, built.deps);
+    return await translateSegments(input, { ...built.deps, ai: wrapAi(built.deps.ai) });
   } catch {
     return { ok: false, code: TRANSLATE_FAILED };
   }

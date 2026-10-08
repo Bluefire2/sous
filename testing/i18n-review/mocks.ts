@@ -320,6 +320,16 @@ export const MOCKS = {
     status: 429,
     body: { error: 'Too many web searches. Try again later, or turn Search the web off.', code: 'import-search-rate-limited' },
   })),
+  /** Today's AI budget is used up: 429 `llm-budget-exceeded` from import and the assistant (server/llmBudget.ts). */
+  llmBudgetExceeded: async (context) => {
+    const refusal = {
+      error: "You've reached today's limit. It resets at midnight UTC.",
+      code: 'llm-budget-exceeded',
+    };
+    for (const path of ['**/api/import', '**/api/agent']) {
+      await context.route(path, (route) => json(route, 429, refusal));
+    }
+  },
   /** Generation failed (a thrown call, or output that was not a usable recipe): 502 `import-generate-failed`. */
   importGenerateFailed: importMock(() => ({
     status: 502,
@@ -413,6 +423,34 @@ export const MOCKS = {
   },
   pushFails: async (context) => {
     await context.route('**/api/sync/push', (route) => json(route, 500, { error: 'Internal error' }));
+  },
+  /**
+   * The persona's library plus 25 older recipes, added to the first pull page
+   * and never written, so the list runs past one page and shows Show more.
+   */
+  longLibrary: async (context, env) => {
+    await context.route('**/api/sync/pull?*', async (route) => {
+      const response = await route.fetch();
+      if (new URL(route.request().url()).searchParams.has('cursor') || !response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = (await response.json()) as { changes: { recipes: unknown[] } };
+      for (let i = 1; i <= 25; i += 1) {
+        const at = env.now - (60 + i) * DAY;
+        body.changes.recipes.push({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          title: `Pantry supper ${i}`,
+          servings: 2,
+          ingredientSections: [],
+          steps: [],
+          tags: [],
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
+      await json(route, 200, body);
+    });
   },
 
   /** A collection's live links: none, then one fixed link after Copy link. */

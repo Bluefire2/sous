@@ -270,6 +270,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.locator('[aria-expanded="true"]').waitFor();
     },
   },
+  'library-show-more': {
+    persona: 'member',
+    path: '/',
+    mocks: ['longLibrary'],
+    reach: async (page, ctx) => {
+      const more = page.getByRole('button', { name: ctx.p('library.showMore') });
+      await more.scrollIntoViewIfNeeded();
+      await page.getByText(ctx.p('library.shownOfTotal')).waitFor();
+    },
+  },
   'import-idle': { persona: 'member', path: '/import' },
   'import-photos': {
     persona: 'member',
@@ -347,6 +357,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).check();
       await writeRecipe(page, ctx, GUMBO_BRIEF);
       await page.getByText(ctx.t('error.importSearchRateLimited'), { exact: true }).waitFor();
+    },
+  },
+  'import-llm-budget': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['llmBudgetExceeded'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, GUMBO_BRIEF);
+      await page.getByText(ctx.t('error.llmBudgetExceeded'), { exact: true }).waitFor();
     },
   },
   'import-create-failed': {
@@ -705,6 +725,15 @@ export const STATES: Record<string, StateEntry> = {
       await clickButton(page, ctx.t('assistant.stop'));
       // Inside the reply's bubble, after its text.
       await page.getByText(new RegExp(`${escapeRegExp(ctx.t('assistant.stopped'))}$`)).waitFor();
+    },
+  },
+  'assistant-llm-budget': {
+    persona: 'member',
+    path: '/assistant',
+    mocks: ['llmBudgetExceeded'],
+    reach: async (page, ctx) => {
+      await ask(page, ctx, 'What can I cook tonight?');
+      await page.getByText(ctx.t('error.llmBudgetExceeded')).first().waitFor();
     },
   },
   'assistant-shopping-list': {

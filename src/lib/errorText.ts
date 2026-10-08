@@ -1,8 +1,9 @@
 import { t, type MessageKey, type TranslateParams } from '../i18n';
 
 /**
- * Machine codes from import, extension import, stt, admin, sharing, and
- * translation. The same English sentence shares one code across those routes.
+ * Machine codes from import, extension import, stt, admin, sharing,
+ * translation, and the daily AI budget (every model route). The same English
+ * sentence shares one code across those routes.
  */
 const ERROR_CODES = {
   'import-bad-url': 'error.importBadUrl',
@@ -51,6 +52,8 @@ const ERROR_CODES = {
   'translate-provider-unavailable': 'error.translateProviderUnavailable',
   'translate-failed': 'error.translateFailed',
   'translate-rate-limited': 'error.translateRateLimited',
+  'llm-budget-exceeded': 'error.llmBudgetExceeded',
+  'llm-busy': 'error.llmBusy',
 } as const satisfies Record<string, MessageKey>;
 
 type ErrorCode = keyof typeof ERROR_CODES;

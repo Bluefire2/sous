@@ -79,6 +79,7 @@ refused.
 | `owner` | `owner@sous.invalid`, the owner (`ALLOWED_EMAILS`) | `/admin` with pending, approved, and declined requests and one unused invite link; 2 recipes; "Owner's picks", shared with `viewer` as editor |
 | `member` | `member@sous.invalid`, an approved member | 7 recipes (English, Ukrainian, Chinese, one with no language, one with import warnings, one a variant of another); "Weeknights" (shared with `viewer`, public link on) and "Baking" (not shared); two unfiled recipes; cook progress, two cook-log entries, a chat thread; one connected AI app |
 | `empty` | `empty@sous.invalid`, an approved member | Nothing: the empty library and the first-collection prompt |
+| `capped` | `capped@sous.invalid`, an approved member | No recipes, and today's AI budget used up: Ask, the assistant, import, translation, and dictation all answer the daily limit (until UTC midnight) |
 | `viewer` | `viewer@sous.invalid`, an approved member | 1 recipe; views `member`'s "Weeknights"; edits `owner`'s "Owner's picks"; an Ask thread ending in a proposal on one recipe from each |
 | `outsider` | `outsider@sous.invalid`, not admitted | A pending access request. Sign-in lands signed out, as for a real non-member. |
 | `declined` | `declined@sous.invalid`, not admitted | A declined access request. Same as `outsider`. |

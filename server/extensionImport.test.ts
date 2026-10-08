@@ -12,6 +12,20 @@ import * as sync from './sync.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
 import { abortedRequest } from '../test/abortedBody.ts';
 import { endlessBody } from '../test/endlessBody.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 // Spied rather than replaced: the assertion that matters is that empty html
 // short-circuits *before* the import pipeline. Without this the tests pass with
@@ -235,7 +249,12 @@ describe('extensionImport translateTo', () => {
       title: 'UK Tomato soup',
       translated: true,
     });
-    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(page, deps, 'uk');
+    // The route passes a metered copy of the deps (server/llmBudget.ts).
+    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(
+      page,
+      expect.objectContaining({ model: deps.model, translator: deps.translator }),
+      'uk',
+    );
     expect(sync.applyPushOp).toHaveBeenCalledWith('sub-1', {
       kind: 'recipe.put',
       payload: expect.objectContaining({
@@ -260,7 +279,12 @@ describe('extensionImport translateTo', () => {
       title: 'Tomato soup',
       translated: false,
     });
-    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(page, deps, 'uk');
+    // The route passes a metered copy of the deps (server/llmBudget.ts).
+    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(
+      page,
+      expect.objectContaining({ model: deps.model, translator: deps.translator }),
+      'uk',
+    );
     expect(sync.applyPushOp).toHaveBeenCalledWith('sub-1', {
       kind: 'recipe.put',
       payload: expect.objectContaining({
@@ -500,5 +524,30 @@ describe('extensionImport when the client hangs up mid-upload', () => {
     expect(importLogEntries(log)).toEqual([
       expect.objectContaining({ outcome: 'bad_request', status: 400 }),
     ]);
+  });
+});
+
+describe('extensionImport daily AI budget', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('refuses over the budget, readable by the extension, without calling the model', async () => {
+    llmUsage.spent.set(`sub-1/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const { deps, calls } = fakeImportDeps('{}');
+    const origin = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const req = authedRequest({ url: 'https://example.com/soup', html: '<p>Simmer.</p>' });
+    req.headers.set('origin', origin);
+    const response = await extensionImport(req, deps);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(response.headers.get('Retry-After')).not.toBeNull();
+    expect(await response.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toHaveLength(0);
   });
 });
