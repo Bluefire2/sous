@@ -144,6 +144,12 @@ export const en = {
   'settings.appearance': 'Appearance',
   'settings.dark': 'Dark',
   'settings.light': 'Light',
+  'settings.cooking': 'Cooking',
+  'settings.cookingDeviceOnly': 'These settings apply to this device only.',
+  'settings.keepScreenAwake': 'Keep the screen awake while cooking',
+  'settings.recipeTextSize': 'Recipe text size',
+  'settings.textSizeNormal': 'Normal',
+  'settings.textSizeLarge': 'Large',
   'settings.language': 'Language',
   'settings.backup': 'Backup',
   'settings.backupSignedIn':

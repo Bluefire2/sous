@@ -136,6 +136,12 @@ export const uk: Messages = {
   'settings.appearance': 'Вигляд',
   'settings.dark': 'Темна',
   'settings.light': 'Світла',
+  'settings.cooking': 'Готування',
+  'settings.cookingDeviceOnly': 'Ці налаштування діють лише на цьому пристрої.',
+  'settings.keepScreenAwake': 'Не вимикати екран під час готування',
+  'settings.recipeTextSize': 'Розмір тексту рецепта',
+  'settings.textSizeNormal': 'Звичайний',
+  'settings.textSizeLarge': 'Великий',
   'settings.language': 'Мова',
   'settings.backup': 'Резервна копія',
   'settings.backupSignedIn':

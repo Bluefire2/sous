@@ -206,6 +206,18 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   settings: { persona: 'member', path: '/settings' },
+  'settings-cooking-changed': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      // Device settings: localStorage in this browser context only, no request.
+      await page.getByLabel(ctx.t('settings.keepScreenAwake'), { exact: true }).uncheck();
+      await clickButton(page, ctx.t('settings.textSizeLarge'));
+      await page
+        .getByRole('button', { name: ctx.t('settings.textSizeLarge'), exact: true, pressed: true })
+        .waitFor();
+    },
+  },
   suggest: {
     persona: 'member',
     path: '/suggest',
@@ -534,6 +546,16 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'recipe-view': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}` },
+  'recipe-view-large-text': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    reach: async (page, ctx) => {
+      // The text size is read from localStorage, so set it and load the recipe again.
+      await page.evaluate(`localStorage.setItem('cook.recipeTextSize', 'large')`);
+      await page.reload();
+      await page.getByRole('heading', { name: ctx.t('common.steps'), exact: true }).waitFor();
+    },
+  },
   'recipe-view-import-warnings': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}` },
   'recipe-view-variants': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.herbRoastChicken}` },
   'recipe-view-import-retry-sheet': {
