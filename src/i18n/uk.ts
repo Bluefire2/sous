@@ -637,7 +637,7 @@ export const uk: Messages = {
   'error.importBodyTooLarge': 'Це завелике для імпорту — спробуйте менше фото.',
   'error.importPhotosFailed': 'Не вдалося прочитати ці фото — спробуйте ще раз.',
   'error.importNoRecipePhotos': 'У цих фото не знайдено рецепта.',
-  'error.importBriefTooLong': 'Задовго — вкладіться у 2 000 символів.',
+  'error.importBriefTooLong': 'Опис задовгий — вкладіться у 2 000 символів.',
   'error.importSearchRateLimited': 'Забагато пошуків в інтернеті. Спробуйте пізніше або вимкніть пошук в інтернеті.',
   'error.importNoRecipeBrief': 'Не вдалося скласти рецепт із цього — опишіть страву.',
   'error.importGenerateFailed': 'Не вдалося згенерувати цей рецепт — спробуйте ще раз.',
