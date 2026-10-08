@@ -43,8 +43,20 @@ summary, approach A.
   holdout 10.2 s → 9.6 s. The cost column still uses the 3.7 estimates.
 - Caveat: `evals/judge.ts` also defaults to `CHAT_MODEL`, so the judge
   moved with the importer and the difference mixes the two.
-- Decision: pending owner. Holdout tied, but the dev A total fell
-  (12 → 10), which fails the acceptance rule. Not re-run.
+- Isolating the importer (owner's call, a separate measurement, not a
+  re-run for a better number): the same command with
+  `CHAT_MODEL=gemini-3.8-flash` and the eval judge in `evals/judge.ts`
+  pinned to `gemini-3.7-flash` (a local edit, not committed), so only the
+  importer differs from Before: dev 8/15 (blueberry-muffins 1/3,
+  choc-pie-tea-towel 3/3, hundred-good-cookies 3/3, lemon-tea-bread 0/3,
+  sweet-sour-pork 1/3), holdout 14/15. Two A runs ran away to `MAX_TOKENS`
+  (`parse_error`, one dev and one holdout; the dev one at 3,647 output
+  tokens); every other A run `ok`, `STOP`, calls 1. Approach B: dev 8/15,
+  holdout 9/15.
+- Sums of both 3.8 importer runs: dev 18/30 and holdout 29/30, against
+  12/15 and 15/15 on 3.7, with 2 runaways against 0.
+- Decision: pending owner. Both 3.8 runs fail the acceptance rule: dev
+  fell in both, and holdout fell in the isolated run.
 - Run by: agent, model `gemini-3.7-flash` (before) and `gemini-3.8-flash`
   (after).
 
