@@ -11,7 +11,7 @@ import Sheet from '../components/Sheet';
 import { createInvite } from '../lib/adminApi';
 import { createMemberInvite } from '../lib/inviteApi';
 import { copyStrategy, inviteMintClient, isInviteQuotaError } from '../lib/inviteMint';
-import { FolderIcon, InviteIcon, PlusIcon, SettingsIcon, SpinnerIcon } from '../lib/icons';
+import { DiceIcon, FolderIcon, InviteIcon, PlusIcon, SettingsIcon, SpinnerIcon } from '../lib/icons';
 import {
   importHref,
   libraryHref,
@@ -39,6 +39,7 @@ import { sortLibraryRecipes } from '../lib/librarySort';
 import { useLastCookedOn } from '../lib/cookLogStore';
 import { lastCookedLabel } from '../lib/relativeTime';
 import { isLibrarySearchShortcut } from '../lib/librarySearchShortcut';
+import { pickRandom } from '../lib/randomRecipe';
 import { recipeStore, useRecipes } from '../lib/recipeStore';
 import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
@@ -59,12 +60,85 @@ import {
   secondaryBtn,
 } from '../lib/uiClasses';
 import { StoredPhotoImage } from '../components/BlobImage';
+import { RecipeTimes } from '../components/RecipeBody';
+import type { Recipe } from '../lib/types';
 
 function CardThumb({ photoId }: { photoId: string }) {
   return (
     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
       <StoredPhotoImage photoId={photoId} alt="" className="h-full w-full object-cover" />
     </div>
+  );
+}
+
+/**
+ * The roll sheet's body. Keyed by the pick, so each roll remounts it and
+ * replays the dice spin; the pick shows when the spin ends.
+ */
+function RollResult({
+  pick,
+  pool,
+  from,
+  onReroll,
+}: {
+  pick: Recipe;
+  pool: readonly Recipe[];
+  from: string;
+  onReroll: () => void;
+}) {
+  const t = useT();
+  const [rolling, setRolling] = useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true,
+  );
+
+  useEffect(() => {
+    if (!rolling) return;
+    // The length of the `dice-roll` animation in index.css.
+    const timer = setTimeout(() => setRolling(false), 900);
+    return () => clearTimeout(timer);
+  }, [rolling]);
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <DiceIcon className={`block h-6 w-6 ${rolling ? 'animate-dice-roll' : ''}`} />
+        <h2 className="text-lg font-semibold">{t('library.roll')}</h2>
+      </div>
+      <p className="mt-1 text-sm text-ink-muted">
+        {t('library.recipeCount', { count: pool.length })}
+      </p>
+      <div className="mt-4 flex min-h-20 gap-3">
+        {!rolling && (
+          <>
+            {pick.photoId !== undefined && <CardThumb photoId={pick.photoId} />}
+            <div className="min-w-0 flex-1" aria-live="polite">
+              <p className="text-lg font-semibold">{pick.title}</p>
+              <RecipeTimes recipe={pick} />
+              {pick.description && (
+                <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{pick.description}</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <Link
+        to={`/recipe/${pick.id}`}
+        state={{ from }}
+        aria-disabled={rolling}
+        tabIndex={rolling ? -1 : undefined}
+        className={`${primaryBtn} mt-4 block py-3 text-center ${rolling ? 'pointer-events-none opacity-40' : ''}`}
+      >
+        {t('library.rollOpen')}
+      </Link>
+      <button
+        type="button"
+        onClick={onReroll}
+        disabled={rolling}
+        className={`${secondaryBtn} mt-2 w-full py-3 disabled:opacity-40`}
+      >
+        {t('library.rollAgain')}
+      </button>
+    </>
   );
 }
 
@@ -132,6 +206,27 @@ export default function Library() {
     scoped,
     query,
     browseAll,
+  });
+
+  const rollPool =
+    sheet.kind === 'roll' ? allRecipes?.filter((r) => sheet.poolIds.includes(r.id)) : undefined;
+  const rollPick = sheet.kind === 'roll' ? rollPool?.find((r) => r.id === sheet.pickId) : undefined;
+  const roll = (poolIds: readonly string[], previous?: string) =>
+    dispatch(
+      previous === undefined
+        ? { type: 'openRoll', poolIds, pickId: pickRandom(poolIds) }
+        : { type: 'reroll', poolIds, pickId: pickRandom(poolIds, previous) },
+    );
+
+  // A pull removed the pick: roll again from what is left of the pool.
+  useEffect(() => {
+    if (sheet.kind !== 'roll' || rollPool === undefined || rollPick !== undefined) return;
+    if (rollPool.length === 0) {
+      dispatch({ type: 'close' });
+    } else {
+      const ids = rollPool.map((r) => r.id);
+      dispatch({ type: 'reroll', poolIds: ids, pickId: pickRandom(ids) });
+    }
   });
 
   const pendingDelete =
@@ -622,6 +717,18 @@ export default function Library() {
       </button>
     ) : null;
 
+  const rollControl =
+    recipes !== undefined && recipes.length > 1 && !selecting ? (
+      <button
+        type="button"
+        aria-label={t('library.roll')}
+        onClick={() => roll(recipes.map((r) => r.id))}
+        className={`${ghostIconBtn} shrink-0`}
+      >
+        <DiceIcon className="block h-5 w-5" />
+      </button>
+    ) : null;
+
   // Ordering one recipe means nothing, and an empty library has no list.
   const sortControl =
     (allRecipes?.length ?? 0) > 1 ? <LibrarySortMenu sort={sort} onChange={setSort} /> : null;
@@ -779,6 +886,7 @@ export default function Library() {
           {/* Sort comes last, so its menu, aligned to its right edge, opens
               inside the page on a phone; the chips wrap rather than overflow. */}
           <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {rollControl}
             {selectControl}
             <button
               type="button"
@@ -800,8 +908,9 @@ export default function Library() {
             onChange={(e) => setQuery(e.target.value)}
             className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          {(sortControl || selectControl) && (
+          {(sortControl || selectControl || rollControl) && (
             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {rollControl}
               {selectControl}
               {sortControl}
             </div>
@@ -1022,6 +1131,18 @@ export default function Library() {
         >
           <PlusIcon className="block h-8 w-8" />
         </button>
+      )}
+
+      {sheet.kind === 'roll' && rollPool !== undefined && rollPick !== undefined && (
+        <Sheet onClose={() => closeSheets()}>
+          <RollResult
+            key={rollPick.id}
+            pick={rollPick}
+            pool={rollPool}
+            from={libraryHref(collectionId)}
+            onReroll={() => roll(rollPool.map((r) => r.id), rollPick.id)}
+          />
+        </Sheet>
       )}
 
       {sheet.kind === 'add' && (

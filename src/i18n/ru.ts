@@ -90,6 +90,9 @@ export const ru: Messages = {
     'Вместе с рецептом будут удалены история чата и журнал приготовлений. Отменить это нельзя.',
   'library.moveTitle': 'Переместить «{title}»',
   'library.select': 'Выбрать',
+  'library.roll': 'Случайный рецепт',
+  'library.rollAgain': 'Бросить ещё раз',
+  'library.rollOpen': 'Открыть рецепт',
   'library.selectRecipe': 'Выбрать «{title}»',
   'library.selectedCount': {
     one: 'Выбран {count} рецепт',

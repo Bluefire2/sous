@@ -84,6 +84,9 @@ export const zhHans: Messages = {
   'library.deleteRecipeBody': '这也会删除它的对话记录和烹饪记录。无法撤销。',
   'library.moveTitle': '移动「{title}」',
   'library.select': '选择',
+  'library.roll': '随机选一个食谱',
+  'library.rollAgain': '再掷一次',
+  'library.rollOpen': '打开食谱',
   'library.selectRecipe': '选择「{title}」',
   'library.selectedCount': {
     other: '已选 {count} 个食谱',
