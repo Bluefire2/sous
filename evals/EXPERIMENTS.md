@@ -22,6 +22,23 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-08 — Kitchen profile equipment wording
+
+- Change: the Generate kitchen-profile rule said "use only the equipment the
+  profile allows". It now says "Treat the equipment as notes, not a full
+  list: never need anything the profile says is missing." PR #172 review.
+- Reason (not fixture-specific): members write partial notes ("no oven", "a
+  pressure cooker"), not inventories; read strictly, the old wording could
+  rule out an ordinary pan or knife. Ask already treats equipment as
+  background.
+- Command: `npx vitest run --config vitest.eval.config.ts evals/recipeGenerate.eval.ts`
+- Before (467e8ba): 3 runs, 18/18 (entry below).
+- After: 3 runs, 6/6, 5/6, 6/6 (17/18). The one failure was "grounds on web
+  pages when search is on". That case passes no profile, so its prompt is
+  unchanged by this edit.
+- Decision: kept. Both profile cases passed in every run.
+- Run by: agent, model default `CHAT_MODEL`.
+
 ## 2026-10-08 — Kitchen profile in generatePrompt
 
 - Change: `generatePrompt` appends the member's kitchen profile block

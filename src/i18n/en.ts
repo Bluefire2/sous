@@ -305,7 +305,7 @@ export const en = {
   'import.modeCreate': 'Generate',
   'import.placeholderCreate': 'Describe the dish you want — for example, shrimp gumbo in a pressure cooker for six…',
   'import.createHint': "Sous generates a complete recipe from your description. It's AI-written: check amounts, times, and food safety before you cook.",
-  'import.kitchenHint': 'Generated recipes follow your kitchen profile in Settings.',
+  'import.kitchenHint': 'Set allergies and diets for generated recipes in your kitchen profile.',
   'import.searchWeb': 'Search the web',
   'import.searchWebHint': 'Lets Sous run Google searches for your idea. The pages it used are shown with the result.',
   'import.generateRecipe': 'Generate recipe',

@@ -66,6 +66,9 @@ export default function KitchenProfileSection() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const mountedRef = useRef(true);
+  // Bumped on every edit, so a save that returns after the member kept typing
+  // never replaces what they typed or claims it was saved.
+  const editsRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -83,21 +86,24 @@ export default function KitchenProfileSection() {
   }, []);
 
   const edit = (next: KitchenProfile) => {
+    editsRef.current += 1;
     setProfile(next);
     setStatus('idle');
   };
 
   const save = async () => {
     if (profile === null) return;
+    const editsAtStart = editsRef.current;
     setSaving(true);
     setStatus('idle');
     try {
       const saved = await saveKitchenProfile(profile);
-      if (mountedRef.current) {
+      if (mountedRef.current && editsRef.current === editsAtStart) {
         setProfile(saved);
         setStatus('saved');
       }
     } catch {
+      // A failure replaces nothing, so it shows even if the member kept typing.
       if (mountedRef.current) setStatus('error');
     } finally {
       if (mountedRef.current) setSaving(false);

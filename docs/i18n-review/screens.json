@@ -170,7 +170,7 @@
   {
     "id": "import-create-idle",
     "route": "/import",
-    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the underlined link line saying generated recipes follow the kitchen profile in Settings, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
+    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the underlined link line pointing to the kitchen profile for allergies and diets, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
     "needsData": false
   },
   {

@@ -945,7 +945,7 @@ export async function importFromImages(
  * way to a brief that explicitly asks otherwise.
  */
 const KITCHEN_PROFILE_GENERATE_RULE =
-  'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise, and use only the equipment the profile allows.';
+  'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise. Treat the equipment as notes, not a full list: never need anything the profile says is missing.';
 
 function generatePrompt(withNotes: boolean, kitchenProfile = ''): string {
   const fillIn =
