@@ -24,6 +24,12 @@
     "needsData": true
   },
   {
+    "id": "library-show-more",
+    "route": "/",
+    "setup": "Signed in on the Recipes list with more than 20 recipes, so only the first 20 cards show. Scroll to the bottom of the list. Under the last card is a Show more button with the number of recipes it adds (\"Show 12 more\"), and under it a small muted line with how many are showing out of how many (\"Showing 20 of 32\"). Judge the button and the line together, as one control and its caption. Do not press Show more. If the list has 20 recipes or fewer, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "library-collection-menu",
     "route": "/collections/:collectionId",
     "setup": "Signed in on one of your own named collections (not a folder shared with you, and not the Recipes list). The collections section is on the page background. Beside New collection is a share icon (three connected nodes) and a vertical ellipsis. Open the ellipsis. The menu lists Rename and Delete, with Delete in the danger color. Do not press the share icon, Rename, or Delete, and do not press New collection. If you have no own named collection, mark skipped: needs data. A signed-in header shows the Ask and Invite icons before Cooks. Do not click Invite.",

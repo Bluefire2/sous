@@ -90,6 +90,8 @@ export const zhHans: Messages = {
   },
   'library.selectAll': '全选',
   'library.selectNone': '取消全选',
+  'library.showMore': '再显示 {count} 个',
+  'library.shownOfTotal': '已显示 {shown} 个，共 {total} 个',
   'library.moveSelected': '移动',
   'library.moveManyTitle': {
     other: '移动 {count} 个食谱',

@@ -414,6 +414,34 @@ export const MOCKS = {
   pushFails: async (context) => {
     await context.route('**/api/sync/push', (route) => json(route, 500, { error: 'Internal error' }));
   },
+  /**
+   * The persona's library plus 25 older recipes, added to the first pull page
+   * and never written, so the list runs past one page and shows Show more.
+   */
+  longLibrary: async (context, env) => {
+    await context.route('**/api/sync/pull?*', async (route) => {
+      const response = await route.fetch();
+      if (new URL(route.request().url()).searchParams.has('cursor') || !response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = (await response.json()) as { changes: { recipes: unknown[] } };
+      for (let i = 1; i <= 25; i += 1) {
+        const at = env.now - (60 + i) * DAY;
+        body.changes.recipes.push({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          title: `Pantry supper ${i}`,
+          servings: 2,
+          ingredientSections: [],
+          steps: [],
+          tags: [],
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
+      await json(route, 200, body);
+    });
+  },
 
   /** A collection's live links: none, then one fixed link after Copy link. */
   collectionLink: async (context, env) => {
