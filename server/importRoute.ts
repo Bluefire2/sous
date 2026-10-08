@@ -39,6 +39,7 @@ import {
   type RecipeImportDeps,
 } from './recipeImport.ts';
 import { admitTranslateCall } from './recipeTranslation.ts';
+import { admitLlm, llmRefusal, meteredAi, type LlmMeter, type LlmRoute } from './llmBudget.ts';
 
 export const MAX_IMPORT_IMAGES = 4;
 /** Decoded bytes, per image. */
@@ -85,6 +86,41 @@ const searchBuckets = new Map<string, number[]>();
 /** Test hook: clears the per-instance search rate-limit buckets. */
 export function resetImportSearchRateLimitForTest(): void {
   searchBuckets.clear();
+}
+
+/**
+ * Runs `run` with model deps charged to the member's daily budget
+ * (`server/llmBudget.ts`), or answers the refusal. `deps` is the test seam;
+ * otherwise the deps come from env, the translator's client metered too.
+ */
+export async function withImportBudget(
+  sub: string,
+  route: LlmRoute,
+  entry: ImportLogEntry,
+  deps: RecipeImportDeps | undefined,
+  run: (deps: RecipeImportDeps) => Promise<Response>,
+): Promise<Response> {
+  const admission = await admitLlm(sub, route);
+  if (admission.kind !== 'ok') {
+    entry.outcome = 'llm_refused';
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
+  try {
+    return await run(meteredImportDeps(deps, meter));
+  } finally {
+    meter.release();
+  }
+}
+
+/**
+ * `deps` (the test seam) or the env deps, with every model client charged to
+ * `meter`. With `deps`, only `deps.ai` is wrapped: a test's translator is a
+ * plain function with no client to meter.
+ */
+export function meteredImportDeps(deps: RecipeImportDeps | undefined, meter: LlmMeter): RecipeImportDeps {
+  const wrap = (ai: RecipeImportDeps['ai']) => meteredAi(ai, meter);
+  return deps !== undefined ? { ...deps, ai: wrap(deps.ai) } : recipeImportDepsFromEnv(wrap);
 }
 
 export type ImportImagesCheck =
@@ -311,6 +347,9 @@ async function handleImport(
     return fail('bad-request', 'Bad request', 400);
   }
   const body = parsed as ImportRequestBody;
+  // `entry.sub` is the membership gate's decision; `withMembership` always
+  // passes it, so only direct calls without a context (tests) share the '' bucket.
+  const member = entry.sub ?? '';
   const target = readImportTranslateTo(body.translateTo);
   if (!target.ok) {
     entry.outcome = 'bad_language';
@@ -327,13 +366,12 @@ async function handleImport(
       entry.outcome = 'fetch_failed';
       return fetchFailure(page);
     }
-    const outcome = await importFromHtml(
-      page.html,
-      deps ?? recipeImportDepsFromEnv(),
-      target.translateTo,
-    );
-    noteImportOutcome(entry, outcome);
-    return outcomeResponse(outcome, body.url);
+    const url = body.url;
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      const outcome = await importFromHtml(page.html, metered, target.translateTo);
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, url);
+    });
   }
 
   const check = checkImportImages(body.images);
@@ -342,24 +380,22 @@ async function handleImport(
     entry.via = 'photos';
     entry.photos = images.length;
     entry.bytes = bytes;
-    let outcome: ImportOutcome;
-    try {
-      outcome = await importFromImages(
-        images,
-        typeof body.text === 'string' ? body.text : '',
-        deps ?? recipeImportDepsFromEnv(),
-        target.translateTo,
-      );
-    } catch (err) {
-      // Only a numeric status is kept from the error: SDK messages can echo the request.
-      entry.outcome = 'threw';
-      const status = thrownStatus(err);
-      if (status !== undefined) entry.errorStatus = status;
-      return fail('import-photos-failed', "Couldn't read those photos — try again.", 502);
-    }
-    noteImportOutcome(entry, outcome);
-    return outcomeResponse(outcome, undefined, {
-      notARecipe: { code: 'import-no-recipe-photos', error: PHOTOS_NOT_A_RECIPE },
+    const notes = typeof body.text === 'string' ? body.text : '';
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      let outcome: ImportOutcome;
+      try {
+        outcome = await importFromImages(images, notes, metered, target.translateTo);
+      } catch (err) {
+        // Only a numeric status is kept from the error: SDK messages can echo the request.
+        entry.outcome = 'threw';
+        const status = thrownStatus(err);
+        if (status !== undefined) entry.errorStatus = status;
+        return fail('import-photos-failed', "Couldn't read those photos — try again.", 502);
+      }
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, undefined, {
+        notARecipe: { code: 'import-no-recipe-photos', error: PHOTOS_NOT_A_RECIPE },
+      });
     });
   }
   if (check.kind !== 'absent') {
@@ -385,11 +421,8 @@ async function handleImport(
       entry.outcome = 'bad_brief';
       return fail('import-brief-too-long', BRIEF_TOO_LONG, 400);
     }
-    // `entry.sub` is the membership gate's decision; `withMembership` always
-    // passes it, so only direct calls without a context (tests) share the '' bucket.
-    const member = entry.sub ?? '';
-    // Read before a search slot is taken. A failed read is 503: a recipe
-    // written without the member's allergies is worse than no recipe.
+    // Read before a search slot or the day's budget is taken. A failed read is
+    // 503: a recipe written without the member's allergies is worse than none.
     let kitchenProfile = '';
     if (member !== '') {
       try {
@@ -406,16 +439,18 @@ async function handleImport(
       entry.outcome = 'rate_limited';
       return fail('import-search-rate-limited', SEARCH_RATE_LIMITED, 429);
     }
-    const outcome = await generateFromBrief(brief, deps ?? recipeImportDepsFromEnv(), {
-      search,
-      translateTo: target.translateTo,
-      kitchenProfile,
-    });
-    noteImportOutcome(entry, outcome);
-    return outcomeResponse(outcome, undefined, {
-      notARecipe: { code: 'import-no-recipe-brief', error: BRIEF_NOT_A_RECIPE },
-      modelFailed: { code: 'import-generate-failed', error: GENERATE_FAILED },
-      noRecipe: { code: 'import-generate-failed', error: GENERATE_FAILED },
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      const outcome = await generateFromBrief(brief, metered, {
+        search,
+        translateTo: target.translateTo,
+        kitchenProfile,
+      });
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, undefined, {
+        notARecipe: { code: 'import-no-recipe-brief', error: BRIEF_NOT_A_RECIPE },
+        modelFailed: { code: 'import-generate-failed', error: GENERATE_FAILED },
+        noRecipe: { code: 'import-generate-failed', error: GENERATE_FAILED },
+      });
     });
   }
 
@@ -425,11 +460,9 @@ async function handleImport(
     entry.outcome = 'empty_source';
     return fail('import-empty', NOTHING_TO_IMPORT, 400);
   }
-  const outcome = await importFromSource(
-    text,
-    deps ?? recipeImportDepsFromEnv(),
-    target.translateTo,
-  );
-  noteImportOutcome(entry, outcome);
-  return outcomeResponse(outcome, undefined);
+  return withImportBudget(member, 'import', entry, deps, async (metered) => {
+    const outcome = await importFromSource(text, metered, target.translateTo);
+    noteImportOutcome(entry, outcome);
+    return outcomeResponse(outcome, undefined);
+  });
 }

@@ -12,6 +12,21 @@ import type { AgentEvent, AgentRunSummary, StartAgentResult } from './harness/ty
 import { MAX_AGENT_BODY_BYTES } from './request.ts';
 import { agentPost } from './route.ts';
 import * as library from './sous/library.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  inFlightForTest,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from '../llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 vi.mock('../membership.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../membership.ts')>();
@@ -226,5 +241,29 @@ describe('POST /api/agent stream', () => {
     expect(logged).toMatch(/agent steps=1 calls=0 .*finish=text/);
     expect(logged).not.toContain('What can I cook');
     expect(logged).not.toContain('Soup.');
+  });
+});
+
+describe('POST /api/agent daily AI budget', () => {
+  it('refuses over the budget before starting the run', async () => {
+    llmUsage.spent.set(`member-sub/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const res = await agentPost(post());
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(startAgent).not.toHaveBeenCalled();
+  });
+
+  it('holds a slot while the run streams and frees it after', async () => {
+    const res = await agentPost(post());
+    expect(inFlightForTest('member-sub')).toBe(1);
+    await res.text();
+    await vi.waitFor(() => expect(inFlightForTest('member-sub')).toBe(0));
+  });
+
+  it('frees the slot when the run cannot start', async () => {
+    startAgent.mockRejectedValue(new Error('no stream'));
+    const res = await agentPost(post());
+    expect(res.status).toBe(502);
+    expect(inFlightForTest('member-sub')).toBe(0);
   });
 });

@@ -213,6 +213,49 @@ async function checkEmpty(cookie: string): Promise<void> {
   checkSame('empty has no collections', ids(body?.changes.collections), []);
 }
 
+async function post(path: string, cookie: string, body: unknown): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed: unknown = text;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Not JSON; the status says enough.
+  }
+  return { status: res.status, body: parsed };
+}
+
+const CHAT_BODY = { messages: [{ role: 'user', content: 'How long?' }], recipe: { title: 'Soup' } };
+const PASTE_BODY = { text: 'Simmer the tomatoes for ten minutes.' };
+
+/**
+ * The daily AI budget (server/llmBudget.ts): `capped` is refused before the
+ * model key is checked, so this runs without GEMINI_API_KEY. Agent, STT, and
+ * translate check the key first, so CI cannot reach their budget check.
+ */
+async function checkCapped(cookie: string): Promise<void> {
+  for (const [path, body] of [
+    ['/api/chat', CHAT_BODY],
+    ['/api/import', PASTE_BODY],
+  ] as const) {
+    const res = await post(path, cookie, body);
+    check(
+      `capped ${path} answers 429 llm-budget-exceeded`,
+      res.status === 429 && (res.body as { code?: unknown }).code === 'llm-budget-exceeded',
+      `${res.status} ${JSON.stringify(res.body)}`,
+    );
+  }
+}
+
+async function checkNotCapped(cookie: string): Promise<void> {
+  const res = await post('/api/chat', cookie, CHAT_BODY);
+  check('empty /api/chat is not refused by the AI budget', res.status !== 429, `${res.status}`);
+}
+
 async function main(): Promise<void> {
   console.log(`Waiting for the seed at ${baseUrl}`);
   if (!(await waitForSeed())) {
@@ -243,6 +286,8 @@ async function main(): Promise<void> {
   await run('viewer', checkViewer);
   await run('owner', checkOwner);
   await run('empty', checkEmpty);
+  await run('capped', checkCapped);
+  await run('empty', checkNotCapped);
   await run('member', (cookie) => checkMcpEndpoints(baseUrl, cookie, check));
   // Last: these add rows, and the MCP checks above assert exact counts.
   await checkWrites(baseUrl, cookies, check);

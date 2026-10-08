@@ -85,13 +85,15 @@ function httpStatus(value: unknown): number | undefined {
 /**
  * The machine fields of an `importRecipe` failure, or `null` when no report
  * should be offered: no HTTP status (a network error, a client-side check, a
- * store failure in bulk) or a 401 (the person is signed out).
+ * store failure in bulk), a 401 (the person is signed out), or the daily AI
+ * budget refusing (`server/llmBudget.ts`), which says nothing about import.
  */
 export function importFailureDetails(err: unknown): ImportFailure | null {
   if (!(err instanceof Error)) return null;
   const fields = err as Error & { code?: unknown; status?: unknown; siteStatus?: unknown };
   const status = httpStatus(fields.status);
   if (status === undefined || status === 401) return null;
+  if (fields.code === 'llm-budget-exceeded' || fields.code === 'llm-busy') return null;
   const failure: ImportFailure = { status, message: err.message.slice(0, MAX_FEEDBACK_MESSAGE_CHARS) };
   if (typeof fields.code === 'string' && fields.code !== '') failure.code = fields.code;
   const siteStatus = httpStatus(fields.siteStatus);

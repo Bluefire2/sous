@@ -1309,6 +1309,37 @@ describe('import translation', () => {
   });
 });
 
+describe('recipeImportDepsFromEnv wrapAi', () => {
+  it("wraps extraction's client and the translator's own client", async () => {
+    const savedKey = process.env.GEMINI_API_KEY;
+    const savedProvider = process.env.TRANSLATE_PROVIDER;
+    try {
+      process.env.GEMINI_API_KEY = 'test-key';
+      delete process.env.TRANSLATE_PROVIDER;
+      // The translator's reply: every segment back, with a detected language.
+      const translated = fakeImportDeps(
+        JSON.stringify({ detectedLang: 'it', segments: [{ id: 'title', text: 'Суп' }] }),
+      ).deps.ai;
+      const wrapped: unknown[] = [];
+      const wrapAi = (ai: RecipeImportDeps['ai']): RecipeImportDeps['ai'] => {
+        wrapped.push(ai);
+        return translated;
+      };
+      const deps = recipeImportDepsFromEnv(wrapAi);
+      expect(deps.ai).toBe(translated);
+      expect(wrapped).toHaveLength(1);
+      const outcome = await deps.translator({ segments: [{ id: 'title', text: 'Zuppa' }], target: 'uk' });
+      expect(outcome).toMatchObject({ ok: true, segments: [{ id: 'title', text: 'Суп' }] });
+      // The translator built its own client and passed it through the wrap too.
+      expect(wrapped).toHaveLength(2);
+      expect(wrapped[1]).not.toBe(wrapped[0]);
+    } finally {
+      restoreEnv('GEMINI_API_KEY', savedKey);
+      restoreEnv('TRANSLATE_PROVIDER', savedProvider);
+    }
+  });
+});
+
 describe('generateFromBrief', () => {
   const GENERATED = {
     title: 'Pressure cooker shrimp gumbo',

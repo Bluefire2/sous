@@ -94,6 +94,7 @@ export const FIRESTORE_COLLECTIONS = {
   gcsDeletes: { scope: 'nested', parent: 'users/{sub}', holds: 'Pending GCS photo deletes.' },
   translations: { scope: 'nested', parent: 'users/{sub}', holds: 'Cached recipe translations.' },
   mcpGrants: { scope: 'nested', parent: 'users/{sub}', holds: 'Connected MCP apps, with the consenting email.' },
+  llmUsage: { scope: 'nested', parent: 'users/{sub}', holds: 'Daily AI spend counters (cost and call count).' },
   settings: { scope: 'nested', parent: 'users/{sub}', holds: 'Personal settings: the kitchen profile.' },
   grants: {
     scope: 'nested',

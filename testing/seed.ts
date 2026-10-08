@@ -6,12 +6,15 @@
  * LWW, and the grant transactions all run. The MCP grant has no HTTP path
  * short of the consent page, which fetches a public client-metadata document,
  * so the seed writes it with the server's own store function and then redeems
- * its code through `POST /oauth/token`.
+ * its code through `POST /oauth/token`. The `capped` persona's spent AI
+ * budget has no HTTP path either (only real model calls add to it), so the
+ * seed writes it with the budget's own store.
  *
  * Loaded by testing/test-server.ts after it has set the test environment.
  */
 import { s256Challenge } from '../server/mcp/oauth/pkce.ts';
 import { createGrantWithCode, touchGrant } from '../server/mcp/oauth/store.ts';
+import { LLM_DAILY_BUDGET_MICRO_USD, firestoreLlmUsageStore, utcDayKey } from '../server/llmBudget.ts';
 import { signAccessRequestTx } from '../server/session.ts';
 import { TEST_PROJECT_ID } from './env.ts';
 import {
@@ -232,5 +235,12 @@ export async function seed(baseUrl: string): Promise<number> {
   await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.viewer, json: KITCHEN_PROFILES.viewer });
 
   await connectApp(baseUrl, now);
+  // Today in UTC: after midnight a kept seed (`--keep`) is no longer capped.
+  await firestoreLlmUsageStore.addSpend(
+    persona('capped').sub,
+    utcDayKey(now),
+    LLM_DAILY_BUDGET_MICRO_USD,
+    new Date(now + DAY),
+  );
   return now;
 }
