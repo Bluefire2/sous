@@ -12,20 +12,39 @@ import { ChatBubbleIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../lib/uiClasses';
-import { usePublicCollection } from '../lib/usePublicCollection';
+import type { PublicLinkResult } from '../lib/publicApi';
+import { usePublicLink } from '../lib/usePublicLink';
 import { usePublicJoin } from '../lib/usePublicJoin';
+import PublicSharedRecipe from './PublicSharedRecipe';
 
 /**
- * `/p/<token>`: a collection anyone with the link can read
- * (`docs/plans/public-collections.md`). No library, sync, or session data is
- * read or written here; a signed-in member can add it to their library.
+ * `/p/<token>`: what anyone with the link can read. A public collection
+ * (`docs/plans/public-collections.md`) or, for a recipe link, one recipe
+ * (`docs/plans/recipe-links.md`, `PublicSharedRecipe`). No library, sync, or
+ * session data is read or written here; a signed-in member can add the
+ * collection, or save a copy of the recipe, to their library.
  */
-export default function PublicCollection() {
-  const t = useT();
+export default function PublicLink() {
   const { token = '' } = useParams<{ token: string }>();
+  const { result, retry } = usePublicLink(token);
+  if (result?.kind === 'ok' && result.data.kind === 'recipe') {
+    return <PublicSharedRecipe token={token} data={result.data} />;
+  }
+  return <PublicCollection token={token} result={result} retry={retry} />;
+}
+
+function PublicCollection({
+  token,
+  result,
+  retry,
+}: {
+  token: string;
+  result: PublicLinkResult | undefined;
+  retry: () => void;
+}) {
+  const t = useT();
   const { status } = useSession();
   const member = status === 'signedIn';
-  const { result, retry } = usePublicCollection(token);
   const join = usePublicJoin(token);
   const [lockedOpen, setLockedOpen] = useState(false);
 
@@ -70,7 +89,7 @@ export default function PublicCollection() {
         </button>
       </div>
     );
-  } else {
+  } else if (result.data.kind === 'collection') {
     const { collection, recipes } = result.data;
     body = (
       <>
@@ -152,7 +171,8 @@ export default function PublicCollection() {
         <AiLockedSheet
           token={token}
           member={member}
-          join={join}
+          subject="collection"
+          action={{ state: join.state, run: join.add }}
           onClose={() => setLockedOpen(false)}
         />
       )}

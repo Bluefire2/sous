@@ -29,6 +29,7 @@ describe('compactRecipe', () => {
       lang: undefined,
       importCheck: undefined,
       variantOf: undefined,
+      savedFrom: undefined,
     });
 
     expect(compacted).toEqual(required);
@@ -59,6 +60,7 @@ describe('compactRecipe', () => {
       lang: 'it',
       importCheck: { at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] },
       variantOf: ORIGINAL,
+      savedFrom: { name: 'Ada', savedAt: 4 },
     });
 
     expect(compacted.description).toBe('Hot.');
@@ -71,6 +73,13 @@ describe('compactRecipe', () => {
     expect(compacted.lang).toBe('it');
     expect(compacted.importCheck).toEqual({ at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] });
     expect(compacted.variantOf).toBe(ORIGINAL);
+    expect(compacted.savedFrom).toEqual({ name: 'Ada', savedAt: 4 });
+  });
+
+  it('drops a malformed savedFrom without dropping the recipe', () => {
+    expect(
+      compactRecipe({ ...required, savedFrom: { savedAt: 'x' } as unknown as Recipe['savedFrom'] }),
+    ).toEqual(required);
   });
 
   it('drops a malformed variantOf without dropping the recipe', () => {

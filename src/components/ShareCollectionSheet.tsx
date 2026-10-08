@@ -331,7 +331,23 @@ export default function ShareCollectionSheet({
         </button>
       </div>
       {method === 'public' ? (
-        <PublicLinkPane collectionId={collection.id} onBusyChange={setPublicBusy} />
+        <PublicLinkPane
+          source={{
+            id: collection.id,
+            load: () => collectionStore.publicLink(collection.id),
+            enable: () => collectionStore.enablePublicLink(collection.id),
+            disable: () => collectionStore.disablePublicLink(collection.id),
+            inputId: 'public-collection-link',
+            text: {
+              intro: 'share.publicIntro',
+              off: 'share.publicOff',
+              turnOn: 'share.publicTurnOn',
+              label: 'share.publicLinkLabel',
+              turnOffLabel: 'share.publicTurnOffLabel',
+            },
+          }}
+          onBusyChange={setPublicBusy}
+        />
       ) : method === 'email' ? (
         <>
           <p className="mt-3 text-sm text-ink-muted">{t('share.intro')}</p>

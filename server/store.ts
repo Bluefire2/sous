@@ -11,6 +11,7 @@ import {
 } from './pushReasons.ts';
 import { compactImportCheck } from './importWarnings.ts';
 import { normalizeLang } from './lang.ts';
+import { compactSavedFrom } from './recipeSavedFrom.ts';
 import { compactVariantOf } from './recipeVariant.ts';
 import { TRANSLATIONS_COLLECTION, translationCacheDocIds } from './recipeTranslation.ts';
 import { canViewRecipe } from './shareAuth.ts';
@@ -65,6 +66,32 @@ function userRef(uid: string) {
 
 function colRef(uid: string, kind: StoreKind) {
   return userRef(uid).collection(kind);
+}
+
+/**
+ * Top-level recipe links (`server/recipeLinks.ts`). Named here so a recipe
+ * delete can turn its links off in the same transaction without an import
+ * cycle.
+ */
+export const RECIPE_LINKS_COLLECTION = 'recipeLinks';
+
+export function recipeLinksColRef() {
+  return getFirestore().collection(RECIPE_LINKS_COLLECTION);
+}
+
+/** Equality filters only, so Firestore serves this from single-field indexes. */
+export function liveRecipeLinksQuery(ownerSub: string, recipeId: string) {
+  return recipeLinksColRef()
+    .where('ownerSub', '==', ownerSub)
+    .where('recipeId', '==', recipeId)
+    .where('status', '==', 'live');
+}
+
+/** The Google display name stored on the profile at sign-in, or undefined. */
+export async function readUserName(uid: string): Promise<string | undefined> {
+  const snap = await userRef(uid).get();
+  const name = snap.exists ? snap.get('name') : undefined;
+  return typeof name === 'string' ? name : undefined;
 }
 
 export function gcsDeletesColRef(uid: string) {
@@ -269,6 +296,10 @@ export function compactRecipeFields(recipe: Record<string, unknown>): Record<str
   const variantOf = compactVariantOf(recipe.variantOf, recipe.id);
   if (variantOf !== undefined) {
     next.variantOf = variantOf;
+  }
+  const savedFrom = compactSavedFrom(recipe.savedFrom);
+  if (savedFrom !== undefined) {
+    next.savedFrom = savedFrom;
   }
   return next;
 }
@@ -1384,6 +1415,13 @@ export async function cascadeRecipeDelete(
   await getFirestore().runTransaction(async (tx) => {
     const recipeRef = colRef(uid, 'recipes').doc(recipeId);
     const snap = await tx.get(recipeRef);
+    // A deleted recipe's links go off with it, so an undelete never quietly
+    // reopens one. Read before any write, as Firestore requires.
+    const liveLinks = await tx.get(liveRecipeLinksQuery(uid, recipeId));
+    const linksRevokedAt = Date.now();
+    for (const link of liveLinks.docs) {
+      tx.set(link.ref, { status: 'revoked', revokedAt: linksRevokedAt }, { merge: true });
+    }
     if (snap.exists) {
       const data = snap.data() as Record<string, unknown>;
       if (isLiveDoc(data) && isUuid(data.photoId)) {

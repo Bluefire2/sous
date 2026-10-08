@@ -162,6 +162,7 @@ export function planSharedRecipePut(input: {
         photoId: access.recipe.photoId,
         galleryPhotoIds: access.recipe.galleryPhotoIds,
         variantOf: access.recipe.variantOf,
+        savedFrom: access.recipe.savedFrom,
       }),
       id: input.recipeId,
       updatedAt,

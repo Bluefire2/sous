@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { PUBLIC_RETURN_PATH, rememberPublicReturn } from '../lib/publicApi';
-import type { PublicJoin } from '../lib/usePublicJoin';
+import type { PublicMemberAction } from '../lib/usePublicJoin';
 import { signInHref } from '../lib/session';
 import { primaryBtn, secondaryBtn } from '../lib/uiClasses';
 import Sheet from './Sheet';
@@ -99,44 +99,53 @@ export function PublicSignInLink({
 
 /**
  * What a tap on a locked AI control opens. A visitor is asked to sign in. A
- * signed-in member is offered to add the collection: AI on a shared recipe
- * runs through their grant, which a public link alone does not give.
+ * signed-in member is offered the page's action: add the collection (AI on a
+ * shared recipe runs through their grant, which a public link alone does not
+ * give), or save a copy of a link's recipe (AI then runs on their own copy).
  */
 export function AiLockedSheet({
   token,
   member,
-  join,
+  subject,
+  action,
   onClose,
 }: {
   token: string;
   member: boolean;
-  join: PublicJoin;
+  subject: 'collection' | 'recipe';
+  action: PublicMemberAction;
   onClose: () => void;
 }) {
   const t = useT();
-  const busy = join.state.kind === 'busy';
+  const busy = action.state.kind === 'busy';
+  const recipe = subject === 'recipe';
+  const memberTitle = recipe ? t('public.memberAiRecipeTitle') : t('public.memberAiTitle');
+  const memberBody = recipe ? t('public.memberAiRecipeBody') : t('public.memberAiBody');
+  const actionLabel = recipe
+    ? busy
+      ? t('public.saving')
+      : t('public.saveCopy')
+    : busy
+      ? t('public.adding')
+      : t('public.addToLibrary');
   return (
     <Sheet onClose={onClose} dismissible={!busy}>
-      <h2 className="text-lg font-semibold">
-        {member ? t('public.memberAiTitle') : t('public.signInTitle')}
-      </h2>
-      <p className="mt-2 text-sm text-ink-muted">
-        {member ? t('public.memberAiBody') : t('public.signInBody')}
-      </p>
+      <h2 className="text-lg font-semibold">{member ? memberTitle : t('public.signInTitle')}</h2>
+      <p className="mt-2 text-sm text-ink-muted">{member ? memberBody : t('public.signInBody')}</p>
       {member ? (
         <>
-          {join.state.kind === 'error' && (
+          {action.state.kind === 'error' && (
             <p role="alert" className="mt-3 text-sm text-danger">
-              {join.state.message}
+              {action.state.message}
             </p>
           )}
           <button
             type="button"
             disabled={busy}
-            onClick={() => void join.add()}
+            onClick={() => void action.run()}
             className={`${primaryBtn} mt-4 w-full py-3`}
           >
-            {busy ? t('public.adding') : t('public.addToLibrary')}
+            {actionLabel}
           </button>
         </>
       ) : (
