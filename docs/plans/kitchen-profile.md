@@ -1,6 +1,6 @@
 # Kitchen profile
 
-Status: built on `claude/personal-user-settings-explore-5d149e`, not deployed.
+Status: merged (#172).
 Constitutions applied: i18n (catalogs, principles 9, 10, 13, 16), client
 state (component state only; nothing reads the profile outside its section).
 
