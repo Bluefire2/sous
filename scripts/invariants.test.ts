@@ -79,14 +79,16 @@ describe('client architecture', () => {
     // docs/plans/public-collections.md: a visitor's page reads one public
     // snapshot. AI controls are locked, so nothing here may import chat,
     // translation, dictation, or the assistant, or a store that writes the
-    // library or cook state. (Joining goes through usePublicJoin, which only
-    // pulls after the server added the grant.)
+    // library or cook state. (Joining goes through usePublicJoin, and saving a
+    // recipe link's copy through usePublicSave; both only pull after the
+    // server wrote.)
     const publicFiles = [
       ...filesUnder('src/screens', ['.tsx']).filter((path) => /\/Public\w*\.tsx$/.test(path)),
       'src/components/LockedAi.tsx',
       'src/components/RecipeBody.tsx',
       'src/lib/publicApi.ts',
-      'src/lib/usePublicCollection.ts',
+      'src/lib/usePublicLink.ts',
+      'src/lib/usePublicSave.ts',
     ];
     expect(publicFiles.length).toBeGreaterThan(5);
     const forbidden =
@@ -228,6 +230,9 @@ describe('server', () => {
       'server/publicLinks.ts',
       'server/publicLinksHttp.ts',
       'server/publicJoin.ts',
+      'server/recipeLinks.ts',
+      'server/recipeLinksHttp.ts',
+      'server/recipeLinkSave.ts',
     ].flatMap((path) => matchingLines(path, forbidden));
     expect(offenders).toEqual([]);
   });

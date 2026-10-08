@@ -5,12 +5,18 @@ import { libraryHref } from './collectionHref';
 import { joinPublicCollection } from './publicApi';
 import { sync } from './syncEngine';
 
-export type PublicJoinState =
+/** Where a member's one action on a public page stands: add a collection, or save a recipe. */
+export type PublicActionState =
   | { kind: 'idle' }
   | { kind: 'busy' }
   | { kind: 'error'; message: string }
-  /** The link died between loading the page and pressing Add. */
+  /** The link died between loading the page and pressing the button. */
   | { kind: 'missing' };
+
+export type PublicJoinState = PublicActionState;
+
+/** A member's action on a public page; `run` sends it. */
+export type PublicMemberAction = { state: PublicActionState; run: () => Promise<void> };
 
 export type PublicJoin = { state: PublicJoinState; add: () => Promise<void> };
 

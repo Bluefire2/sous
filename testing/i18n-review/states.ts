@@ -19,6 +19,10 @@ export interface CaptureContext {
   ids: typeof FIXTURE_IDS;
   /** The token of member's public Weeknights link. */
   publicToken: string;
+  /** The token of member's Overnight oats recipe link. */
+  publicRecipeToken: string;
+  /** The id of `capped`'s copy saved from that link. */
+  savedCopyId: string;
 }
 
 export interface Capturable {
@@ -897,4 +901,33 @@ export const STATES: Record<string, StateEntry> = {
   'public-collection-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.borscht}` },
   'public-link-missing': { persona: 'signedOut', path: `/p/${'a'.repeat(43)}` },
+  'share-recipe-sheet': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.overnightOats}`,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByRole('dialog').waitFor();
+    },
+  },
+  'share-recipe-sheet-link': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.overnightOats}`,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await clickButton(page, ctx.t('shareRecipe.byLink'));
+      await page.getByText(ctx.t('shareRecipe.linkLabel'), { exact: true }).waitFor();
+    },
+  },
+  'public-shared-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicRecipeToken}` },
+  'public-shared-recipe-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicRecipeToken}` },
+  'public-shared-recipe-locked-sheet': {
+    persona: 'empty',
+    path: (ctx) => `/p/${ctx.publicRecipeToken}`,
+    reach: async (page) => {
+      // aria-disabled by design, as on the collection page; force the click.
+      await page.locator('button[aria-disabled="true"]').last().click({ force: true });
+      await page.getByRole('dialog').waitFor();
+    },
+  },
+  'recipe-saved-from': { persona: 'capped', path: (ctx) => `/recipe/${ctx.savedCopyId}` },
 };

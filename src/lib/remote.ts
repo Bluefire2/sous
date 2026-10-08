@@ -852,3 +852,24 @@ export async function disableCollectionPublicLink(
     body: '{}',
   });
 }
+
+/** Owner recipe-link REST (`docs/plans/recipe-links.md`): the same `{ url }` shape. */
+export async function getRecipePublicLink(recipeId: string): Promise<PublicLinkHttpResult> {
+  return publicLinkRequest(`/api/recipes/${encodeURIComponent(recipeId)}/public`);
+}
+
+export async function enableRecipePublicLink(recipeId: string): Promise<PublicLinkHttpResult> {
+  return publicLinkRequest(`/api/recipes/${encodeURIComponent(recipeId)}/public`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: '{}',
+  });
+}
+
+export async function disableRecipePublicLink(recipeId: string): Promise<PublicLinkHttpResult> {
+  return publicLinkRequest(`/api/recipes/${encodeURIComponent(recipeId)}/public/revoke`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: '{}',
+  });
+}

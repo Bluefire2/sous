@@ -62,6 +62,12 @@ import {
   publicGet,
   publicJoinPost,
 } from '../server/publicLinksHttp.ts';
+import { recipeLinkSavePost } from '../server/recipeLinkSave.ts';
+import {
+  recipePublicLinkGet,
+  recipePublicLinkPost,
+  recipePublicLinkRevokePost,
+} from '../server/recipeLinksHttp.ts';
 import { agentPost } from '../server/agent/index.ts';
 import { matchMcpRoute, mcpGrantsGet, mcpGrantsRevokePost } from '../server/mcp/index.ts';
 import { sttPost } from '../server/stt.ts';
@@ -109,6 +115,7 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/sync/push', handler: syncPush },
   { method: 'POST', path: '/api/shared/leave', handler: sharedLeavePost },
   { method: 'POST', path: '/api/public/join', handler: publicJoinPost },
+  { method: 'POST', path: '/api/public/save', handler: recipeLinkSavePost },
   { method: 'POST', path: '/api/extension/import', handler: extensionImport },
   { method: 'OPTIONS', path: '/api/extension/import', handler: extensionImportOptions },
   { method: 'GET', path: '/api/mcp/grants', handler: mcpGrantsGet },
@@ -345,7 +352,7 @@ function matchApiRoute(pathname: string, method: string): ApiHandler | 'wrongMet
   }
 
   // Visitor reads, no session: /api/public/<token>[/recipes/<id>/photos/<id>].
-  // `/api/public/join` is an exact route above.
+  // `/api/public/join` and `/api/public/save` are exact routes above.
   if (pathname.startsWith('/api/public/')) {
     if (method === 'GET' || method === 'HEAD') {
       return publicGet;
@@ -403,6 +410,21 @@ function matchApiRoute(pathname: string, method: string): ApiHandler | 'wrongMet
   if (/^\/api\/collections\/[^/]+\/public\/revoke$/.test(pathname)) {
     if (method === 'POST') {
       return collectionPublicLinkRevokePost;
+    }
+    return 'wrongMethod';
+  }
+  if (/^\/api\/recipes\/[^/]+\/public$/.test(pathname)) {
+    if (method === 'GET') {
+      return recipePublicLinkGet;
+    }
+    if (method === 'POST') {
+      return recipePublicLinkPost;
+    }
+    return 'wrongMethod';
+  }
+  if (/^\/api\/recipes\/[^/]+\/public\/revoke$/.test(pathname)) {
+    if (method === 'POST') {
+      return recipePublicLinkRevokePost;
     }
     return 'wrongMethod';
   }

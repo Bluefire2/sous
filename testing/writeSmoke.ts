@@ -4,9 +4,9 @@
  * because those assert exact counts and these add rows. Every write goes
  * through the routes the app uses, and every result is read back the same
  * way: last-write-wins and tombstones, the recipe delete cascade, editor and
- * viewer rules on shared recipes, the collection-link hop, public join, and
- * admin approve and revoke against the 60-second membership cache, and the
- * kitchen profile.
+ * viewer rules on shared recipes, the collection-link hop, public join, saving
+ * a copy from a recipe link, admin approve and revoke against the 60-second
+ * membership cache, and the kitchen profile.
  *
  * Fresh UUIDs for every new row; the shared fixtures are put back the way
  * the seed left them (grants and roles) so later checks see the seed.
@@ -37,6 +37,7 @@ export async function checkWrites(baseUrl: string, cookies: ReadonlyMap<string, 
     ['editor and viewer', () => sharedWrites(http, cookieOf, check)],
     ['collection link', () => collectionLink(http, cookieOf, check)],
     ['public join', () => publicJoin(http, cookieOf, check)],
+    ['recipe link save', () => recipeLinkSave(http, cookieOf, check)],
     ['admin approve and revoke', () => adminFlow(http, cookieOf, check)],
     ['kitchen profile', () => kitchenProfile(http, cookieOf, check)],
   ];
@@ -397,6 +398,79 @@ async function publicJoin(http: Http, cookieOf: (name: string) => string, check:
   const fresh = tokenOf((on.body as { url?: unknown }).url);
   check('turning it on again mints a new link', on.status === 200 && fresh !== undefined && fresh !== token);
   check('the new link reads', fresh !== undefined && (await http.get(`/api/public/${fresh}`)).status === 200);
+}
+
+async function recipeLinkSave(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
+  const memberCookie = cookieOf('member');
+  const empty = cookieOf('empty');
+  const oats = FIXTURE_IDS.member.overnightOats;
+  const tokenOf = (url: unknown) => (typeof url === 'string' ? /\/p\/([^/?#]+)$/.exec(url)?.[1] : undefined);
+
+  const token = tokenOf(((await http.get(`/api/recipes/${oats}/public`, memberCookie)).body as { url?: unknown }).url);
+  check('Overnight oats has a recipe link', token !== undefined);
+  if (token === undefined) return;
+  const save = async (cookie: string) => {
+    const res = await http.post('/api/public/save', cookie, { token });
+    return res.status === 200 ? (res.body as { recipeId: string; result: string }) : { recipeId: '', result: `status ${res.status}` };
+  };
+  const first = await save(empty);
+  check('a member saves a copy from the recipe link', first.result === 'saved', first.result);
+  const again = await save(empty);
+  check('saving again opens the same copy', again.result === 'already' && again.recipeId === first.recipeId);
+  const own = await save(memberCookie);
+  check("the owner saving their own link is own", own.result === 'own' && own.recipeId === oats);
+  check('signed out cannot save', (await save('')).result === 'status 401');
+
+  const copy = byId((await http.pull(empty)).recipes, first.recipeId);
+  const original = member.recipes.find((r) => r.id === oats);
+  check('the copy is in the saver library', copy !== undefined && copy.title === original?.title);
+  check(
+    'the copy says who shared it',
+    (copy?.savedFrom as { name?: string } | undefined)?.name === persona('member').name,
+    JSON.stringify(copy?.savedFrom),
+  );
+
+  const deleted = await http.push(empty, [
+    { kind: 'recipe.delete', payload: { id: first.recipeId, updatedAt: Date.now() } },
+  ]);
+  check('the saver deletes the copy', deleted.results[0]?.applied === true);
+  const resaved = await save(empty);
+  check('saving after a delete makes the copy again', resaved.result === 'saved' && resaved.recipeId === first.recipeId);
+  check('the copy is live again', !isTombstone(byId((await http.pull(empty)).recipes, first.recipeId)));
+
+  const off = await http.post(`/api/recipes/${oats}/public/revoke`, memberCookie);
+  check('the owner turns the recipe link off', off.status === 200, `status ${off.status}`);
+  check('the old recipe link reads 404', (await http.get(`/api/public/${token}`)).status === 404);
+  check('and saves 404', (await save(empty)).result === 'status 404');
+  check('the saved copy stays', !isTombstone(byId((await http.pull(empty)).recipes, first.recipeId)));
+  const on = await http.post(`/api/recipes/${oats}/public`, memberCookie);
+  const fresh = tokenOf((on.body as { url?: unknown }).url);
+  check('turning it on again mints a new recipe link', on.status === 200 && fresh !== undefined && fresh !== token);
+
+  // Deleting the recipe turns its link off, in the delete transaction; a
+  // stale delete that loses last-write-wins leaves it on.
+  const doomed = newRecipe('Linked then deleted', Date.now());
+  const put = await http.push(memberCookie, [{ kind: 'recipe.put', payload: doomed }]);
+  check('a fresh recipe to link saves', put.results[0]?.applied === true);
+  const doomedToken = tokenOf(
+    ((await http.post(`/api/recipes/${doomed.id as string}/public`, memberCookie)).body as { url?: unknown }).url,
+  );
+  check('the fresh recipe gets a link', doomedToken !== undefined);
+  if (doomedToken === undefined) return;
+  const stale = await http.push(memberCookie, [
+    { kind: 'recipe.delete', payload: { id: doomed.id, updatedAt: (doomed.updatedAt as number) - 1 } },
+  ]);
+  check('a stale delete is sent', stale.status === 200, `status ${stale.status}`);
+  check('a stale delete leaves the link on', (await http.get(`/api/public/${doomedToken}`)).status === 200);
+  const gone = await http.push(memberCookie, [
+    { kind: 'recipe.delete', payload: { id: doomed.id, updatedAt: Date.now() } },
+  ]);
+  check('the owner deletes the linked recipe', gone.results[0]?.applied === true);
+  check('the deleted recipe link reads 404', (await http.get(`/api/public/${doomedToken}`)).status === 404);
+  const afterDelete = await http.post('/api/public/save', empty, { token: doomedToken });
+  check('and saves 404', afterDelete.status === 404, `status ${afterDelete.status}`);
+  const relinked = await http.get(`/api/recipes/${doomed.id as string}/public`, memberCookie);
+  check('the deleted recipe has no link to show', relinked.status === 404, `status ${relinked.status}`);
 }
 
 async function adminFlow(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
