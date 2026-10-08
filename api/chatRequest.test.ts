@@ -21,7 +21,16 @@ vi.mock('@google/genai', async (importOriginal) => {
 });
 
 import { endlessBody } from '../test/endlessBody';
-import { MAX_CHAT_BODY_BYTES, MAX_CHAT_IMAGES, MAX_CHAT_IMAGE_BYTES, POST, parseChatRequest } from './chat';
+import {
+  MAX_CHAT_BODY_BYTES,
+  MAX_CHAT_CONTEXT_CHARS,
+  MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_TEXT_CHARS,
+  POST,
+  estimatedPromptTokens,
+  parseChatRequest,
+} from './chat';
 
 const SECRET_TEXT = 'secret-recipe-text-quoted-by-the-sdk';
 const ctx = { authorizedSub: 'member-sub' };
@@ -282,5 +291,120 @@ describe('parseChatRequest', () => {
   it(`accepts ${MAX_CHAT_IMAGES} images on one message`, () => {
     const images = Array.from({ length: MAX_CHAT_IMAGES }, () => ({ mediaType: 'image/jpeg', base64: JPEG }));
     expect(parseChatRequest({ messages: [{ role: 'user', content: 'x', images }], recipe: {} })).not.toBeNull();
+  });
+});
+
+describe('chat text caps', () => {
+  it('accepts message text up to the cap, summed over the thread', () => {
+    const half = 'x'.repeat(MAX_CHAT_TEXT_CHARS / 2);
+    const messages = [
+      { role: 'user', content: half },
+      { role: 'assistant', content: half },
+    ];
+    expect(parseChatRequest(validBody({ messages }))).not.toBeNull();
+    messages.push({ role: 'user', content: 'x' });
+    expect(parseChatRequest(validBody({ messages }))).toBeNull();
+  });
+
+  it('refuses a recipe and cooking state over the context cap', () => {
+    const recipe = { title: 'Bread', notes: 'x'.repeat(MAX_CHAT_CONTEXT_CHARS) };
+    expect(parseChatRequest(validBody({ recipe }))).toBeNull();
+    const cookingState = { notes: 'x'.repeat(MAX_CHAT_CONTEXT_CHARS) };
+    expect(parseChatRequest(validBody({ cookingState }))).toBeNull();
+  });
+
+  it('estimates a token per character, the tool schema included, and 1 300 tokens a photo', () => {
+    const textOnly = estimatedPromptTokens('', []);
+    expect(textOnly).toBeGreaterThan(500); // the update_recipe schema
+    expect(
+      estimatedPromptTokens('abcd', [
+        { role: 'user', content: 'ab' },
+        { role: 'user', content: 'abc', images: [{ mediaType: 'image/jpeg', base64: JPEG }] },
+      ]),
+    ).toBe(textOnly + 9 + 1300);
+  });
+});
+
+describe('POST usage reporting', () => {
+  beforeEach(() => {
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+
+  it("reports the stream's last usage once it ends", async () => {
+    model.generate = async () =>
+      (async function* () {
+        yield { text: 'A', usageMetadata: { promptTokenCount: 10 } };
+        yield { text: 'B', usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4 } };
+      })();
+    const onUsage = vi.fn();
+    const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+    expect(await res.text()).toBe('AB');
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.calls[0][1]).toEqual({ promptTokenCount: 10, candidatesTokenCount: 4 });
+  });
+
+  it('reports an estimate for a stream that breaks before any usage', async () => {
+    model.generate = async () =>
+      (async function* () {
+        yield { text: 'Partial' };
+        throw new Error('cut');
+      })();
+    const onUsage = vi.fn();
+    const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+    await res.text().catch(() => {});
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    const usage = onUsage.mock.calls[0][1] as { promptTokenCount: number };
+    expect(usage.promptTokenCount).toBeGreaterThan(1300);
+  });
+
+  it('charges what a cut-off stream already wrote', async () => {
+    model.generate = async () =>
+      (async function* () {
+        yield { text: 'Partial' };
+        throw new Error('cut');
+      })();
+    const onUsage = vi.fn();
+    const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+    await res.text().catch(() => {});
+    expect((onUsage.mock.calls[0][1] as { candidatesTokenCount: number }).candidatesTokenCount).toBe(7);
+  });
+
+  it('survives the client cancelling mid-reply, and still reports usage', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      let next!: () => void;
+      model.generate = async () =>
+        (async function* () {
+          yield { text: 'First' };
+          await new Promise<void>((resolve) => {
+            next = resolve;
+          });
+          yield { text: 'Second' };
+        })();
+      const onUsage = vi.fn();
+      const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+      const reader = res.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      next();
+      await vi.waitFor(() => expect(onUsage).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('reports nothing when the model call never starts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    model.generate = async () => {
+      throw new Error('down');
+    };
+    const onUsage = vi.fn();
+    const res = await POST(chatRequest(JSON.stringify(validBody())), { ...ctx, onUsage });
+    expect(res.status).toBe(502);
+    expect(onUsage).not.toHaveBeenCalled();
   });
 });

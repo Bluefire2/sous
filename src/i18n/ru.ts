@@ -664,6 +664,8 @@ export const ru: Messages = {
   'error.translateProviderUnavailable': 'Эта служба перевода недоступна.',
   'error.translateFailed': 'Не удалось перевести этот рецепт.',
   'error.translateRateLimited': 'Слишком много переводов. Попробуйте позже.',
+  'error.llmBudgetExceeded': 'Вы достигли дневного лимита функций ИИ в Sous. Он обновится в полночь по UTC.',
+  'error.llmBusy': 'Sous ещё обрабатывает ваши другие запросы. Попробуйте чуть позже.',
   'assistant.ask': 'Спросить',
   'assistant.clear': 'Очистить',
   'assistant.stop': 'Остановить',

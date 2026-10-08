@@ -192,6 +192,12 @@
     "needsData": false
   },
   {
+    "id": "import-llm-budget",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 429 llm-budget-exceeded: the error line says today's limit for Sous's AI features is reached and resets at midnight UTC, with no offer to send an import report. Every import mode shows the same line.",
+    "needsData": false
+  },
+  {
     "id": "import-create-failed",
     "route": "/import",
     "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 502 import-generate-failed: the error line says the recipe could not be written, and the import report card is offered.",
@@ -514,6 +520,12 @@
     "route": "/assistant",
     "setup": "Signed out. The screen shows the sign-in sentence linking to Settings and a link back to the library. Do not sign in.",
     "needsData": false
+  },
+  {
+    "id": "assistant-llm-budget",
+    "route": "/assistant",
+    "setup": "One question sent with /api/agent mocked to answer 429 llm-budget-exceeded: the assistant shows that today's limit for Sous's AI features is reached and resets at midnight UTC.",
+    "needsData": true
   },
   {
     "id": "assistant-empty",

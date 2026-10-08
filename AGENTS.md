@@ -80,6 +80,24 @@ that line and its 30-day retention (the `_Default` log bucket); change them
 with it. Photo import's share of the line is bound by
 `docs/constitutions/image-import.md` principle 3.
 
+**Daily AI budget** (`docs/plans/llm-budget.md`, `server/llmBudget.ts`,
+prices in `server/llmPricing.ts`): every model call is charged, from the
+usage Gemini reports, to `users/{sub}/llmUsage/{YYYY-MM-DD}` (UTC), and a
+member at `LLM_DAILY_BUDGET_MICRO_USD` ($10, a code constant) gets 429
+`llm-budget-exceeded` until UTC midnight; owners too. A route admits with
+`admitLlm` after auth and body checks and before its first model call
+(a failed read is 503, never 429), charges each call (`meteredAi` for
+`generateContent` clients, `onUsage` for streams), and releases the meter
+when the request ends; more than `LLM_MAX_IN_FLIGHT_PER_MEMBER` (2) at once
+per instance is 429 `llm-busy`. A new model call must be metered the same
+way. Chat is metered by `withChatBudget` in `scripts/server.ts`, since
+`api/chat.ts` cannot import it; chat text is capped by `MAX_CHAT_TEXT_CHARS`
+and `MAX_CHAT_CONTEXT_CHARS`, and the client trims old messages to fit
+(`fitChatHistory`). An unknown model is priced at the highest rates in the
+table; update the table when a model or price changes. The `llm` and
+`llm_refused` log lines never hold prompt, reply, or error text. `/privacy`
+and `/terms` describe the counter and the lines; change them with it.
+
 Import feedback (`docs/plans/import-feedback.md`): after a failed or flagged
 import, or a 👎 on a clean preview, the person can send a report
 (`POST /api/import-feedback`, `server/importFeedback.ts`, `withMembership`). Reports
@@ -200,7 +218,7 @@ set `FIRESTORE_EMULATOR_HOST` to a loopback `host:port`; any other host is
 refused.
 
 Open `http://localhost:5173/__test/` and pick a persona (`owner`, `member`,
-`empty`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
+`empty`, `capped`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
 reseeds it; `npm run dev:test -- --keep` keeps the data. `--static --port 4173`
 serves `dist/` as well, for CI and browser automation without Vite;
 `GET /__test/personas` answers 503 until the seed is done and then lists the
@@ -727,6 +745,7 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
 | `docs/plans/test-coverage.md` | Done: merged as #151, #152, #154, and #157 (the coverage report), not deployed. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/llm-budget.md` | Built on `claude/per-user-llm-rate-limit-96825d`, not deployed. $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not

@@ -320,6 +320,16 @@ export const MOCKS = {
     status: 429,
     body: { error: 'Too many web searches. Try again later, or turn Search the web off.', code: 'import-search-rate-limited' },
   })),
+  /** Today's AI budget is used up: 429 `llm-budget-exceeded` from import and the assistant (server/llmBudget.ts). */
+  llmBudgetExceeded: async (context) => {
+    const refusal = {
+      error: "You've reached today's limit. It resets at midnight UTC.",
+      code: 'llm-budget-exceeded',
+    };
+    for (const path of ['**/api/import', '**/api/agent']) {
+      await context.route(path, (route) => json(route, 429, refusal));
+    }
+  },
   /** Generation failed (a thrown call, or output that was not a usable recipe): 502 `import-generate-failed`. */
   importGenerateFailed: importMock(() => ({
     status: 502,
