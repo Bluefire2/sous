@@ -22,6 +22,32 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-08 — Default model `gemini-3.7-flash` → `gemini-3.8-flash`
+
+- Change: `DEFAULT_MODEL` in `server/recipeImport.ts` and every other
+  `CHAT_MODEL` default (chat, dictation, the assistant, `evals/judge.ts`)
+  becomes `gemini-3.8-flash` (`b6b2409`, PR #173). Prompts, schemas,
+  checks, retries, thinking and goldens are unchanged.
+- Reason (not fixture-specific): move to the newer Flash model.
+- Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per
+  side, both at `b6b2409`. `.env.local` sets no `CHAT_MODEL`.
+- Before (`CHAT_MODEL=gemini-3.7-flash`, the same requests as the parent
+  `e687da4`, since the change only moves defaults): dev 12/15
+  (blueberry-muffins 1/3, choc-pie-tea-towel 3/3, hundred-good-cookies
+  3/3, lemon-tea-bread 3/3, sweet-sour-pork 2/3), holdout 15/15; every A
+  run `ok`, `STOP`, calls 1. Approach B: dev 9/15, holdout 9/15.
+- After (default, `gemini-3.8-flash`): dev 10/15 (blueberry-muffins 1/3,
+  choc-pie-tea-towel 3/3, hundred-good-cookies 3/3, lemon-tea-bread 2/3,
+  sweet-sour-pork 1/3), holdout 15/15; every A run `ok`, `STOP`, calls 1.
+  Approach B: dev 8/15, holdout 9/15. Median A time: dev 12.6 s → 12.2 s,
+  holdout 10.2 s → 9.6 s. The cost column still uses the 3.7 estimates.
+- Caveat: `evals/judge.ts` also defaults to `CHAT_MODEL`, so the judge
+  moved with the importer and the difference mixes the two.
+- Decision: pending owner. Holdout tied, but the dev A total fell
+  (12 → 10), which fails the acceptance rule. Not re-run.
+- Run by: agent, model `gemini-3.7-flash` (before) and `gemini-3.8-flash`
+  (after).
+
 ## 2026-10-06 — RECIPE_SCHEMA property order (times early), whole-minute rounding
 
 - Change: `RECIPE_SCHEMA` (photo import and `generateFromBrief`) gets a

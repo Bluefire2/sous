@@ -87,6 +87,21 @@ reachable from personas.
   page text), and its pass/fail is not usable. Structured output,
   temperature 0, default thinking. Calls that answer 429 or 5xx are retried
   three times with backoff (the spike hit one 503).
+- **Recalibration on `gemini-3.8-flash` (2026-10-08, PR #173, pending
+  owner).** `calibration.ts` on the same seed and catalog, three runs on
+  3.8 and two controls on 3.7 (`JUDGE_MODEL` changed locally for the
+  control, not committed). Planted defects confirmed: 3.8 12, 11 (missed
+  "Выбор") and 11 (one clipped button seen only) of 12; 3.7 11 (missed
+  "Выбор") and 11 (one clipped button seen only) of 12. Both "left in
+  English" plants were confirmed in every run. Confirmed false blockers on
+  the 30 clean pairs: on 3.8, the `zh-Hans` `import-preview` label 份量
+  (`common.servings`, against the glossary's 份) in 3 of 3 runs, and the
+  `uk` library header's "Приготування" read as a people control in 1; on
+  3.7, 份量 in 1 of 2 runs. So the check passed 0 of 3 times on 3.8 and 1
+  of 2 on 3.7. Recall is about the same; 3.8 holds the servings glossary
+  entry against 份量 every time. Undecided: whether 份量 is a real catalog
+  bug (then `KNOWN_REAL`, or a catalog fix with its own review) or the
+  judge stays on 3.7.
 - **The judge reads the rubric and glossary from their sources.** The rubric
   bullets come from the README's "Rubric" section and the register and
   glossary from the constitution's "Register and glossary" decision, read at
