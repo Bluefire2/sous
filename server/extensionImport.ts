@@ -13,6 +13,8 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
+import { meteredImportDeps } from './importRoute.ts';
+import { admitLlm, llmRefusal } from './llmBudget.ts';
 import { RequestBodyError, readBoundedText, requireHeaderMember } from './membership.ts';
 import { recipePutFromExtraction } from './recipeFromExtraction.ts';
 import {
@@ -21,7 +23,7 @@ import {
   importFromHtml,
   MAX_PAGE_HTML_CHARS,
   readImportTranslateTo,
-  recipeImportDepsFromEnv,
+  type ImportOutcome,
   type RecipeImportDeps,
 } from './recipeImport.ts';
 import { applyPushOp } from './sync.ts';
@@ -179,11 +181,24 @@ async function importAndSave(
     return fail(req, IMPORT_BAD_LANGUAGE_CODE, IMPORT_BAD_LANGUAGE_ERROR, 400);
   }
 
-  const outcome = await importFromHtml(
-    html,
-    deps ?? recipeImportDepsFromEnv(),
-    target.translateTo,
-  );
+  const admission = await admitLlm(sub, 'extension_import');
+  if (admission.kind !== 'ok') {
+    entry.outcome = 'llm_refused';
+    const refusal = llmRefusal(admission);
+    const headers = new Headers(refusal.headers);
+    for (const [name, value] of Object.entries(corsHeaders(req))) headers.set(name, value);
+    return new Response(refusal.body, { status: refusal.status, headers });
+  }
+  let outcome: ImportOutcome;
+  try {
+    outcome = await importFromHtml(
+      html,
+      meteredImportDeps(deps, admission.meter),
+      target.translateTo,
+    );
+  } finally {
+    admission.meter.release();
+  }
   noteImportOutcome(entry, outcome);
   switch (outcome.kind) {
     case 'ok':

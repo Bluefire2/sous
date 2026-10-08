@@ -44,6 +44,14 @@ export const PERSONAS = [
     description: 'Member with nothing: no recipes, no collections, no shares',
   },
   {
+    as: 'capped',
+    sub: 'test-capped',
+    email: 'capped@sous.invalid',
+    name: 'Cal Capped',
+    admission: 'member',
+    description: "Member with no recipes who has used up today's AI budget: every AI feature answers the limit",
+  },
+  {
     as: 'viewer',
     sub: 'test-viewer',
     email: 'viewer@sous.invalid',

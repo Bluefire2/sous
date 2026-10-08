@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FunctionCallingConfigMode, Type } from '@google/genai';
-import { googleModel, toolParametersToSchema } from './google.ts';
+import { estimatedStepPromptTokens, googleModel, toolParametersToSchema } from './google.ts';
 import { callChunk, fakeGenerateStream, textChunk } from '../../../test/fakeGeminiStream.ts';
 import type { AgentMessage } from './types.ts';
 
@@ -179,5 +179,69 @@ describe('googleModel adapter request mapping', () => {
     expect(last.parts?.some((part) => part.functionResponse !== undefined)).toBe(true);
     expect(last.parts?.some((part) => part.text?.includes('tool limit'))).toBe(true);
     expect(contents.filter((content) => content.role === 'user')).toHaveLength(2);
+  });
+});
+
+describe('googleModel usage', () => {
+  function stepRequest() {
+    return {
+      systemInstruction: 'sys',
+      messages: [{ role: 'user' as const, text: 'hello' }],
+      priorTurns: [],
+      tools: [],
+      forceText: false,
+      maxOutputTokens: 100,
+      signal: new AbortController().signal,
+    };
+  }
+
+  it("reports each step's last usage once its stream ends", async () => {
+    const first = textChunk('a');
+    first.usageMetadata = { promptTokenCount: 5 };
+    const last = textChunk('b');
+    last.usageMetadata = { promptTokenCount: 5, candidatesTokenCount: 2 };
+    const { generate } = fakeGenerateStream([[first, last]]);
+    const onUsage = vi.fn();
+    const client = googleModel({ apiKey: 'k', model: 'm', generate, onUsage });
+    const stream = await client.step(stepRequest());
+    for await (const _ of stream.events) {
+      expect(onUsage).not.toHaveBeenCalled();
+    }
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage).toHaveBeenCalledWith('m', { promptTokenCount: 5, candidatesTokenCount: 2 });
+  });
+
+  it('reports an estimate when the stream reported no usage', async () => {
+    const { generate, calls } = fakeGenerateStream([[textChunk('a')]]);
+    const onUsage = vi.fn();
+    const client = googleModel({ apiKey: 'k', model: 'm', generate, onUsage });
+    const stream = await client.step(stepRequest());
+    for await (const _ of stream.events) {
+      /* drain */
+    }
+    const contents = calls[0]!.contents as Parameters<typeof estimatedStepPromptTokens>[1];
+    expect(onUsage).toHaveBeenCalledWith('m', {
+      promptTokenCount: estimatedStepPromptTokens('sys', contents, []),
+      candidatesTokenCount: 1,
+    });
+  });
+
+  it('estimates a token per character of the request, tools included', () => {
+    const contents = [{ role: 'user', parts: [{ text: 'hello' }] }];
+    const tools = [{ name: 'search', description: 'find', parameters: { type: 'object', properties: {} } }];
+    expect(estimatedStepPromptTokens('sys', contents, tools)).toBe(
+      3 + JSON.stringify(contents).length + JSON.stringify(tools).length,
+    );
+  });
+
+  it('reports when the consumer stops early', async () => {
+    const { generate } = fakeGenerateStream([[textChunk('a'), textChunk('b')]]);
+    const onUsage = vi.fn();
+    const client = googleModel({ apiKey: 'k', model: 'm', generate, onUsage });
+    const stream = await client.step(stepRequest());
+    for await (const _ of stream.events) {
+      break;
+    }
+    expect(onUsage).toHaveBeenCalledTimes(1);
   });
 });

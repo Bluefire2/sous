@@ -446,7 +446,8 @@ describe('architecture lock', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const serverTs = readFileSync(join(repoRoot, 'scripts/server.ts'), 'utf8');
-    expect(serverTs.includes('withMembership(chatPost)')).toBe(true);
+    // withChatBudget (server/llmBudget.ts) runs inside the gate, never around it.
+    expect(serverTs.includes('withMembership(withChatBudget(chatPost))')).toBe(true);
     expect(serverTs.includes('withMembership(importPost)')).toBe(true);
     expect(serverTs.includes('handler: chatPost')).toBe(false);
     expect(serverTs.includes('handler: importPost')).toBe(false);
@@ -463,8 +464,9 @@ describe('architecture lock', () => {
   // (server/importFeedback.ts) reads it once, after withMembership decided
   // access, to name the report's sender and its log line; it never decides
   // access either. The feature request route (server/featureRequest.ts) does
-  // the same for a suggestion.
-  it('assertion 6: authorizedSub in exactly five files with fixed counts', () => {
+  // the same for a suggestion. The chat budget (server/llmBudget.ts) reads it
+  // once, inside withMembership, only to key the member's daily spend.
+  it('assertion 6: authorizedSub in exactly six files with fixed counts', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const expectedCounts: Record<string, number> = {
@@ -472,6 +474,7 @@ describe('architecture lock', () => {
       'server/featureRequest.ts': 1,
       'server/importFeedback.ts': 1,
       'server/importRoute.ts': 1,
+      'server/llmBudget.ts': 1,
       'server/membership.ts': 2,
     };
     const allowed = new Set(Object.keys(expectedCounts));

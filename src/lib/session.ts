@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { clearLibrary } from './libraryMemory';
+import { clearPersistedLibraryPaging } from './libraryPaging';
 import { clearPersistedLibraryView } from './librarySearchMemory';
 
 const SESSION_CACHE_KEY = 'cook.session';
@@ -86,6 +87,7 @@ export function invalidateSession(): void {
   publish({ user: null, status: 'signedOut' });
   clearLibrary();
   clearPersistedLibraryView();
+  clearPersistedLibraryPaging();
   notifySessionReset();
 }
 

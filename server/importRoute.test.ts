@@ -20,6 +20,20 @@ import {
 } from './recipeImport.ts';
 import * as recipeImport from './recipeImport.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 // The route fetches pages over the live network; send it through a fake one
 // (`test/fakePageFetch.ts`) so `fetchPageHtml`'s own checks still run.
@@ -892,5 +906,55 @@ describe('POST /api/import with a brief', () => {
     expect(importLogLines().at(-1)?.entry).toEqual(
       expect.objectContaining({ via: 'generate', search: true, outcome: 'not_a_recipe', searchQueries: 1 }),
     );
+  });
+});
+
+describe('importPost daily AI budget', () => {
+  function spendToday(sub: string, microUsd: number): void {
+    llmUsage.spent.set(`${sub}/${utcDayKey(Date.now())}`, microUsd);
+  }
+
+  it.each([
+    ['paste', { text: 'Simmer the tomatoes.' }],
+    ['brief', { brief: 'tomato soup' }],
+    ['photos', { images: [{ mediaType: 'image/jpeg', base64: '/9j/4A==' }] }],
+  ])('refuses a %s import over the budget without calling the model', async (_via, body) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    const { status, body: answer, calls } = await post(body);
+    expect(status).toBe(429);
+    expect(answer).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('logs the refusal as llm_refused on the import line', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    await post({ text: 'Simmer the tomatoes.' });
+    const importLine = log.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((line) => line.event === 'import');
+    expect(importLine).toMatchObject({ outcome: 'llm_refused', status: 429 });
+  });
+
+  it("charges the model's reported usage to the member", async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { status } = await post({ text: 'Simmer the tomatoes.' }, JSON.stringify(RECIPE), {
+      deps: {
+        ...fakeImportDeps(JSON.stringify(RECIPE)).deps,
+        model: 'gemini-3.7-flash',
+        ai: {
+          models: {
+            generateContent: async (params) => {
+              const response = await fakeImportDeps(JSON.stringify(RECIPE)).deps.ai.models.generateContent(params);
+              response.usageMetadata = { promptTokenCount: 1000, candidatesTokenCount: 100 };
+              return response;
+            },
+          },
+        },
+      },
+    });
+    expect(status).toBe(200);
+    expect(llmUsage.spent.get(`sub-1/${utcDayKey(Date.now())}`)).toBe(1000 * 1.5 + 100 * 7.5);
   });
 });

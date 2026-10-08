@@ -23,6 +23,7 @@ import {
   requireMember,
   storeUnavailable,
 } from '../membership.ts';
+import { admitLlm, llmRefusal } from '../llmBudget.ts';
 
 const LIBRARY_LOAD_TIMEOUT_MS = 90_000;
 const AGENT_WALL_MS = 90_000;
@@ -98,11 +99,23 @@ export async function agentPost(req: Request): Promise<Response> {
   const deadline = AbortSignal.timeout(AGENT_WALL_MS);
   const signal = AbortSignal.any([deadline, stop.signal]);
 
+  // Admitted last, right before the run, so nothing can throw between taking
+  // the slot and the try that frees it.
+  const admission = await admitLlm(access.sub, 'agent');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
+
   const runStarted = Date.now();
   let agentRun;
   try {
     agentRun = await startAgent({
-      model: googleModel({ apiKey, model: modelName }),
+      model: googleModel({
+        apiKey,
+        model: modelName,
+        onUsage: (model, usage) => void meter.charge(model, usage),
+      }),
       systemInstruction: buildSystemPrompt({
         library,
         clientNow: parsed.value.clientNow,
@@ -117,6 +130,7 @@ export async function agentPost(req: Request): Promise<Response> {
       signal,
     });
   } catch {
+    meter.release();
     return jsonError('Assistant is unavailable.', 502);
   }
 
@@ -184,7 +198,8 @@ export async function agentPost(req: Request): Promise<Response> {
           })
           .catch(() => {
             /* Stop can close the stream before enqueue or close runs. */
-          });
+          })
+          .finally(meter.release);
       },
       cancel() {
         streamSettled = true;

@@ -90,6 +90,8 @@ export const zhHans: Messages = {
   },
   'library.selectAll': '全选',
   'library.selectNone': '取消全选',
+  'library.showMore': '再显示 {count} 个',
+  'library.shownOfTotal': '已显示 {shown} 个，共 {total} 个',
   'library.moveSelected': '移动',
   'library.moveManyTitle': {
     other: '移动 {count} 个食谱',
@@ -612,6 +614,8 @@ export const zhHans: Messages = {
   'error.translateProviderUnavailable': '这个翻译服务不可用。',
   'error.translateFailed': '无法翻译这个食谱。',
   'error.translateRateLimited': '翻译太频繁了，请你稍后再试。',
+  'error.llmBudgetExceeded': '你已达到 Sous 今日的 AI 功能使用上限。上限会在 UTC 午夜重置。',
+  'error.llmBusy': 'Sous 仍在处理你的其他请求，请稍后再试。',
   'assistant.ask': '提问',
   'assistant.clear': '清除',
   'assistant.stop': '停止',
