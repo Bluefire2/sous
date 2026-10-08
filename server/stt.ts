@@ -214,7 +214,7 @@ export async function sttPost(req: Request): Promise<Response> {
 
   const title = recipeTitleFromHeaders(req.headers);
 
-  const model = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const model = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const ai = new GoogleGenAI({ apiKey });
   try {
     const result = await ai.models.generateContent({

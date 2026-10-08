@@ -133,7 +133,7 @@ async function runLibraryAssistant(userText: string): Promise<AgentEvent[]> {
     throw new Error('GEMINI_API_KEY missing in runLibraryAssistant');
   }
   const library = fixtureLibrary();
-  const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const modelName = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const signal = AbortSignal.timeout(90_000);
 
   const agentRun = await startAgent({
