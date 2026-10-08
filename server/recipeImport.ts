@@ -235,7 +235,9 @@ export type PageFetchOutcome =
   | { kind: 'blocked' }
   | { kind: 'refused'; status: number };
 
-const DEFAULT_MODEL = 'gemini-3.8-flash';
+// Import stays on 3.7 while the rest of the app defaults to gemini-3.8-flash:
+// 3.8 scored lower on the photo evals (evals/EXPERIMENTS.md, 2026-10-08).
+const DEFAULT_MODEL = 'gemini-3.7-flash';
 
 const MAX_SOURCE_CHARS = 60000;
 

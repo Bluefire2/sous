@@ -55,8 +55,12 @@ summary, approach A.
   holdout 9/15.
 - Sums of both 3.8 importer runs: dev 18/30 and holdout 29/30, against
   12/15 and 15/15 on 3.7, with 2 runaways against 0.
-- Decision: pending owner. Both 3.8 runs fail the acceptance rule: dev
-  fell in both, and holdout fell in the isolated run.
+- Decision: reverted for import (owner). Both 3.8 runs fail the
+  acceptance rule: dev fell in both, and holdout fell in the isolated run.
+  `DEFAULT_MODEL` in `server/recipeImport.ts` stays `gemini-3.7-flash`;
+  the other `CHAT_MODEL` defaults, including `evals/judge.ts`, move to
+  3.8, so later `ocrCompare` runs judge with 3.8 unless `CHAT_MODEL` is
+  set.
 - Run by: agent, model `gemini-3.7-flash` (before) and `gemini-3.8-flash`
   (after).
 

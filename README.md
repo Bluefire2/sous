@@ -239,7 +239,7 @@ the full map).
 | `MAIL_FROM` | yes (prod) | Resend sender for the owner's access-request notifications and the approval email to requesters. Must be on a domain verified in Resend. The sandbox `onboarding@resend.dev` only reaches the Resend account's own inbox, so approval emails are skipped (and logged) while it is set. |
 | `OWNER_NOTIFY_EMAIL` | yes (prod) | Inbox that receives access-request notifications. |
 | `RESEND_API_KEY` | no | Resend API key. Unset ⇒ no notification email; requests still land in `/admin`. |
-| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, Ask dictation, and the library assistant). Defaults to `gemini-3.8-flash`. A blank value uses the default. |
+| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, Ask dictation, and the library assistant). Defaults to `gemini-3.8-flash`, except import, which defaults to `gemini-3.7-flash` (`evals/EXPERIMENTS.md`, 2026-10-08); a set value applies to import too. A blank value uses the default. |
 | `TRANSLATE_PROVIDER` | no | Recipe translation provider. Defaults to `gemini`, the only accepted value. Any other value fails closed (`503`, code `translate-provider-unavailable`). A blank value uses the default. |
 | `TRANSLATE_MODEL` | no | Gemini model for recipe translation. Defaults to `gemini-3.5-flash-lite`. A blank value uses the default. |
 
