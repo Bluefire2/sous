@@ -283,9 +283,15 @@ names a recipe that is gone. Only `createFromAsk` and MCP `create_recipe`
 stored value, the server pins the owner's value on an editor's put, shared
 pull carries it (an opaque id that grants no access), `publicRecipeBody` and
 `recipeForChat` strip it, and backup import remaps it.
+Optional `Recipe.savedFrom` (`{ name?, savedAt }`, `server/recipeSavedFrom.ts`:
+the sharer's display name when a copy was saved from a recipe link) is the
+fourth (`docs/plans/recipe-links.md`); code must work when it is missing. Only
+the save route sets it; `saveRecipe` forces the stored value, the server pins
+the owner's value on an editor's put, `createFromAsk` drops it, and
+`publicRecipeBody`, shared pull, and `recipeForChat` strip it.
 Optional `RecipeStep.lane` (who does a step when two people cook; consecutive
 laned steps run at the same time) and `CookStateRow.doneSteps` (steps done
-ahead of `currentStep` in such a block) are the fourth
+ahead of `currentStep` in such a block) are the fifth
 (`docs/plans/parallel-steps.md`); code must work when either is missing.
 `compactSteps` (`server/recipeSteps.ts`, re-exported by
 `src/lib/recipeSteps.ts`) is the only step compaction on both ends and drops
@@ -506,6 +512,23 @@ redeem path (`keepRole`, same cap); AI then runs through that grant. A new
 feature on a recipe page decides separately whether it belongs on
 `PublicRecipe`; shared display pieces live in `src/components/RecipeBody.tsx`.
 Collection delete revokes the public link in the grant-cascade transaction.
+
+**Recipe links** (`docs/plans/recipe-links.md`, `server/recipeLinks.ts`,
+`recipeLinksHttp.ts`, `recipeLinkSave.ts`) share one recipe by copy, not by
+grant. The owner turns a link on or off under `/api/recipes/:id/public` (own
+live recipe only, 404 for anyone else); top-level
+`recipeLinks/{sha256(token)}` keeps the token and the owner's display name.
+They reuse the public URL space: `/p/<token>` and `/api/public/<token>` try a
+collection link first, then a recipe link, so the referrer, log-exclusion,
+and denylist rules above cover them unchanged; the body's `kind` says which.
+A visitor sees the recipe and `sharedBy` (display name, never the email);
+AI is locked. `POST /api/public/save { token }` (member) writes the saver's
+own Unfiled copy with `savedFrom`, under an id derived from the saver and the
+link (a second save is `already`; the owner's own link is `own`), and copies
+its photos server-side (`copyPhotoBetweenOwners`). A copy survives the link
+being turned off and the sharer's account deletion. Recipe delete revokes the
+recipe's links in `cascadeRecipeDelete`'s transaction. Do not add a grant or a
+live tie between a copy and its original.
 
 Collection delete tombstones live grants in the same transaction. Forward
 grants carry an internal `active` flag, and the cascade time is
@@ -807,6 +830,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
 | `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 

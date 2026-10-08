@@ -31,7 +31,16 @@ import {
   selectRecipeSharedBy,
 } from './librarySelectors';
 import { useLibrarySelect, useLibrarySlice } from './useLibrary';
-import { fetchPhotoBlobOutcome, postPhoto, pushOps, type RemoteResult } from './remote';
+import {
+  disableRecipePublicLink,
+  enableRecipePublicLink,
+  fetchPhotoBlobOutcome,
+  getRecipePublicLink,
+  postPhoto,
+  pushOps,
+  type PublicLinkHttpResult,
+  type RemoteResult,
+} from './remote';
 import { photoStore } from './photoStore';
 import { withLocalWrite } from './localWrite';
 import { localWriteOverlapsPull, type SyncOutcome } from './syncEngine';
@@ -484,9 +493,15 @@ async function discardCreatedRecipe(
  * `save` reconciles it first; `replaceFromImport` replaces it.
  */
 async function saveRecipe(edit: Recipe): Promise<void> {
-  // A variant's group is fixed when it is created. No edit sets or clears it,
-  // and editors that rebuild the record never have to carry it.
-  const recipe: Recipe = { ...edit, variantOf: getRecipe(edit.id)?.variantOf };
+  // A variant's group is fixed when it is created, and so is where a saved
+  // copy came from. No edit sets or clears either, and editors that rebuild
+  // the record never have to carry them.
+  const stored = getRecipe(edit.id);
+  const recipe: Recipe = {
+    ...edit,
+    variantOf: stored?.variantOf,
+    savedFrom: stored?.savedFrom,
+  };
   if (isSharedRecipe(recipe.id)) {
     if (recipeAccess(recipe.id) !== 'editor') {
       throw new Error(t('error.sharedViewOnly'));
@@ -579,7 +594,45 @@ function withReconciledImportCheck(recipe: Recipe): Recipe {
   return { ...recipe, importCheck: check };
 }
 
+/** A recipe link is the owner's to turn on or off; a shared recipe has none of its own. */
+function rejectSharedLink(id: string): void {
+  if (isSharedRecipe(id)) {
+    throw new Error(t('error.sharedViewOnly'));
+  }
+}
+
+function recipeLinkResult(result: PublicLinkHttpResult): string | null {
+  if (result.kind === 'signedOut') {
+    throw new Error(t('error.sessionExpired'));
+  }
+  if (result.kind === 'error') {
+    throw new Error(result.message);
+  }
+  return result.url;
+}
+
 export const recipeStore = {
+  /**
+   * The recipe's link (`docs/plans/recipe-links.md`), or null while it has
+   * none. Anyone with it can read the recipe and members can save a copy.
+   */
+  async recipeLink(id: string): Promise<string | null> {
+    rejectSharedLink(id);
+    return recipeLinkResult(await getRecipePublicLink(id));
+  },
+
+  /** Turns the recipe link on; already on returns the same link. */
+  async enableRecipeLink(id: string): Promise<string | null> {
+    rejectSharedLink(id);
+    return recipeLinkResult(await enableRecipePublicLink(id));
+  },
+
+  /** Turns the recipe link off. Turning it on again makes a new one. */
+  async disableRecipeLink(id: string): Promise<void> {
+    rejectSharedLink(id);
+    recipeLinkResult(await disableRecipePublicLink(id));
+  },
+
   list(): Recipe[] {
     return listRecipes();
   },
@@ -714,6 +767,8 @@ export const recipeStore = {
         photoId: copied.photoId,
         galleryPhotoIds: copied.galleryPhotoIds,
         variantOf: parent.variantOf ?? parent.id,
+        // A variant is the member's own; it was not saved from a link.
+        savedFrom: undefined,
       });
     } catch (err) {
       // A retry copies onto fresh ids, so these copies would never upload.

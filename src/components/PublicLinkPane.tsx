@@ -1,21 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n';
-import { collectionStore } from '../lib/collectionStore';
+import { useT, type MessageKey } from '../i18n';
 import { dangerBtn, inputClass, primaryBtn, secondaryBtn } from '../lib/uiClasses';
 
 /**
- * The share sheet's Public pane: turn the collection's public link on, copy
- * it, or turn it off (`docs/plans/public-collections.md`). Unlike a join
- * link, the server keeps the URL, so it can be shown again.
+ * Which link the pane manages and its words: a collection's public link
+ * (`docs/plans/public-collections.md`) or a recipe link
+ * (`docs/plans/recipe-links.md`). `id` keys the load; the calls go to the
+ * owner's store.
+ */
+export type PublicLinkSource = {
+  id: string;
+  load: () => Promise<string | null>;
+  enable: () => Promise<string | null>;
+  disable: () => Promise<void>;
+  inputId: string;
+  text: {
+    intro: MessageKey;
+    off: MessageKey;
+    turnOn: MessageKey;
+    label: MessageKey;
+    turnOffLabel: MessageKey;
+    /** Under Turn off: what turning it off, and on again, does. */
+    offHint: MessageKey;
+  };
+};
+
+/**
+ * A share sheet's link pane: turn the link on, copy it, or turn it off.
+ * Unlike a join link, the server keeps the URL, so it can be shown again.
  */
 export default function PublicLinkPane({
-  collectionId,
+  source,
   onBusyChange,
 }: {
-  collectionId: string;
+  source: PublicLinkSource;
   onBusyChange: (busy: boolean) => void;
 }) {
   const t = useT();
+  const { id: sourceId, load: loadLink, enable, disable, inputId, text } = source;
   // `undefined` until a load succeeds; null means the collection is not public.
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -30,14 +52,15 @@ export default function PublicLinkPane({
     const mine = ++seq.current;
     setLoadError(null);
     try {
-      const next = await collectionStore.publicLink(collectionId);
+      const next = await loadLink();
       if (mine === seq.current) setUrl(next);
     } catch (err) {
       if (mine === seq.current) {
         setLoadError(err instanceof Error ? err.message : t('error.sharingLoad'));
       }
     }
-  }, [collectionId]);
+    // `sourceId` names the link; the callbacks are rebuilt each render.
+  }, [sourceId]);
 
   useEffect(() => {
     void load();
@@ -81,16 +104,16 @@ export default function PublicLinkPane({
     }
   };
 
-  const turnOn = () => run(() => collectionStore.enablePublicLink(collectionId), true);
+  const turnOn = () => run(enable, true);
   const turnOff = () =>
     run(async () => {
-      await collectionStore.disablePublicLink(collectionId);
+      await disable();
       return null;
     }, false);
 
   return (
     <>
-      <p className="mt-3 text-sm text-ink-muted">{t('share.publicIntro')}</p>
+      <p className="mt-3 text-sm text-ink-muted">{t(text.intro)}</p>
       {url === undefined && loadError === null && (
         <p className="mt-3 text-sm text-ink-muted">{t('common.loading')}</p>
       )}
@@ -110,25 +133,25 @@ export default function PublicLinkPane({
       )}
       {url === null && (
         <>
-          <p className="mt-3 text-sm text-ink-muted">{t('share.publicOff')}</p>
+          <p className="mt-3 text-sm text-ink-muted">{t(text.off)}</p>
           <button
             type="button"
             disabled={busy}
             onClick={() => void turnOn()}
             className={`${primaryBtn} mt-3 w-full py-3`}
           >
-            {busy ? t('common.saving') : t('share.publicTurnOn')}
+            {busy ? t('common.saving') : t(text.turnOn)}
           </button>
         </>
       )}
       {typeof url === 'string' && (
         <div className="mt-3">
-          <label className="text-xs text-ink-muted" htmlFor="public-collection-link">
-            {t('share.publicLinkLabel')}
+          <label className="text-xs text-ink-muted" htmlFor={inputId}>
+            {t(text.label)}
           </label>
           <div className="mt-1 flex gap-2">
             <input
-              id="public-collection-link"
+              id={inputId}
               readOnly
               value={url}
               onFocus={(event) => event.currentTarget.select()}
@@ -146,12 +169,12 @@ export default function PublicLinkPane({
             type="button"
             disabled={busy}
             onClick={() => void turnOff()}
-            aria-label={t('share.publicTurnOffLabel')}
+            aria-label={t(text.turnOffLabel)}
             className={`${dangerBtn} mt-3 px-4 py-2 text-sm disabled:opacity-40`}
           >
             {busy ? t('common.saving') : t('share.publicTurnOff')}
           </button>
-          <p className="mt-2 text-xs text-ink-muted">{t('share.publicOffHint')}</p>
+          <p className="mt-2 text-xs text-ink-muted">{t(text.offHint)}</p>
         </div>
       )}
       {error && (

@@ -61,13 +61,15 @@ export function fitChatHistory(messages: OutgoingMessage[]): OutgoingMessage[] {
 }
 
 /**
- * The recipe posted to `/api/chat`. `lang` and `variantOf` are removed so the
- * request stays the same shape it had before those fields existed.
+ * The recipe posted to `/api/chat`. `lang`, `variantOf`, and `savedFrom` are
+ * removed so the request stays the same shape it had before those fields
+ * existed (and the sharer's name never reaches the model).
  */
 export function recipeForChat(recipe: Recipe): Recipe {
   const posted: Recipe = { ...recipe };
   delete posted.lang;
   delete posted.variantOf;
+  delete posted.savedFrom;
   return posted;
 }
 

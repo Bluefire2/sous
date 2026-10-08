@@ -2,6 +2,7 @@ import { normalizeLang } from '../i18n/lang';
 import { compactImportCheck } from './importCheck';
 import { compactGalleryPhotoIds } from './recipePhotos';
 import { compactSteps } from './recipeSteps';
+import { compactSavedFrom } from './recipeSavedFrom';
 import { compactVariantOf } from './recipeVariant';
 import type { Recipe } from './types';
 
@@ -38,5 +39,7 @@ export function compactRecipe(recipe: Recipe): Recipe {
   if (importCheck !== undefined) next.importCheck = importCheck;
   const variantOf = compactVariantOf(recipe.variantOf, recipe.id);
   if (variantOf !== undefined) next.variantOf = variantOf;
+  const savedFrom = compactSavedFrom(recipe.savedFrom);
+  if (savedFrom !== undefined) next.savedFrom = savedFrom;
   return next;
 }
