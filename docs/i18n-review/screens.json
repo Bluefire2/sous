@@ -180,6 +180,12 @@
     "needsData": false
   },
   {
+    "id": "import-create-profile-unavailable",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the request mocked to answer 503 import-profile-unavailable: the error line under the form says the kitchen profile could not be read, so nothing was generated. Against a real server this needs the profile read to fail; mark skipped: needs data rather than breaking Firestore.",
+    "needsData": false
+  },
+  {
     "id": "import-create-no-recipe",
     "route": "/import",
     "setup": "Generate mode, a brief that is not about food, Generate recipe pressed with the model call mocked to answer 422 import-no-recipe-brief: the error line under the form says a recipe could not be made from that, and the import report card is offered with its note field and its What's included list open (the list names the idea that was typed).",

@@ -618,6 +618,7 @@ export const zhHans: Messages = {
   'error.importNoRecipePhotos': '这些照片里没有找到食谱。',
   'error.importBriefTooLong': '太长了，请把想法控制在 2,000 个字符以内。',
   'error.importSearchRateLimited': '网页搜索次数过多。请稍后再试，或关闭“搜索网页”。',
+  'error.importProfileUnavailable': '无法读取你的厨房档案，因此没有生成任何内容。请重试。',
   'error.importNoRecipeBrief': '无法据此写出食谱，请描述一道菜。',
   'error.importGenerateFailed': '无法生成这个食谱，请重试。',
   'error.badRequest': '这个请求无效。',

@@ -676,6 +676,7 @@ export const uk: Messages = {
   'error.importNoRecipePhotos': 'У цих фото не знайдено рецепта.',
   'error.importBriefTooLong': 'Опис задовгий — вкладіться у 2 000 символів.',
   'error.importSearchRateLimited': 'Забагато пошуків в інтернеті. Спробуйте пізніше або вимкніть пошук в інтернеті.',
+  'error.importProfileUnavailable': 'Не вдалося прочитати ваш профіль кухні, тому нічого не згенеровано. Спробуйте ще раз.',
   'error.importNoRecipeBrief': 'Не вдалося скласти рецепт із цього — опишіть страву.',
   'error.importGenerateFailed': 'Не вдалося згенерувати цей рецепт — спробуйте ще раз.',
   'error.badRequest': 'Цей запит некоректний.',

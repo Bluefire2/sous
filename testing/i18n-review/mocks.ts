@@ -310,6 +310,14 @@ export const MOCKS = {
     status: 422,
     body: { error: "Couldn't make a recipe from that — describe a dish.", code: 'import-no-recipe-brief' },
   })),
+  /** The member's kitchen profile could not be read: 503 `import-profile-unavailable`, nothing generated. */
+  importBriefProfileUnavailable: importMock(() => ({
+    status: 503,
+    body: {
+      error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      code: 'import-profile-unavailable',
+    },
+  })),
   /** The brief was over the cap: 400 `import-brief-too-long` (the textarea caps it; a mode switch can carry longer text). */
   importBriefTooLong: importMock(() => ({
     status: 400,

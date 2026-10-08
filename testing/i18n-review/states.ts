@@ -336,6 +336,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.t('import.sources'), { exact: true }).first().waitFor();
     },
   },
+  'import-create-profile-unavailable': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importBriefProfileUnavailable'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, 'pad thai for two');
+      await page.getByText(ctx.t('error.importProfileUnavailable'), { exact: true }).waitFor();
+    },
+  },
   'import-create-no-recipe': {
     persona: 'member',
     path: '/import',

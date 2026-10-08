@@ -435,7 +435,7 @@ const KITCHEN_PROFILE_RULES = [
   'servings or anything else the user did not ask about because of them.',
 ];
 
-export function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string): string {
+function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string): string {
   const profile =
     kitchenProfile !== undefined && kitchenProfile !== '' ? ['', kitchenProfile, '', ...KITCHEN_PROFILE_RULES] : [];
   return [

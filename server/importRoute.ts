@@ -19,7 +19,6 @@ import { readKitchenProfileBlock, type KitchenProfileStore } from './kitchenProf
 import {
   RequestBodyError,
   readBoundedText,
-  storeUnavailable,
   type MembershipHandlerContext,
 } from './membership.ts';
 import {
@@ -136,6 +135,7 @@ const BODY_TOO_LARGE = "That's too large to import — try fewer photos.";
 const PHOTOS_NOT_A_RECIPE = "Couldn't find a recipe in those photos.";
 const MODEL_FAILED = "Couldn't read that recipe — try again.";
 const BRIEF_TOO_LONG = "That's too long — keep the idea under 2,000 characters.";
+const KITCHEN_PROFILE_UNAVAILABLE = "Couldn't read your kitchen profile, so nothing was generated. Try again.";
 const SEARCH_RATE_LIMITED = 'Too many web searches. Try again later, or turn Search the web off.';
 const BRIEF_NOT_A_RECIPE = "Couldn't make a recipe from that — describe a dish.";
 const GENERATE_FAILED = "Couldn't generate that recipe — try again.";
@@ -429,7 +429,7 @@ async function handleImport(
         kitchenProfile = await readKitchenProfileBlock(member, kitchenStore);
       } catch {
         entry.outcome = 'store_unavailable';
-        return storeUnavailable();
+        return fail('import-profile-unavailable', KITCHEN_PROFILE_UNAVAILABLE, 503);
       }
     }
     if (

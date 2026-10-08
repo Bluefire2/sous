@@ -961,8 +961,12 @@ describe('POST /api/import with a brief', () => {
         read: () => Promise.reject(new Error('firestore down')),
         write: async () => {},
       };
-      const { status, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
+      const { status, body, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
       expect(status).toBe(503);
+      expect(body).toEqual({
+        code: 'import-profile-unavailable',
+        error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      });
       expect(calls).toHaveLength(0);
       expect(importLogLines().at(-1)?.entry).toEqual(
         expect.objectContaining({ via: 'generate', outcome: 'store_unavailable', status: 503 }),

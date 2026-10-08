@@ -660,6 +660,7 @@ export const en = {
   'error.importNoRecipePhotos': "Couldn't find a recipe in those photos.",
   'error.importBriefTooLong': "That's too long — keep the idea under 2,000 characters.",
   'error.importSearchRateLimited': 'Too many web searches. Try again later, or turn Search the web off.',
+  'error.importProfileUnavailable': "Couldn't read your kitchen profile, so nothing was generated. Try again.",
   'error.importNoRecipeBrief': "Couldn't make a recipe from that — describe a dish.",
   'error.importGenerateFailed': "Couldn't generate that recipe — try again.",
   'error.badRequest': 'That request was not valid.',

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useT, type TextKey } from '../i18n';
 import {
   ALLERGENS,
@@ -39,6 +40,9 @@ const DIET_LABELS: Readonly<Record<Diet, TextKey>> = {
   kosher: 'settings.diet.kosher',
 };
 
+/** The section's anchor; the Generate hint on `/import` links to `/settings#kitchen-profile`. */
+export const KITCHEN_PROFILE_ANCHOR = 'kitchen-profile';
+
 type TextField = 'avoid' | 'dislikes' | 'equipment' | 'notes';
 
 const TEXT_FIELDS: readonly { field: TextField; label: TextKey; placeholder: TextKey }[] = [
@@ -69,6 +73,14 @@ export default function KitchenProfileSection() {
   // Bumped on every edit, so a save that returns after the member kept typing
   // never replaces what they typed or claims it was saved.
   const editsRef = useRef(0);
+  const { hash } = useLocation();
+  const sectionRef = useRef<HTMLElement>(null);
+  const loaded = profile !== null;
+
+  // Arriving from the Generate hint: scroll here once the form has its height.
+  useEffect(() => {
+    if (loaded && hash === `#${KITCHEN_PROFILE_ANCHOR}`) sectionRef.current?.scrollIntoView({ block: 'start' });
+  }, [loaded, hash]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -111,7 +123,7 @@ export default function KitchenProfileSection() {
   };
 
   return (
-    <section>
+    <section id={KITCHEN_PROFILE_ANCHOR} ref={sectionRef}>
       <h2 className="mt-8 text-lg font-semibold">{t('settings.kitchenTitle')}</h2>
       <p className="mt-1 text-sm text-ink-muted">{t('settings.kitchenIntro')}</p>
       {profile === null && !loadFailed && <p className="mt-3 text-sm text-ink-muted">{t('common.loading')}</p>}

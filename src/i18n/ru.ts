@@ -674,6 +674,7 @@ export const ru: Messages = {
   'error.importNoRecipePhotos': 'В этих фото не нашлось рецепта.',
   'error.importBriefTooLong': 'Слишком длинно — уложитесь в 2 000 символов.',
   'error.importSearchRateLimited': 'Слишком много поисков в интернете. Попробуйте позже или выключите поиск в интернете.',
+  'error.importProfileUnavailable': 'Не удалось прочитать ваш профиль кухни, поэтому ничего не сгенерировано. Попробуйте ещё раз.',
   'error.importNoRecipeBrief': 'Не удалось составить рецепт из этого — опишите блюдо.',
   'error.importGenerateFailed': 'Не удалось сгенерировать этот рецепт — попробуйте ещё раз.',
   'error.badRequest': 'Этот запрос некорректен.',

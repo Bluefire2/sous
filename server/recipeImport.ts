@@ -932,13 +932,6 @@ export async function importFromImages(
 }
 
 /**
- * The prompt for a recipe written from an idea. It is the opposite of
- * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
- * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
- * exercises it live; `server/recipeImport.test.ts` pins its key phrases.
- * With `withNotes`, the research call's notes follow the request.
- */
-/**
  * How the structured call uses the member's kitchen profile
  * (`docs/plans/kitchen-profile.md`). Allergens and "never include" foods are
  * never written, even when the brief names one; the diet and dislikes give
@@ -947,6 +940,14 @@ export async function importFromImages(
 const KITCHEN_PROFILE_GENERATE_RULE =
   'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise. Treat the equipment as notes, not a full list: never need anything the profile says is missing.';
 
+/**
+ * The prompt for a recipe written from an idea. It is the opposite of
+ * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
+ * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
+ * exercises it live; `server/recipeImport.test.ts` pins its key phrases.
+ * With `withNotes`, the research call's notes follow the request; with a
+ * `kitchenProfile` block, the profile and its rule close the prompt.
+ */
 function generatePrompt(withNotes: boolean, kitchenProfile = ''): string {
   const fillIn =
     'Fill in the ingredients with quantities and the method as clear numbered steps from your knowledge of cooking.' +
