@@ -1,6 +1,6 @@
 # Random recipe
 
-Status: planned, not built. Issue #113.
+Status: merged (#175). Issue #113.
 
 Constitutions applied: client-state (a new Library sheet under principle 6),
 i18n (new copy in every catalog and a review state under principle 16).

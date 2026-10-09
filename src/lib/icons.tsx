@@ -109,7 +109,7 @@ export function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-/** Person with a plus, for the Library header's invite control. */
+/** Die face, for the Library search row's random-recipe control. */
 export function DiceIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -132,6 +132,7 @@ export function DiceIcon({ className }: { className?: string }) {
   );
 }
 
+/** Person with a plus, for the Library header's invite control. */
 export function InviteIcon({ className }: { className?: string }) {
   return (
     <svg

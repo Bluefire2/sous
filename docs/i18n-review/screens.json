@@ -132,6 +132,12 @@
     "needsData": true
   },
   {
+    "id": "library-roll",
+    "route": "/",
+    "setup": "Signed in on the Recipes list with at least two recipes showing, so a die icon (aria-label \"Pick a random recipe\") sits beside Select. Press it and wait about a second for the die to stop spinning. The sheet shows a die and the title, a muted recipe count for the pool, then one randomly picked recipe (title, prep and cook times, description), Open recipe, and Roll again. Judge the sheet's own copy; the recipe text is user data. Do not press Open recipe. If fewer than two recipes are listed, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "library-language-menu",
     "route": "/",
     "setup": "On the Recipes list, signed in or out. The rightmost header control shows the current UI language's short label (EN, УКР, РУС, or 中文) with a down chevron; its name is an aria-label. Tap it so the menu under it lists every UI language by its own name, with the current one in bold and a check mark. The trigger label is the UI language's own short name, and each menu item names its language in that language, by design; judge them, the aria-label, and the header around it. Choosing a language only writes cook.locale and is allowed.",

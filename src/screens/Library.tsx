@@ -85,8 +85,9 @@ function CardThumb({ photoId }: { photoId: string }) {
 }
 
 /**
- * The roll sheet's body. Keyed by the pick, so each roll remounts it and
- * replays the dice spin; the pick shows when the spin ends.
+ * The roll sheet's body. Each new pick replays the dice spin, and the pick
+ * shows when the spin ends. The live region stays mounted while the sheet is
+ * open, so screen readers announce each result as it fills in.
  */
 function RollResult({
   pick,
@@ -100,16 +101,17 @@ function RollResult({
   onReroll: () => void;
 }) {
   const t = useT();
-  const [rolling, setRolling] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true,
-  );
+  const [settledId, setSettledId] = useState<string | null>(null);
+  const rolling =
+    settledId !== pick.id &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true;
 
   useEffect(() => {
     if (!rolling) return;
     // The length of the `dice-roll` animation in index.css.
-    const timer = setTimeout(() => setRolling(false), 900);
+    const timer = setTimeout(() => setSettledId(pick.id), 900);
     return () => clearTimeout(timer);
-  }, [rolling]);
+  }, [rolling, pick.id]);
 
   return (
     <>
@@ -120,11 +122,11 @@ function RollResult({
       <p className="mt-1 text-sm text-ink-muted">
         {t('library.recipeCount', { count: pool.length })}
       </p>
-      <div className="mt-4 flex min-h-20 gap-3">
+      <div className="mt-4 flex min-h-20 gap-3" aria-live="polite">
         {!rolling && (
           <>
             {pick.photoId !== undefined && <CardThumb photoId={pick.photoId} />}
-            <div className="min-w-0 flex-1" aria-live="polite">
+            <div className="min-w-0 flex-1">
               <p className="text-lg font-semibold">{pick.title}</p>
               <RecipeTimes recipe={pick} />
               {pick.description && (
@@ -143,14 +145,17 @@ function RollResult({
       >
         {t('library.rollOpen')}
       </Link>
-      <button
-        type="button"
-        onClick={onReroll}
-        disabled={rolling}
-        className={`${secondaryBtn} mt-2 w-full py-3 disabled:opacity-40`}
-      >
-        {t('library.rollAgain')}
-      </button>
+      {pool.length > 1 && (
+        // `aria-disabled` rather than `disabled`, so the button keeps focus through the spin.
+        <button
+          type="button"
+          onClick={() => !rolling && onReroll()}
+          aria-disabled={rolling}
+          className={`${secondaryBtn} mt-2 w-full py-3 aria-disabled:opacity-40`}
+        >
+          {t('library.rollAgain')}
+        </button>
+      )}
     </>
   );
 }
@@ -1211,7 +1216,6 @@ export default function Library() {
       {sheet.kind === 'roll' && rollPool !== undefined && rollPick !== undefined && (
         <Sheet onClose={() => closeSheets()}>
           <RollResult
-            key={rollPick.id}
             pick={rollPick}
             pool={rollPool}
             from={libraryHref(collectionId)}
