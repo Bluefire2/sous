@@ -1,6 +1,6 @@
 # Measurement units
 
-Status: phase 1 merged; phase 2 open.
+Status: phase 1 merged (#180); phase 2 open.
 Constitutions applied: client state (principle 3: `useUnitSystem` reads a
 module store through `useSyncExternalStore` with a primitive getter; scope
 updated), i18n (catalogs, principle 1: share and copy keep the stored recipe;
