@@ -144,6 +144,17 @@ sees it, and page, paste, and photo import never read it. No log line holds
 any of it. It is not in backups and not on MCP. `/privacy` and `/terms`
 describe it; change them with it.
 
+Measurement units (`docs/plans/measurement-units.md`,
+`server/accountPreferences.ts`): `users/{sub}/settings/preferences` holds
+`units` (`asWritten` | `metric`), set in Settings (`GET`/`POST
+/api/settings/preferences`, `withMembership`), its own document because the
+kitchen POST replaces the kitchen one. The client converts at display time
+only (`src/lib/unitConversion.ts`): lb and oz to g/kg, °F in step and note
+text to °C, volumes never; the stored recipe, share text, the edit form, and
+Ask's proposal card stay as written. The weight test reads the stored unit,
+never a translated one. `cook.units` caches the value per `sub` and is
+cleared on sign-out.
+
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
 then `--apply`), then the GCS photo prefix. `server/accountDeletion.ts`
@@ -783,6 +794,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
 | `docs/plans/failed-cook-tap-lww.md` | Merged (#94). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/measurement-units.md` | Merged. Settings → Measurements (as written / metric) on the account; the recipe screen shows lb, oz and °F as g/kg and °C with the original beside it. Volumes stay as written. Phase 2 (Generate and Ask write metric) is open. |
 | `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
@@ -940,7 +952,8 @@ the `.cursor/skills/i18n-visual-review` skill.
 and `/terms` describe Firestore + GCS and that there is no on-device recipe
 database. Theme preference, the UI language (`cook.locale`), the
 cooking-screen settings (`cook.wakeLock`, `cook.recipeTextSize`; device-local,
-never synced, `docs/plans/cooking-screen-settings.md`), and
+never synced, `docs/plans/cooking-screen-settings.md`), a per-`sub` cache of
+the account's measurement units (`cook.units`), and
 `cook.session` stay in localStorage. Do not
 describe IndexedDB, offline edits, or a local library. The Chrome extension
 sends rendered page HTML, possibly from a page behind a login, to the server

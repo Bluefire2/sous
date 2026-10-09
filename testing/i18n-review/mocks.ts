@@ -437,6 +437,12 @@ export const MOCKS = {
       route.request().method() === 'POST' ? json(route, 503, { error: 'Store unavailable' }) : route.fallback(),
     );
   },
+  /** Saving the measurement units fails, so the old choice comes back with an error line. */
+  preferencesSaveFails: async (context) => {
+    await context.route('**/api/settings/preferences', (route) =>
+      route.request().method() === 'POST' ? json(route, 503, { error: 'Store unavailable' }) : route.fallback(),
+    );
+  },
   /** Disconnecting a connected app fails. */
   disconnectFails: async (context) => {
     await context.route('**/api/mcp/grants/revoke', (route) => json(route, 500, { error: 'Internal error' }));

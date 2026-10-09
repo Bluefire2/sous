@@ -280,6 +280,23 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.t('settings.kitchenSaveError'), { exact: true }).waitFor();
     },
   },
+  'settings-measurements': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.measurements') }).scrollIntoViewIfNeeded();
+    },
+  },
+  'settings-measurements-save-error': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['preferencesSaveFails'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.measurements') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('settings.unitsAsWritten'));
+      await page.getByText(ctx.t('settings.measurementsSaveFailed'), { exact: true }).waitFor();
+    },
+  },
   admin: { persona: 'owner', path: '/admin' },
   'library-add-sheet': {
     persona: 'member',
@@ -603,6 +620,8 @@ export const STATES: Record<string, StateEntry> = {
   },
   'recipe-view-cook': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   'recipe-view-your-cooks': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
+  // The member reads in metric, and the roast chicken is written in pounds and °F.
+  'recipe-view-metric': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   'recipe-view-share-copied': {
     persona: 'member',
     path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
