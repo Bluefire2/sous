@@ -1,23 +1,22 @@
 import { useEffect, useState } from 'react';
-import { fetchPublicCollection, type PublicCollectionResult } from './publicApi';
+import { fetchPublicLink, type PublicLinkResult } from './publicApi';
 
 /**
- * One public collection, fetched when the screen opens (and on retry). Held
- * in this component's state only: a public page never writes the library.
- * `undefined` while the first read for this token is in flight.
+ * One public link (a collection or a recipe), fetched when the screen opens
+ * (and on retry). Held in this component's state only: a public page never
+ * writes the library. `undefined` while the first read for this token is in
+ * flight.
  */
-export function usePublicCollection(token: string): {
-  result: PublicCollectionResult | undefined;
+export function usePublicLink(token: string): {
+  result: PublicLinkResult | undefined;
   retry: () => void;
 } {
-  const [loaded, setLoaded] = useState<{ token: string; result: PublicCollectionResult } | null>(
-    null,
-  );
+  const [loaded, setLoaded] = useState<{ token: string; result: PublicLinkResult } | null>(null);
   // A fresh object per try: a retry is a new request, not a render counter.
   const [request, setRequest] = useState<object>(() => ({}));
   useEffect(() => {
     let current = true;
-    void fetchPublicCollection(token).then((result) => {
+    void fetchPublicLink(token).then((result) => {
       if (current) setLoaded({ token, result });
     });
     return () => {

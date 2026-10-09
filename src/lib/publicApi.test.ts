@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
-import { joinPublicCollection, parsePublicCollection, publicPhotoUrl } from './publicApi';
+import {
+  fetchPublicLink,
+  joinPublicCollection,
+  parsePublicCollection,
+  parsePublicLink,
+  publicPhotoUrl,
+  savePublicRecipe,
+} from './publicApi';
 import { invalidateSession } from './session';
 
 vi.mock('./session', () => ({ invalidateSession: vi.fn() }));
@@ -116,5 +123,97 @@ describe('joinPublicCollection', () => {
         message: t('public.joinFailed'),
       });
     }
+  });
+});
+
+describe('parsePublicLink', () => {
+  it('reads a collection body with or without its kind', () => {
+    const body = { collection: { id: 'c1', name: 'Soups' }, recipes: [recipe] };
+    expect(parsePublicLink(body)).toEqual({ kind: 'collection', ...body });
+    expect(parsePublicLink({ kind: 'collection', ...body })).toEqual({ kind: 'collection', ...body });
+  });
+
+  it('reads a recipe link, with the sharer when named', () => {
+    expect(parsePublicLink({ kind: 'recipe', recipe, sharedBy: ' Ada ' })).toEqual({
+      kind: 'recipe',
+      recipe,
+      sharedBy: 'Ada',
+    });
+    expect(parsePublicLink({ kind: 'recipe', recipe, sharedBy: 4 })).toEqual({
+      kind: 'recipe',
+      recipe,
+    });
+    expect(parsePublicLink({ kind: 'recipe', recipe: { title: 'x' } })).toBeNull();
+    expect(parsePublicLink(null)).toBeNull();
+  });
+});
+
+describe('fetchPublicLink', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('maps 404 to missing, other failures to error, and parses a body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })));
+    expect(await fetchPublicLink('tok')).toEqual({ kind: 'missing' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
+    expect(await fetchPublicLink('tok')).toEqual({ kind: 'error' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ kind: 'recipe', recipe }), { status: 200 })),
+    );
+    expect(await fetchPublicLink('tok')).toEqual({ kind: 'ok', data: { kind: 'recipe', recipe } });
+    expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({ credentials: 'omit' });
+  });
+});
+
+describe('savePublicRecipe', () => {
+  function respond(status: number, body?: unknown): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        body === undefined
+          ? new Response(null, { status })
+          : new Response(JSON.stringify(body), {
+              status,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+      ),
+    );
+  }
+
+  beforeEach(() => {
+    vi.mocked(invalidateSession).mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts the token and returns the copy', async () => {
+    for (const result of ['saved', 'already', 'own'] as const) {
+      respond(200, { recipeId: 'r9', result });
+      expect(await savePublicRecipe('tok')).toEqual({ kind: 'ok', recipeId: 'r9', result });
+    }
+    const [path, init] = vi.mocked(fetch).mock.calls[0];
+    expect(path).toBe('/api/public/save');
+    expect(init).toMatchObject({ method: 'POST', body: JSON.stringify({ token: 'tok' }) });
+  });
+
+  it('maps sign-out, a dead link, the rate limit, and a bad body', async () => {
+    respond(401, { error: 'Unauthorized' });
+    expect(await savePublicRecipe('tok')).toEqual({ kind: 'signedOut' });
+    expect(invalidateSession).toHaveBeenCalledTimes(1);
+    respond(404, { error: 'Not found' });
+    expect(await savePublicRecipe('tok')).toEqual({ kind: 'missing' });
+    respond(429, { error: 'Too many saves', code: 'recipe-save-rate-limited' });
+    expect(await savePublicRecipe('tok')).toEqual({
+      kind: 'error',
+      message: t('public.saveRateLimited'),
+    });
+    respond(200, { recipeId: 'r9', result: 'joined' });
+    expect(await savePublicRecipe('tok')).toEqual({ kind: 'error', message: t('public.saveFailed') });
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    expect(await savePublicRecipe('tok')).toEqual({ kind: 'error', message: t('public.saveFailed') });
   });
 });

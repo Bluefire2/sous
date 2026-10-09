@@ -51,6 +51,8 @@ import {
 } from '../server/collectionLinksHttp.ts';
 import { extensionImport, extensionImportOptions } from '../server/extensionImport.ts';
 import { inviteLandingGet } from '../server/invites.ts';
+import { kitchenProfileGet, kitchenProfilePost, withKitchenProfile } from '../server/kitchenProfile.ts';
+import { withChatBudget } from '../server/llmBudget.ts';
 import { withMembership } from '../server/membership.ts';
 import { photosGet, photosPost } from '../server/photos.ts';
 import {
@@ -60,6 +62,12 @@ import {
   publicGet,
   publicJoinPost,
 } from '../server/publicLinksHttp.ts';
+import { recipeLinkSavePost } from '../server/recipeLinkSave.ts';
+import {
+  recipePublicLinkGet,
+  recipePublicLinkPost,
+  recipePublicLinkRevokePost,
+} from '../server/recipeLinksHttp.ts';
 import { agentPost } from '../server/agent/index.ts';
 import { matchMcpRoute, mcpGrantsGet, mcpGrantsRevokePost } from '../server/mcp/index.ts';
 import { sttPost } from '../server/stt.ts';
@@ -83,7 +91,8 @@ export interface ApiRoute {
 
 /** Exact-path API routes; exported for scripts/server.dispatch.test.ts. */
 export const apiRoutes: readonly ApiRoute[] = [
-  { method: 'POST', path: '/api/chat', handler: withMembership(chatPost) },
+  // The profile is read before the budget admits the call, so a failed read never takes a slot.
+  { method: 'POST', path: '/api/chat', handler: withMembership(withKitchenProfile(withChatBudget(chatPost))) },
   { method: 'POST', path: '/api/import', handler: withMembership(importPost) },
   { method: 'POST', path: '/api/import-feedback', handler: withMembership(importFeedbackPost) },
   { method: 'POST', path: '/api/feature-request', handler: withMembership(featureRequestPost) },
@@ -106,10 +115,13 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/sync/push', handler: syncPush },
   { method: 'POST', path: '/api/shared/leave', handler: sharedLeavePost },
   { method: 'POST', path: '/api/public/join', handler: publicJoinPost },
+  { method: 'POST', path: '/api/public/save', handler: recipeLinkSavePost },
   { method: 'POST', path: '/api/extension/import', handler: extensionImport },
   { method: 'OPTIONS', path: '/api/extension/import', handler: extensionImportOptions },
   { method: 'GET', path: '/api/mcp/grants', handler: mcpGrantsGet },
   { method: 'POST', path: '/api/mcp/grants/revoke', handler: mcpGrantsRevokePost },
+  { method: 'GET', path: '/api/settings/kitchen', handler: withMembership(kitchenProfileGet) },
+  { method: 'POST', path: '/api/settings/kitchen', handler: withMembership(kitchenProfilePost) },
 ];
 
 const PUBLIC_HTML: Record<string, string> = {
@@ -340,7 +352,7 @@ function matchApiRoute(pathname: string, method: string): ApiHandler | 'wrongMet
   }
 
   // Visitor reads, no session: /api/public/<token>[/recipes/<id>/photos/<id>].
-  // `/api/public/join` is an exact route above.
+  // `/api/public/join` and `/api/public/save` are exact routes above.
   if (pathname.startsWith('/api/public/')) {
     if (method === 'GET' || method === 'HEAD') {
       return publicGet;
@@ -398,6 +410,21 @@ function matchApiRoute(pathname: string, method: string): ApiHandler | 'wrongMet
   if (/^\/api\/collections\/[^/]+\/public\/revoke$/.test(pathname)) {
     if (method === 'POST') {
       return collectionPublicLinkRevokePost;
+    }
+    return 'wrongMethod';
+  }
+  if (/^\/api\/recipes\/[^/]+\/public$/.test(pathname)) {
+    if (method === 'GET') {
+      return recipePublicLinkGet;
+    }
+    if (method === 'POST') {
+      return recipePublicLinkPost;
+    }
+    return 'wrongMethod';
+  }
+  if (/^\/api\/recipes\/[^/]+\/public\/revoke$/.test(pathname)) {
+    if (method === 'POST') {
+      return recipePublicLinkRevokePost;
     }
     return 'wrongMethod';
   }

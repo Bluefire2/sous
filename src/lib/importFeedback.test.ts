@@ -30,6 +30,16 @@ describe('importFailureDetails', () => {
     expect(importFailureDetails(Object.assign(new Error('m'), { status: 401 }))).toBeNull();
   });
 
+  it.each(['llm-budget-exceeded', 'llm-busy'])('returns null for the daily AI budget refusal %s', (code) => {
+    expect(importFailureDetails(Object.assign(new Error('m'), { status: 429, code }))).toBeNull();
+  });
+
+  it('still offers a report for another 429', () => {
+    expect(
+      importFailureDetails(Object.assign(new Error('m'), { status: 429, code: 'import-search-rate-limited' })),
+    ).not.toBeNull();
+  });
+
   it('returns null for a non-Error', () => {
     expect(importFailureDetails({ status: 500, message: 'm' })).toBeNull();
   });

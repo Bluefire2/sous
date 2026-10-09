@@ -159,8 +159,10 @@ describe('publicRecipeBody', () => {
         serverUpdatedAt: now,
         deletedAt: null,
         variantOf: '99999999-9999-4999-8999-999999999999',
+        savedFrom: { name: 'Ada', savedAt: 5 },
       }),
     );
+    expect(body).not.toHaveProperty('savedFrom');
     expect(body.notes).toBe('Rest it.');
     expect(body.sourceUrl).toBe('https://example.com/r');
     expect(body).not.toHaveProperty('importCheck');

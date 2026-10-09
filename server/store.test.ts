@@ -416,6 +416,16 @@ describe('compactRecipeFields', () => {
     expect(compacted.title).toBe('Soup');
   });
 
+  it('keeps a savedFrom and drops a malformed one without rejecting the recipe', () => {
+    expect(
+      compactRecipeFields({ ...required, savedFrom: { name: 'Ada', savedAt: 9, extra: 1 } })
+        .savedFrom,
+    ).toEqual({ name: 'Ada', savedAt: 9 });
+    const compacted = compactRecipeFields({ ...required, savedFrom: { name: 'Ada' } });
+    expect(compacted).not.toHaveProperty('savedFrom');
+    expect(compacted.title).toBe('Soup');
+  });
+
   it('omits an empty gallery and strips the cover id', () => {
     expect(
       compactRecipeFields({ ...required, photoId: 'p1', galleryPhotoIds: [] }),

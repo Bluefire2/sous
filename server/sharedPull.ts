@@ -319,6 +319,9 @@ async function readSharedPageBody(
         return;
       }
       const compact = compactRecipeFields({ ...recipe, id: recipeId });
+      // Who shared the recipe with the owner is the owner's to know; an
+      // editor's put keeps the owner's value (`planSharedRecipePut`).
+      delete compact.savedFrom;
       recipes.push({ ...compact, ownerSub: share.ownerSub });
       const photoIds: string[] = [];
       if (typeof compact.photoId === 'string') {

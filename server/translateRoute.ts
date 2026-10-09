@@ -4,6 +4,7 @@
  * written only for the caller's own live recipe. The provider call is outside
  * that transaction. Shared recipes and unknown ids are translated and not stored.
  */
+import { admitLlm, llmRefusal, meteredAi } from './llmBudget.ts';
 import { SUPPORTED_LOCALES, normalizeLang, toSupportedLocale } from './lang.ts';
 import {
   membershipUnauthorized,
@@ -262,14 +263,23 @@ export async function translatePost(
     return jsonError(429, TRANSLATE_RATE_LIMITED, RATE_LIMITED);
   }
 
-  const outcome = await translateSegments(
-    {
-      segments: parsed.segments,
-      target: parsed.target,
-      sourceLang: parsed.sourceLang,
-    },
-    built.deps,
-  );
+  const admission = await admitLlm(access.sub, 'translate');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  let outcome: Awaited<ReturnType<typeof translateSegments>>;
+  try {
+    outcome = await translateSegments(
+      {
+        segments: parsed.segments,
+        target: parsed.target,
+        sourceLang: parsed.sourceLang,
+      },
+      { ...built.deps, ai: meteredAi(built.deps.ai, admission.meter) },
+    );
+  } finally {
+    admission.meter.release();
+  }
   if (!outcome.ok) {
     if (outcome.code === TRANSLATE_PROVIDER_UNAVAILABLE) {
       return jsonError(503, outcome.code, PROVIDER_UNAVAILABLE);

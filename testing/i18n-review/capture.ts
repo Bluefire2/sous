@@ -92,6 +92,8 @@ export interface CaptureEnv {
   seededAt: number | null;
   ids: CaptureContext['ids'];
   publicToken: string;
+  publicRecipeToken: string;
+  savedCopyId: string;
 }
 
 export interface CaptureOk {
@@ -138,10 +140,45 @@ export async function readCaptureEnv(baseUrl: string): Promise<CaptureEnv> {
   if (publicToken === undefined) {
     throw new Error("Couldn't read Weeknights' public link; is the seed intact?");
   }
+  // The recipe link, and capped's copy from it (the seed saved it; saving
+  // again only answers with the same id).
+  const recipeLink = await fetch(
+    `${baseUrl}/api/recipes/${personas.fixtures.member.overnightOats}/public`,
+    { headers: cookie === undefined ? {} : { Cookie: cookie } },
+  );
+  const recipeUrl = ((await recipeLink.json()) as { url?: string }).url ?? '';
+  const publicRecipeToken = /\/p\/([^/?#]+)$/.exec(recipeUrl)?.[1];
+  if (publicRecipeToken === undefined) {
+    throw new Error("Couldn't read Overnight oats' recipe link; is the seed intact?");
+  }
+  const cappedSignIn = await fetch(`${baseUrl}/__test/sign-in?as=capped`, { redirect: 'manual' });
+  const cappedCookie = cappedSignIn.headers
+    .getSetCookie()
+    .map((line) => line.split(';')[0])
+    .find((pair) => pair.startsWith('sous_session='));
+  const saved = await fetch(`${baseUrl}/api/public/save`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(cappedCookie === undefined ? {} : { Cookie: cappedCookie }),
+    },
+    body: JSON.stringify({ token: publicRecipeToken }),
+  });
+  const savedCopyId = ((await saved.json()) as { recipeId?: string }).recipeId;
+  if (savedCopyId === undefined) {
+    throw new Error("Couldn't find capped's saved copy; is the seed intact?");
+  }
   if (personas.seededAt == null) {
     console.log('Note: the test server ran with --keep, so relative times are live and captures may differ.');
   }
-  return { baseUrl, seededAt: personas.seededAt ?? null, ids: personas.fixtures, publicToken };
+  return {
+    baseUrl,
+    seededAt: personas.seededAt ?? null,
+    ids: personas.fixtures,
+    publicToken,
+    publicRecipeToken,
+    savedCopyId,
+  };
 }
 
 export function contextFor(lang: Lang, env: CaptureEnv): CaptureContext {
@@ -151,6 +188,8 @@ export function contextFor(lang: Lang, env: CaptureEnv): CaptureContext {
     p: (key) => pattern(lang, key),
     ids: env.ids,
     publicToken: env.publicToken,
+    publicRecipeToken: env.publicRecipeToken,
+    savedCopyId: env.savedCopyId,
   };
 }
 
