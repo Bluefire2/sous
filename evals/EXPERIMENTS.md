@@ -22,6 +22,28 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-09 — Import default `gemini-3.7-flash` → `gemini-3.8-flash` (3.7 now redirects)
+
+- Change: `DEFAULT_MODEL` in `server/recipeImport.ts` becomes
+  `gemini-3.8-flash`, undoing the import revert in the entry below. Every
+  `CHAT_MODEL` default is now 3.8.
+- Reason (not fixture-specific): Google deprecated `gemini-3.7-flash`, and
+  the API now serves it with 3.8. On 2026-10-09 a `generateContent` call
+  naming `gemini-3.7-flash` returned `modelVersion: gemini-3.8-flash`,
+  while `models.get` still lists 3.7 (`3.7-flash-08-2026`). Requests that
+  name 3.7 already get 3.8, so this change does not alter what import
+  runs, and the evals were not run for it.
+- What it means for the entry below: `ocrCompare` does not record
+  `modelVersion`, so it is unknown whether the redirect was already active
+  for the 2026-10-08 runs. If it was, the "3.7" Before run and the isolated
+  run's 3.7 judge were 3.8 too, and the differences there (dev 12, 10 and
+  8 of 15; holdout 15, 15 and 14) are run-to-run variance on one model,
+  not a model regression. The two `MAX_TOKENS` runaways happened on 3.8
+  either way.
+- Decision: kept, since there is no other model behind the 3.7 id to
+  choose.
+- Run by: agent, model `gemini-3.8-flash` (`modelVersion` checked).
+
 ## 2026-10-08 — Default model `gemini-3.7-flash` → `gemini-3.8-flash`
 
 - Change: `DEFAULT_MODEL` in `server/recipeImport.ts` and every other
