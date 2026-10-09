@@ -186,6 +186,14 @@ describe('libraryFlowReducer', () => {
     const other = run({ type: 'openAdd' });
     expect(libraryFlowReducer(other, { type: 'closeInviteConfirm' })).toBe(other);
   });
+
+  it('rerolls within the open roll sheet and ignores a reroll after close', () => {
+    const opened = run({ type: 'openRoll', poolIds: ['a', 'b'], pickId: 'a' });
+    const rerolled = libraryFlowReducer(opened, { type: 'reroll', poolIds: ['a', 'b'], pickId: 'b' });
+    expect(rerolled).toEqual({ token: opened.token, sheet: { kind: 'roll', poolIds: ['a', 'b'], pickId: 'b' } });
+    const closed = libraryFlowReducer(rerolled, { type: 'close' });
+    expect(libraryFlowReducer(closed, { type: 'reroll', poolIds: ['a'], pickId: 'a' })).toBe(closed);
+  });
 });
 
 describe('runCreate', () => {
