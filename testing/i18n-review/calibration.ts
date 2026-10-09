@@ -52,14 +52,7 @@ const CLEAN_STATES = [
  * positives, so they do not fail calibration; remove an entry when its bug is
  * fixed, and the calibration expects that pair to be clean again.
  */
-const KNOWN_REAL: { state: string; lang: Lang; text: string; why: string }[] = [
-  {
-    state: 'import-preview',
-    lang: 'zh-Hans',
-    text: '份量',
-    why: "common.servings: 份量 is the amount in one serving, not the number of servings (glossary: 份); confirmed by a Chinese speaker, 2026-10-09",
-  },
-];
+const KNOWN_REAL: { state: string; lang: Lang; text: string; why: string }[] = [];
 
 type Plant = { text: [from: string, to: string] } | { truncate: string };
 
