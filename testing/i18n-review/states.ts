@@ -19,6 +19,10 @@ export interface CaptureContext {
   ids: typeof FIXTURE_IDS;
   /** The token of member's public Weeknights link. */
   publicToken: string;
+  /** The token of member's Overnight oats recipe link. */
+  publicRecipeToken: string;
+  /** The id of `capped`'s copy saved from that link. */
+  savedCopyId: string;
 }
 
 export interface Capturable {
@@ -206,6 +210,18 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   settings: { persona: 'member', path: '/settings' },
+  'settings-cooking-changed': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      // Device settings: localStorage in this browser context only, no request.
+      await page.getByLabel(ctx.t('settings.keepScreenAwake'), { exact: true }).uncheck();
+      await clickButton(page, ctx.t('settings.textSizeLarge'));
+      await page
+        .getByRole('button', { name: ctx.t('settings.textSizeLarge'), exact: true, pressed: true })
+        .waitFor();
+    },
+  },
   suggest: {
     persona: 'member',
     path: '/suggest',
@@ -242,6 +258,26 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page, ctx) => {
       await clickButton(page, ctx.t('settings.connectedAppsDisconnect'));
       await page.getByText(ctx.p('settings.connectedAppsDisconnectError')).waitFor();
+    },
+  },
+  'settings-kitchen-profile': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaved'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaved'), { exact: true }).waitFor();
+    },
+  },
+  'settings-kitchen-profile-save-error': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['kitchenProfileSaveFails'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.kitchenTitle') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('common.save'));
+      await page.getByText(ctx.t('settings.kitchenSaveError'), { exact: true }).waitFor();
     },
   },
   admin: { persona: 'owner', path: '/admin' },
@@ -323,6 +359,16 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByRole('checkbox', { name: ctx.t('import.searchWeb') }).check();
       await writeRecipe(page, ctx, GUMBO_BRIEF);
       await page.getByText(ctx.t('import.sources'), { exact: true }).first().waitFor();
+    },
+  },
+  'import-create-profile-unavailable': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importBriefProfileUnavailable'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('import.modeCreate'));
+      await writeRecipe(page, ctx, 'pad thai for two');
+      await page.getByText(ctx.t('error.importProfileUnavailable'), { exact: true }).waitFor();
     },
   },
   'import-create-no-recipe': {
@@ -543,6 +589,16 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'recipe-view': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}` },
+  'recipe-view-large-text': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
+    reach: async (page, ctx) => {
+      // The text size is read from localStorage, so set it and load the recipe again.
+      await page.evaluate(`localStorage.setItem('cook.recipeTextSize', 'large')`);
+      await page.reload();
+      await page.getByRole('heading', { name: ctx.t('common.steps'), exact: true }).waitFor();
+    },
+  },
   'recipe-view-import-warnings': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.bananaBread}` },
   'recipe-view-variants': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.herbRoastChicken}` },
   'recipe-view-import-retry-sheet': {
@@ -854,4 +910,33 @@ export const STATES: Record<string, StateEntry> = {
   'public-collection-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.borscht}` },
   'public-link-missing': { persona: 'signedOut', path: `/p/${'a'.repeat(43)}` },
+  'share-recipe-sheet': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.overnightOats}`,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await page.getByRole('dialog').waitFor();
+    },
+  },
+  'share-recipe-sheet-link': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.overnightOats}`,
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('common.share'));
+      await clickButton(page, ctx.t('shareRecipe.byLink'));
+      await page.getByText(ctx.t('shareRecipe.linkLabel'), { exact: true }).waitFor();
+    },
+  },
+  'public-shared-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicRecipeToken}` },
+  'public-shared-recipe-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicRecipeToken}` },
+  'public-shared-recipe-locked-sheet': {
+    persona: 'empty',
+    path: (ctx) => `/p/${ctx.publicRecipeToken}`,
+    reach: async (page) => {
+      // aria-disabled by design, as on the collection page; force the click.
+      await page.locator('button[aria-disabled="true"]').last().click({ force: true });
+      await page.getByRole('dialog').waitFor();
+    },
+  },
+  'recipe-saved-from': { persona: 'capped', path: (ctx) => `/recipe/${ctx.savedCopyId}` },
 };

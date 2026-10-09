@@ -413,13 +413,31 @@ function describeThrown(err: unknown): string {
 }
 
 // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
-const MODEL = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+const MODEL = process.env.CHAT_MODEL || 'gemini-3.8-flash';
 
 // A turn that triggers update_recipe streams a text reply and then the complete recipe JSON —
 // the slowest response this app produces, so Vercel's 10s default can kill it.
 export const maxDuration = 60;
 
-function systemPrompt(recipe: unknown, cookingState: unknown): string {
+/**
+ * Rules for the member's kitchen profile. The block itself is built on Cloud
+ * Run by `kitchenProfilePromptBlock` in `server/kitchenProfile.ts` (this file
+ * cannot import it) and arrives through the handler context.
+ */
+const KITCHEN_PROFILE_RULES = [
+  'Allergies and foods marked "never include" in the kitchen profile are hard',
+  'constraints: never suggest them, and never add them in update_recipe. When',
+  'the recipe contains one and the user asks about cooking it, substituting,',
+  'or changing it, say so in your text reply, naming the ingredient and the',
+  'allergy, before or instead of proposing a safe swap. Follow the diet and',
+  'avoid the dislikes in suggestions and changes unless the user asks',
+  'otherwise. Use the equipment and notes as background only: never change',
+  'servings or anything else the user did not ask about because of them.',
+];
+
+function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string): string {
+  const profile =
+    kitchenProfile !== undefined && kitchenProfile !== '' ? ['', kitchenProfile, '', ...KITCHEN_PROFILE_RULES] : [];
   return [
     'You are a cooking assistant embedded in a personal recipe app. The user',
     'is viewing (and possibly mid-way through cooking) the recipe below, so',
@@ -436,6 +454,7 @@ function systemPrompt(recipe: unknown, cookingState: unknown): string {
     'just the changed parts. Briefly say what you changed in your text reply.',
     'The app shows the user a diff and lets them apply it, so do not ask for',
     'permission first. For pure questions, answer without the tool.',
+    ...profile,
     '',
     'Current recipe (JSON):',
     JSON.stringify(recipe),
@@ -461,10 +480,13 @@ function toGeminiContents(messages: ChatRequestMessage[]): Content[] {
 /**
  * On Cloud Run, `withChatBudget` (server/llmBudget.ts) passes `onUsage`; it is
  * called once per model call with the stream's last reported usage.
+ * `withKitchenProfile` (server/kitchenProfile.ts) passes the member's profile
+ * block, built from the store, never from the request body.
  */
 export interface ChatContext {
   authorizedSub?: string;
   onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata | undefined) => void;
+  kitchenProfile?: string;
 }
 
 export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
@@ -497,7 +519,7 @@ export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const system = systemPrompt(body.recipe, body.cookingState);
+  const system = systemPrompt(body.recipe, body.cookingState, ctx?.kitchenProfile);
   const abort = new AbortController();
 
   let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;

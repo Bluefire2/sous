@@ -775,6 +775,9 @@ export default function ImportScreen() {
           {mode === 'create' ? (
             <>
               <p className="mt-1 text-sm text-ink-subtle">{t('import.createHint')}</p>
+              <Link to="/settings#kitchen-profile" className="mt-1 inline-block text-sm text-ink-subtle underline hover:text-ink">
+                {t('import.kitchenHint')}
+              </Link>
               <label className="mt-3 flex cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"

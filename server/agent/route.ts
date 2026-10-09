@@ -23,6 +23,7 @@ import {
   requireMember,
   storeUnavailable,
 } from '../membership.ts';
+import { readKitchenProfileBlock } from '../kitchenProfile.ts';
 import { admitLlm, llmRefusal } from '../llmBudget.ts';
 
 const LIBRARY_LOAD_TIMEOUT_MS = 90_000;
@@ -77,10 +78,15 @@ export async function agentPost(req: Request): Promise<Response> {
     maxIndexChars: 40_000,
   });
   void loadPromise.catch(() => {});
+  // Read beside the library; a failed read is 503, never an answer that
+  // ignores the member's allergies.
+  const profilePromise = readKitchenProfileBlock(access.sub);
+  void profilePromise.catch(() => {});
   let library;
+  let kitchenProfile: string;
   try {
-    library = await Promise.race([
-      loadPromise,
+    [library, kitchenProfile] = await Promise.race([
+      Promise.all([loadPromise, profilePromise]),
       new Promise<never>((_, reject) => {
         loadTimer = setTimeout(() => reject(new Error('library load timeout')), LIBRARY_LOAD_TIMEOUT_MS);
       }),
@@ -94,7 +100,7 @@ export async function agentPost(req: Request): Promise<Response> {
   }
 
   const messages = replayCards(parsed.value.messages, library);
-  const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const modelName = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const stop = new AbortController();
   const deadline = AbortSignal.timeout(AGENT_WALL_MS);
   const signal = AbortSignal.any([deadline, stop.signal]);
@@ -121,6 +127,7 @@ export async function agentPost(req: Request): Promise<Response> {
         clientNow: parsed.value.clientNow,
         timeZone: parsed.value.timeZone,
         cards: CARD_SPECS,
+        kitchenProfile,
       }),
       messages,
       tools: dataTools(library),

@@ -149,6 +149,24 @@ async function checkMember(cookie: string): Promise<void> {
     checkSame('the public page lists Weeknights', ids(page.recipes), weeknights?.recipeIds ?? []);
   }
 
+  const oats = await get(`/api/recipes/${FIXTURE_IDS.member.overnightOats}/public`, cookie);
+  const oatsUrl = (oats.body as { url?: unknown }).url;
+  const oatsToken = typeof oatsUrl === 'string' ? /\/p\/([^/?#]+)$/.exec(oatsUrl)?.[1] : undefined;
+  check('Overnight oats has a recipe link', oats.status === 200 && oatsToken !== undefined, JSON.stringify(oats.body));
+  if (oatsToken !== undefined) {
+    const visit = await get(`/api/public/${oatsToken}`);
+    const page = visit.body as { kind?: string; recipe?: { id?: string }; sharedBy?: string };
+    check('the recipe link reads signed out', visit.status === 200, `status ${visit.status}`);
+    check(
+      'the recipe link shows the recipe and the sharer name',
+      page.kind === 'recipe' &&
+        page.recipe?.id === FIXTURE_IDS.member.overnightOats &&
+        page.sharedBy === persona('member').name,
+      JSON.stringify({ kind: page.kind, sharedBy: page.sharedBy }),
+    );
+    check('the recipe link never sends the email', !JSON.stringify(visit.body).includes('@'));
+  }
+
   const grants = await get('/api/mcp/grants', cookie);
   const rows = (grants.body as { grants?: { clientHost: string; scopes: string[] }[] }).grants ?? [];
   check('member has one connected app', rows.length === 1, JSON.stringify(rows));

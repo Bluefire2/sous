@@ -1,4 +1,5 @@
 import type { ImportCheck } from './importCheck';
+import type { SavedFrom } from './recipeSavedFrom';
 
 export interface Ingredient {
   quantity?: number;
@@ -51,6 +52,12 @@ export interface Recipe {
    * else's (`docs/plans/recipe-variants.md`).
    */
   variantOf?: string;
+  /**
+   * Set when this recipe was saved from someone's recipe link: their display
+   * name then, and when. Only the server sets it; edits keep it. Missing is
+   * normal (`docs/plans/recipe-links.md`).
+   */
+  savedFrom?: SavedFrom;
   createdAt: number;
   updatedAt: number;
 }

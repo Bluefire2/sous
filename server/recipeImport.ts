@@ -235,6 +235,8 @@ export type PageFetchOutcome =
   | { kind: 'blocked' }
   | { kind: 'refused'; status: number };
 
+// Import stays on 3.7 while the rest of the app defaults to gemini-3.8-flash:
+// 3.8 scored lower on the photo evals (evals/EXPERIMENTS.md, 2026-10-08).
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 
 const MAX_SOURCE_CHARS = 60000;
@@ -932,13 +934,23 @@ export async function importFromImages(
 }
 
 /**
+ * How the structured call uses the member's kitchen profile
+ * (`docs/plans/kitchen-profile.md`). Allergens and "never include" foods are
+ * never written, even when the brief names one; the diet and dislikes give
+ * way to a brief that explicitly asks otherwise.
+ */
+const KITCHEN_PROFILE_GENERATE_RULE =
+  'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise. Treat the equipment as notes, not a full list: never need anything the profile says is missing.';
+
+/**
  * The prompt for a recipe written from an idea. It is the opposite of
  * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
  * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
  * exercises it live; `server/recipeImport.test.ts` pins its key phrases.
- * With `withNotes`, the research call's notes follow the request.
+ * With `withNotes`, the research call's notes follow the request; with a
+ * `kitchenProfile` block, the profile and its rule close the prompt.
  */
-function generatePrompt(withNotes: boolean): string {
+function generatePrompt(withNotes: boolean, kitchenProfile = ''): string {
   const fillIn =
     'Fill in the ingredients with quantities and the method as clear numbered steps from your knowledge of cooking.' +
     (withNotes
@@ -952,6 +964,7 @@ function generatePrompt(withNotes: boolean): string {
     'Write in the language the request is written in, and set lang to it.',
     'Put a short description of the dish in description, and tips or variations in notes.',
     'If the request is not about something that can be cooked or eaten, save a recipe with the title "NOT_A_RECIPE".',
+    ...(kitchenProfile !== '' ? [kitchenProfile, KITCHEN_PROFILE_GENERATE_RULE] : []),
   ].join('\n');
 }
 
@@ -1031,7 +1044,12 @@ function readGrounding(metadata: GroundingMetadata | undefined): GenerateGroundi
 export async function generateFromBrief(
   brief: string,
   deps: RecipeImportDeps,
-  options: { search: boolean; translateTo?: string },
+  options: {
+    search: boolean;
+    translateTo?: string;
+    /** The member's `kitchenProfilePromptBlock`, or empty. Only the structured call sees it, never the search. */
+    kitchenProfile?: string;
+  },
 ): Promise<ImportOutcome> {
   const log: ImportOutcomeLog = { attempts: [] };
   const request = brief.trim();
@@ -1064,7 +1082,7 @@ export async function generateFromBrief(
     const result = await deps.ai.models.generateContent({
       model: deps.model,
       contents:
-        `${generatePrompt(notes !== undefined)}\n\nRequest:\n${request}` +
+        `${generatePrompt(notes !== undefined, options.kitchenProfile)}\n\nRequest:\n${request}` +
         (notes !== undefined ? `\n\nNotes from a web search:\n${notes}` : ''),
       config: { ...RECIPE_OUTPUT_CONFIG },
     });

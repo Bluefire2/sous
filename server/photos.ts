@@ -519,6 +519,83 @@ export async function drainGcsDeletes(uid: string): Promise<void> {
   }
 }
 
+/**
+ * Copies one live photo of `srcUid` into `dstUid`'s tree as `dstPhotoId` on
+ * the live recipe `dstRecipeId`, for a copy saved from a recipe link
+ * (`server/recipeLinkSave.ts`). The same intent and confirm steps as an
+ * upload, with a server-side GCS copy in between, so a crash leaves an
+ * `uploading` row for the stale sweep. True when the photo is live in the
+ * destination afterwards. Never throws: a failed copy is false, and the
+ * caller leaves the photo off the recipe.
+ */
+export async function copyPhotoBetweenOwners(input: {
+  srcUid: string;
+  srcPhotoId: string;
+  dstUid: string;
+  dstPhotoId: string;
+  dstRecipeId: string;
+}): Promise<boolean> {
+  const bucketName = photoBucket();
+  if (!bucketName || !isUuid(input.srcPhotoId) || !isUuid(input.dstPhotoId)) {
+    return false;
+  }
+  try {
+    const source = await readDocData(input.srcUid, 'photos', input.srcPhotoId);
+    if (!isLivePhoto(source)) {
+      return false;
+    }
+    const contentType = normalizeContentType(String(source?.contentType ?? ''));
+    if (contentType === null) {
+      return false;
+    }
+    const sizeHint =
+      typeof source?.size === 'number' && Number.isFinite(source.size) ? source.size : undefined;
+    const at = Date.now();
+    const intent = await runUploadIntent(
+      input.dstUid,
+      input.dstPhotoId,
+      input.dstRecipeId,
+      at,
+      contentType,
+      sizeHint,
+    );
+    if (intent.kind === 'stop') {
+      return true;
+    }
+    if (intent.kind === 'conflict') {
+      return false;
+    }
+    const bucket = getStorage().bucket(bucketName);
+    const destination = bucket.file(gcsObjectPath(input.dstUid, input.dstPhotoId));
+    try {
+      await bucket.file(gcsObjectPath(input.srcUid, input.srcPhotoId)).copy(destination, {
+        preconditionOpts: { ifGenerationMatch: 0 },
+      });
+    } catch (err: unknown) {
+      // 412: the object is already there (a retried copy); confirm it below.
+      if (gcsErrorCode(err) !== 412) {
+        return false;
+      }
+    }
+    const [meta] = await destination.getMetadata();
+    const size = Number(meta.size ?? sizeHint ?? 0);
+    if (!Number.isFinite(size) || size <= 0 || isPhotoByteCountTooLarge(size)) {
+      return false;
+    }
+    const confirmed = await runUploadConfirm(
+      input.dstUid,
+      input.dstPhotoId,
+      input.dstRecipeId,
+      at,
+      contentType,
+      size,
+    );
+    return confirmed.status === 200;
+  } catch {
+    return false;
+  }
+}
+
 export async function photosPost(req: Request): Promise<Response> {
   if (photoBucket() === null) {
     return photoStorageUnavailable();

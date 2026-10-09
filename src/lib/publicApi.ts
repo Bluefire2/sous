@@ -5,17 +5,28 @@ import { invalidateSession } from './session';
 import type { Recipe } from './types';
 
 /**
- * A public collection (`docs/plans/public-collections.md`): what anyone with
- * the link reads at `/p/<token>`. Fetched fresh on every screen; never put in
- * `libraryMemory`, synced, or cached, so turning the link off wins at once.
+ * What anyone with a link reads at `/p/<token>`: a public collection
+ * (`docs/plans/public-collections.md`) or one recipe from a recipe link
+ * (`docs/plans/recipe-links.md`). Fetched fresh on every screen; never put
+ * in `libraryMemory`, synced, or cached, so turning the link off wins at once.
  */
 export type PublicCollectionData = {
   collection: { id: string; name: string };
   recipes: Recipe[];
 };
 
-export type PublicCollectionResult =
-  | { kind: 'ok'; data: PublicCollectionData }
+export type PublicRecipeLinkData = {
+  recipe: Recipe;
+  /** The sharer's display name, when they have one. */
+  sharedBy?: string;
+};
+
+export type PublicLinkData =
+  | ({ kind: 'collection' } & PublicCollectionData)
+  | ({ kind: 'recipe' } & PublicRecipeLinkData);
+
+export type PublicLinkResult =
+  | { kind: 'ok'; data: PublicLinkData }
   | { kind: 'missing' }
   | { kind: 'error' };
 
@@ -41,7 +52,33 @@ export function parsePublicCollection(body: unknown): PublicCollectionData | nul
   };
 }
 
-export async function fetchPublicCollection(token: string): Promise<PublicCollectionResult> {
+/** A recipe link's body. Null when the recipe is not usable. */
+export function parsePublicRecipeLink(body: unknown): PublicRecipeLinkData | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+  const record = body as { recipe?: unknown; sharedBy?: unknown };
+  if (!isUsableRecipe(record.recipe)) {
+    return null;
+  }
+  const data: PublicRecipeLinkData = { recipe: record.recipe };
+  if (typeof record.sharedBy === 'string' && record.sharedBy.trim() !== '') {
+    data.sharedBy = record.sharedBy.trim();
+  }
+  return data;
+}
+
+/** Either kind of link body; a body without `kind` is a collection. */
+export function parsePublicLink(body: unknown): PublicLinkData | null {
+  if (body && typeof body === 'object' && (body as { kind?: unknown }).kind === 'recipe') {
+    const recipe = parsePublicRecipeLink(body);
+    return recipe === null ? null : { kind: 'recipe', ...recipe };
+  }
+  const collection = parsePublicCollection(body);
+  return collection === null ? null : { kind: 'collection', ...collection };
+}
+
+export async function fetchPublicLink(token: string): Promise<PublicLinkResult> {
   let response: Response;
   try {
     response = await fetch(`/api/public/${encodeURIComponent(token)}`, {
@@ -59,7 +96,7 @@ export async function fetchPublicCollection(token: string): Promise<PublicCollec
     return { kind: 'error' };
   }
   try {
-    const data = parsePublicCollection(await response.json());
+    const data = parsePublicLink(await response.json());
     return data === null ? { kind: 'error' } : { kind: 'ok', data };
   } catch {
     return { kind: 'error' };
@@ -120,6 +157,55 @@ export async function joinPublicCollection(token: string): Promise<PublicJoinRes
     return { kind: 'error', message: t('public.joinFailed') };
   }
   return { kind: 'ok', collectionId: record.collectionId, result: record.result };
+}
+
+export type PublicSaveResult =
+  | { kind: 'ok'; recipeId: string; result: 'saved' | 'already' | 'own' }
+  | { kind: 'signedOut' }
+  | { kind: 'missing' }
+  | { kind: 'error'; message: string };
+
+/** A signed-in member saves their own copy of a recipe link's recipe. */
+export async function savePublicRecipe(token: string): Promise<PublicSaveResult> {
+  let response: Response;
+  try {
+    response = await fetch('/api/public/save', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    return { kind: 'error', message: t('public.saveFailed') };
+  }
+  if (response.status === 401 || response.status === 403) {
+    invalidateSession();
+    return { kind: 'signedOut' };
+  }
+  if (response.status === 404) {
+    return { kind: 'missing' };
+  }
+  if (response.status === 429) {
+    return { kind: 'error', message: t('public.saveRateLimited') };
+  }
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    return { kind: 'error', message: serverErrorText(body, 'public.saveFailed') };
+  }
+  const record = (body ?? {}) as { recipeId?: unknown; result?: unknown };
+  if (
+    typeof record.recipeId !== 'string' ||
+    (record.result !== 'saved' && record.result !== 'already' && record.result !== 'own')
+  ) {
+    return { kind: 'error', message: t('public.saveFailed') };
+  }
+  return { kind: 'ok', recipeId: record.recipeId, result: record.result };
 }
 
 /**

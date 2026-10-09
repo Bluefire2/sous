@@ -25,6 +25,7 @@ import {
 } from './seededMcp.ts';
 import {
   FIXTURE_IDS,
+  KITCHEN_PROFILES,
   memberLibrary,
   ownerLibrary,
   viewerLibrary,
@@ -229,7 +230,24 @@ export async function seed(baseUrl: string): Promise<number> {
   await request(baseUrl, `/api/collections/${FIXTURE_IDS.member.weeknights}/public`, {
     cookie: cookies.member,
   });
+  // A recipe link on an unfiled recipe (`docs/plans/recipe-links.md`), and a
+  // copy saved from it by `capped`, whose library nothing else checks, so the
+  // copy's "Shared by" line can be reviewed.
+  const recipeLink = (await request(
+    baseUrl,
+    `/api/recipes/${FIXTURE_IDS.member.overnightOats}/public`,
+    { cookie: cookies.member },
+  )) as { url?: string };
+  const recipeToken = /\/p\/([^/?#]+)$/.exec(recipeLink.url ?? '')?.[1];
+  if (recipeToken !== undefined) {
+    await request(baseUrl, '/api/public/save', {
+      cookie: cookies.capped,
+      json: { token: recipeToken },
+    });
+  }
   await request(baseUrl, '/api/admin/invites', { cookie: cookies.owner });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.member, json: KITCHEN_PROFILES.member });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.viewer, json: KITCHEN_PROFILES.viewer });
 
   await connectApp(baseUrl, now);
   // Today in UTC: after midnight a kept seed (`--keep`) is no longer capped.

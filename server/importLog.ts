@@ -45,6 +45,7 @@ export type ImportLogOutcome =
   | 'rate_limited'
   | 'llm_refused'
   | 'save_failed'
+  | 'store_unavailable'
   | 'threw';
 
 export interface ImportLogEntry {

@@ -303,6 +303,13 @@ describe('withChatBudget', () => {
     await vi.waitFor(() => expect(store.spent.get(`sub-1/${DAY}`)).toBe(1500));
   });
 
+  it('passes the rest of the context through, so the kitchen profile reaches chat', async () => {
+    const handler = vi.fn(async (_req: Request, _ctx: { authorizedSub: string; kitchenProfile?: string }) => new Response('ok'));
+    const res = await withChatBudget(handler)(req(), { authorizedSub: 'sub-1', kitchenProfile: '<kitchen_profile>' });
+    await res.text();
+    expect(handler.mock.calls[0]?.[1]).toMatchObject({ authorizedSub: 'sub-1', kitchenProfile: '<kitchen_profile>' });
+  });
+
   it('frees the slot when the handler throws', async () => {
     const wrapped = withChatBudget(() => Promise.reject(new Error('boom')));
     await expect(wrapped(req(), { authorizedSub: 'sub-1' })).rejects.toThrow('boom');

@@ -276,6 +276,7 @@ describe('buildSharedPullPage', () => {
           lang: 'zh-CN',
           nutrition: { calories: 1 },
           variantOf: '99999999-9999-4999-8999-999999999999',
+          savedFrom: { name: 'Ada', savedAt: 5 },
         }),
       ],
       [docKey('owner-a', 'recipes', badId), liveRecipe(badId, { lang: 'garbage!!' })],
@@ -288,6 +289,8 @@ describe('buildSharedPullPage', () => {
     // A viewer's variants group with the owner's.
     expect(byId.get(okId)?.variantOf).toBe('99999999-9999-4999-8999-999999999999');
     expect(byId.get(okId)).not.toHaveProperty('nutrition');
+    // Who shared it with the owner stays the owner's.
+    expect(byId.get(okId)).not.toHaveProperty('savedFrom');
     expect(byId.get(badId)).toMatchObject({ id: badId, ownerSub: 'owner-a' });
     expect(byId.get(badId)).not.toHaveProperty('lang');
   });

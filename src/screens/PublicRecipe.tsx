@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { languageName, useLocale, useT } from '../i18n';
 import {
   AiLockedSheet,
@@ -27,8 +27,9 @@ import { useSession } from '../lib/session';
 import { translateChipMode } from '../lib/translateChip';
 import type { Recipe } from '../lib/types';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
-import { usePublicCollection } from '../lib/usePublicCollection';
+import { usePublicLink } from '../lib/usePublicLink';
 import { usePublicJoin } from '../lib/usePublicJoin';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 
 /**
@@ -41,19 +42,24 @@ export default function PublicRecipe() {
   const { token = '', recipeId = '' } = useParams<{ token: string; recipeId: string }>();
   const { status } = useSession();
   const member = status === 'signedIn';
-  const { result, retry } = usePublicCollection(token);
+  const { result, retry } = usePublicLink(token);
   const join = usePublicJoin(token);
   const [lockedOpen, setLockedOpen] = useState(false);
   useWakeLock();
 
   const collectionHref = `/p/${encodeURIComponent(token)}`;
-  const recipe =
-    result?.kind === 'ok' ? result.data.recipes.find((r) => r.id === recipeId) : undefined;
+  const collection = result?.kind === 'ok' && result.data.kind === 'collection' ? result.data : undefined;
+  const recipe = collection?.recipes.find((r) => r.id === recipeId);
+
+  if (result?.kind === 'ok' && result.data.kind === 'recipe') {
+    // A recipe link has one page; it is the link itself.
+    return <Navigate to={collectionHref} replace />;
+  }
 
   const topBar = (
     <div className="flex items-center justify-between">
       <Link to={collectionHref} className={backLink}>
-        &larr; {result?.kind === 'ok' ? result.data.collection.name : t('public.backToCollection')}
+        &larr; {collection !== undefined ? collection.collection.name : t('public.backToCollection')}
       </Link>
       <div className="flex items-center gap-1">
         {/* Read-only, like the rest of this page: it shares the text the visitor already sees. */}
@@ -104,6 +110,7 @@ export default function PublicRecipe() {
         token={token}
         recipe={recipe}
         member={member}
+        subject="collection"
         onLocked={() => setLockedOpen(true)}
       />
     );
@@ -117,7 +124,8 @@ export default function PublicRecipe() {
         <AiLockedSheet
           token={token}
           member={member}
-          join={join}
+          subject="collection"
+          action={{ state: join.state, run: join.add }}
           onClose={() => setLockedOpen(false)}
         />
       )}
@@ -125,19 +133,27 @@ export default function PublicRecipe() {
   );
 }
 
-function PublicRecipeBody({
+/**
+ * One recipe as a visitor reads it, with cook mode in local state and AI
+ * locked. `subject` picks the locked hint for a signed-in member: add the
+ * collection, or save a copy of a recipe link's recipe.
+ */
+export function PublicRecipeBody({
   token,
   recipe,
   member,
+  subject,
   onLocked,
 }: {
   token: string;
   recipe: Recipe;
   member: boolean;
+  subject: 'collection' | 'recipe';
   onLocked: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
+  const textSize = useRecipeTextSize();
   const [servings, setServings] = useState(recipe.servings);
   const [currentStep, setCurrentStep] = useState(0);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -149,7 +165,11 @@ function PublicRecipeBody({
     });
   };
 
-  const hint = member ? t('public.aiLockedMember') : t('public.aiLocked');
+  const hint = !member
+    ? t('public.aiLocked')
+    : subject === 'recipe'
+      ? t('public.aiLockedRecipe')
+      : t('public.aiLockedMember');
   const source = sourceLink(recipe.sourceUrl);
   const hasTime = recipe.prepMinutes != null || recipe.cookMinutes != null;
   // The stored label only: a visitor has no language detection to fall back on.
@@ -195,6 +215,7 @@ function PublicRecipeBody({
           onServings={setServings}
           checkedKeys={checkedKeys}
           onToggle={toggleChecked}
+          textSize={textSize}
         />
       </div>
 
@@ -203,6 +224,7 @@ function PublicRecipeBody({
         displayRecipe={recipe}
         currentStep={currentStep}
         onStep={setCurrentStep}
+        textSize={textSize}
       />
 
       {recipe.notes && <NotesSection notes={recipe.notes} />}
