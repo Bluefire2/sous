@@ -135,6 +135,11 @@ function loadIfNeeded(): void {
   if (sub !== null && loadedFor !== sub) void load(sub);
 }
 
+/** A failed read is tried again when the tab comes back or the device reconnects. */
+function retryWhenVisible(): void {
+  if (typeof document === 'undefined' || document.visibilityState === 'visible') loadIfNeeded();
+}
+
 export function subscribeUnitSystem(listener: () => void): () => void {
   listeners.add(listener);
   const unsubscribeSession = subscribeSession(() => {
@@ -142,10 +147,18 @@ export function subscribeUnitSystem(listener: () => void): () => void {
     loadIfNeeded();
     listener();
   });
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', retryWhenVisible);
+    document.addEventListener('visibilitychange', retryWhenVisible);
+  }
   loadIfNeeded();
   return () => {
     listeners.delete(listener);
     unsubscribeSession();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', retryWhenVisible);
+      document.removeEventListener('visibilitychange', retryWhenVisible);
+    }
   };
 }
 
@@ -154,10 +167,13 @@ export function getUnitSystem(): UnitSystem {
   return units;
 }
 
+/** Saves go out one at a time, so the server keeps the last choice, not the last to arrive. */
+let saveQueue: Promise<unknown> = Promise.resolve();
+
 /**
  * Shows `next` at once and saves it to the account. A failed save puts the
- * previous value back, unless a newer choice was made meanwhile, and throws
- * for the caller to show.
+ * previous value back and re-reads the account, unless a newer choice was
+ * made meanwhile, and throws for the caller to show.
  */
 export async function setUnitSystem(next: UnitSystem): Promise<void> {
   followSession();
@@ -166,10 +182,17 @@ export async function setUnitSystem(next: UnitSystem): Promise<void> {
   const previous = units;
   const mine = ++generation;
   set(sub, next);
+  const saving = saveQueue.then(() => saveUnitSystem(next));
+  saveQueue = saving.catch(() => {});
   try {
-    await saveUnitSystem(next);
+    await saving;
   } catch (err) {
-    if (generation === mine) set(sub, previous);
+    if (generation === mine) {
+      set(sub, previous);
+      // The server may hold either value now; its answer is the truth.
+      loadedFor = null;
+      loadIfNeeded();
+    }
     throw err;
   }
 }

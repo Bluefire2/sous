@@ -164,12 +164,45 @@ describe('the units store', () => {
     unsubscribe();
   });
 
-  it('puts the old value back when the save fails', async () => {
-    server([ok('asWritten')], [{ status: 503, body: {} }]);
+  it('puts the old value back and re-reads the account when the save fails', async () => {
+    const { fetchMock } = server([ok('asWritten'), ok('asWritten')], [{ status: 503, body: {} }]);
     signIn('a');
     const unsubscribe = subscribeUnitSystem(() => {});
     await settle();
     await expect(setUnitSystem('metric')).rejects.toThrow();
+    expect(getUnitSystem()).toBe('asWritten');
+    await settle();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== 'POST')).toHaveLength(2);
+    unsubscribe();
+  });
+
+  it('sends saves one at a time, in the order they were chosen', async () => {
+    const answers: (() => void)[] = [];
+    const posted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return Promise.resolve(new Response(JSON.stringify({ preferences: { units: 'asWritten' } })));
+        const units = (JSON.parse(String(init.body)) as { units: string }).units;
+        posted.push(units);
+        return new Promise<Response>((resolve) =>
+          answers.push(() => resolve(new Response(JSON.stringify({ preferences: { units } })))),
+        );
+      }),
+    );
+    signIn('a');
+    const unsubscribe = subscribeUnitSystem(() => {});
+    await settle();
+    const first = setUnitSystem('metric');
+    const second = setUnitSystem('asWritten');
+    await settle();
+    expect(posted).toEqual(['metric']);
+    answers[0]?.();
+    await first;
+    await settle();
+    expect(posted).toEqual(['metric', 'asWritten']);
+    answers[1]?.();
+    await second;
     expect(getUnitSystem()).toBe('asWritten');
     unsubscribe();
   });
@@ -187,9 +220,11 @@ describe('the units store', () => {
     const unsubscribe = subscribeUnitSystem(() => {});
     await settle();
     const first = setUnitSystem('metric');
-    await setUnitSystem('asWritten');
+    const second = setUnitSystem('asWritten');
+    await settle();
     failFirst(new Error('network'));
     await expect(first).rejects.toThrow();
+    await second;
     expect(getUnitSystem()).toBe('asWritten');
     unsubscribe();
   });

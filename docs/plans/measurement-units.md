@@ -50,19 +50,24 @@ Weight (`niceWeight` in `src/lib/unitConversion.ts`):
 | 5 lb | 2.25 kg |
 
 Temperature (`fahrenheitToCelsius`):
-- An oven setting (a multiple of 25 °F from 250 to 550) rounds to the nearest 10 °C, so 350 °F reads 180 °C.
-- Everything else rounds to the degree: 165 °F is 74 °C, 235 °F is 113 °C, and −10 °F is −23 °C.
-- A non-oven temperature that happens to be a multiple of 25 still gets the oven rule. For example, 275 °F reads 140 °C rather than 135 °C, at most 5 °C off.
+- An oven setting rounds to the nearest 10 °C, so 350 °F in "Bake at 350°F" reads 180 °C. A setting is a multiple of 25 °F from 250 to 550 with an oven word near it: oven, preheat, bake, roast or broil within 60 characters before or 12 after, or духов, піч/печ or 烤 in a translated step.
+- Everything else rounds to the degree, so oil and sugar keep their precision:
+  - "Heat the oil to 350°F" reads 177 °C;
+  - 275 °F syrup reads 135 °C;
+  - 165 °F reads 74 °C;
+  - −10 °F reads −23 °C.
 
 `convertTemperaturesInText` rewrites these forms in step and note text:
-- `350°F`, `350 ºF`, `350˚ F`, `350℉`;
-- `350 degrees F` and `350 degrees Fahrenheit`;
-- `80F`;
-- ranges (`325–350°F`) and negatives.
+- `350°F`, `350 ºf`, `350˚ F`, `350℉`;
+- `350 degrees F`, `350 deg. F` and `350 degrees Fahrenheit`;
+- `350F` (three digits; a bare F after a shorter number, like "a 12F probe", is left alone);
+- ranges joined by a dash, a slash, "to", "and" or "or" (`325–350°F`, `325 to 350 degrees F`, `between 350 and 375°F`), and negatives.
 
 It leaves two cases alone:
-- a temperature with a Celsius one within 15 characters on either side, as in `425°F / 220°C`, `180°C/350°F` and `300°F (150°C)`;
+- a temperature with a Celsius one within 25 characters on either side, as in `425°F / 220°C`, `180°C/350°F`, `300°F (150°C)` and `350°F — about 180 degrees C`;
 - a bare `350°` or `350 degrees`, which could be Celsius.
+
+Saves from Settings go to the server one at a time, so two quick taps leave the account on the last choice. After a failed save the store re-reads the account, and a failed read is tried again when the tab comes back into view or the device reconnects.
 
 ## Steps
 
@@ -107,5 +112,5 @@ It leaves two cases alone:
 
 ## Known limits
 
-- **"oz" on liquids.** The import schema hint offers `oz` but not `fl oz` (`server/recipeImport.ts`), so "8 oz milk" shows as 225 g, about 5% under for water-like liquids. Adding `fl oz` to the hint changes the import prompt and goes through `evals/AGENTS.md`.
+- **"oz" is always a weight.** The import schema hint offers `oz` but not `fl oz` (`server/recipeImport.ts`), so "8 oz milk" shows as 225 g, about 5% under for water-like liquids. Adding `fl oz` to the hint changes the import prompt and goes through `evals/AGENTS.md`.
 - **Weights inside free text.** A weight in a note or an ingredient name ("1 can (14 oz)") is not converted. Only the structured quantity and unit are.

@@ -59,51 +59,71 @@ export function niceWeight(grams: number): MetricWeight {
 }
 
 /**
- * °F to °C. An oven setting (a multiple of 25 °F from 250 to 550) rounds to
- * the nearest 10 °C, as oven dials do: 350 °F is 180 °C. Anything else rounds
- * to the nearest degree, because a meat, sugar, or oil temperature must not
- * move by 5 °C: 165 °F is 74 °C.
+ * °F to °C. An oven setting (`oven`, a multiple of 25 °F from 250 to 550)
+ * rounds to the nearest 10 °C, as oven dials do: 350 °F is 180 °C. Anything
+ * else rounds to the nearest degree, because a meat, sugar, or oil
+ * temperature must not move by 5 °C: 165 °F is 74 °C, and frying oil at
+ * 350 °F is 177 °C.
  */
-export function fahrenheitToCelsius(fahrenheit: number): number {
+export function fahrenheitToCelsius(fahrenheit: number, oven = false): number {
   const celsius = ((fahrenheit - 32) * 5) / 9;
-  const oven = fahrenheit >= 250 && fahrenheit <= 550 && fahrenheit % 25 === 0;
+  const dial = oven && fahrenheit >= 250 && fahrenheit <= 550 && fahrenheit % 25 === 0;
   // `+ 0` turns a rounded -0 into 0.
-  return (oven ? Math.round(celsius / 10) * 10 : Math.round(celsius)) + 0;
+  return (dial ? Math.round(celsius / 10) * 10 : Math.round(celsius)) + 0;
 }
 
-const SPACE = '[ \\u00a0\\u2009\\u202f]?';
+// Regex sources, written with String.raw so a backslash reaches RegExp as typed.
+/** An optional space, including the no-break and thin spaces web pages use. */
+const SPACE = String.raw`\s?`;
 const DEGREE = '[°º˚]';
-const NUMBER = '-?\\d{1,3}(?:\\.\\d+)?';
+const NUMBER = String.raw`-?\d{1,3}(?:\.\d+)?`;
+/** Between the two ends of a range: "325–350", "325/350", "325 to 350", "350 and 375". */
+const RANGE = String.raw`(?:${SPACE}[-–—/]${SPACE}|\s(?:to|and|or)\s)`;
+const F = String.raw`(?:[Ff]|[Ff]ahrenheit)\b`;
+const DEGREES_WORD = String.raw`\s(?:[Dd]egrees?|[Dd]eg\.?)\s`;
 /**
- * A Fahrenheit temperature or range: "350°F", "350 ºF", "350℉", "350 degrees F",
- * "350 degrees Fahrenheit", "80F", "325–350°F", "-10°F". A bare "350°" is not
- * one; it could be Celsius.
+ * A Fahrenheit temperature or range: "350°F", "350 ºf", "350℉", "350 degrees F",
+ * "350 deg. Fahrenheit", "350F", "325–350°F", "325 to 350°F", "between 350 and
+ * 375°F", "-10°F". A bare "350°" is not one (it could be Celsius), and neither
+ * is a one- or two-digit number with a bare F ("a 12F probe").
  */
 const FAHRENHEIT = new RegExp(
-  `(?<![\\w.,])(${NUMBER})(?:${SPACE}[-–—]${SPACE}(${NUMBER}))?` +
-    `(?:${SPACE}${DEGREE}${SPACE}(?:F|Fahrenheit)\\b|${SPACE}℉|\\s[Dd]egrees?\\s(?:F|Fahrenheit)\\b|(?<=\\d{2})F\\b)`,
+  String.raw`(?<![\w.,])(${NUMBER})(?:${RANGE}(${NUMBER}))?` +
+    String.raw`(?:${SPACE}${DEGREE}${SPACE}${F}|${SPACE}℉|${DEGREES_WORD}${F}|(?<=\d{3})F\b)`,
   'g',
 );
-/** A Celsius temperature already written next to the match, as in "425°F / 220°C" or "180C/350F". */
-const CELSIUS_NEARBY = new RegExp(`\\d(?:${SPACE}${DEGREE}${SPACE}C\\b|${SPACE}℃|C\\b|\\s[Dd]egrees?\\s(?:C|Celsius)\\b)`);
-const NEARBY_CHARS = 15;
+/** A Celsius temperature already written near the match, as in "425°F / 220°C" or "180C/350F". */
+const CELSIUS_NEARBY = new RegExp(
+  String.raw`\d(?:${SPACE}${DEGREE}${SPACE}[Cc]\b|${SPACE}℃|C\b|${DEGREES_WORD}(?:[Cc]|[Cc]elsius)\b)`,
+);
+const CELSIUS_NEARBY_CHARS = 25;
+/**
+ * Words that make a temperature an oven setting, before it ("Bake at …") or
+ * just after ("a 375°F oven"), in English and in the UI languages a recipe
+ * may be translated into (духовка, піч/печь, 烤箱).
+ */
+const OVEN_WORDS = /\b(?:oven|preheat|pre-heat|bake[sd]?|baking|roast(?:s|ed|ing)?|broil)|духов|піч|печ|烤/i;
+const OVEN_BEFORE_CHARS = 60;
+const OVEN_AFTER_CHARS = 12;
 
 /**
  * `text` with each Fahrenheit temperature replaced by `format(celsius,
  * original)`, where `celsius` is like "180°C" or "160–180°C" and `original`
- * is the text matched. A temperature that already has a Celsius one beside it
- * is left alone.
+ * is the text matched. A temperature that already has a Celsius one near it
+ * is left alone. Oven rounding applies only when an oven word is near.
  */
 export function convertTemperaturesInText(
   text: string,
   format: (celsius: string, original: string) => string,
 ): string {
   return text.replace(FAHRENHEIT, (match: string, from: string, to: string | undefined, offset: number) => {
-    const before = text.slice(Math.max(0, offset - NEARBY_CHARS), offset);
-    const after = text.slice(offset + match.length, offset + match.length + NEARBY_CHARS);
-    if (CELSIUS_NEARBY.test(before) || CELSIUS_NEARBY.test(after)) return match;
-    const low = fahrenheitToCelsius(Number(from));
-    const celsius = to === undefined ? `${low}°C` : `${low}–${fahrenheitToCelsius(Number(to))}°C`;
+    const end = offset + match.length;
+    const near = (before: number, after: number) =>
+      `${text.slice(Math.max(0, offset - before), offset)} ${text.slice(end, end + after)}`;
+    if (CELSIUS_NEARBY.test(near(CELSIUS_NEARBY_CHARS, CELSIUS_NEARBY_CHARS))) return match;
+    const oven = OVEN_WORDS.test(near(OVEN_BEFORE_CHARS, OVEN_AFTER_CHARS));
+    const low = fahrenheitToCelsius(Number(from), oven);
+    const celsius = to === undefined ? `${low}°C` : `${low}–${fahrenheitToCelsius(Number(to), oven)}°C`;
     return format(celsius, match);
   });
 }

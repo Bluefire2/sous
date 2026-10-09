@@ -68,15 +68,18 @@ describe('niceWeight', () => {
 
 describe('fahrenheitToCelsius', () => {
   it('rounds oven settings to the nearest 10', () => {
-    expect([250, 300, 325, 350, 375, 400, 425, 450, 475, 500].map(fahrenheitToCelsius)).toEqual([
+    expect([250, 300, 325, 350, 375, 400, 425, 450, 475, 500].map((f) => fahrenheitToCelsius(f, true))).toEqual([
       120, 150, 160, 180, 190, 200, 220, 230, 250, 260,
     ]);
   });
 
-  it('rounds everything else to the degree', () => {
+  it('rounds everything else to the degree, including oil and sugar at oven-like numbers', () => {
     expect(fahrenheitToCelsius(165)).toBe(74);
     expect(fahrenheitToCelsius(235)).toBe(113);
-    expect(fahrenheitToCelsius(360)).toBe(182);
+    expect(fahrenheitToCelsius(250)).toBe(121);
+    expect(fahrenheitToCelsius(275)).toBe(135);
+    expect(fahrenheitToCelsius(350)).toBe(177);
+    expect(fahrenheitToCelsius(360, true)).toBe(182);
     expect(fahrenheitToCelsius(98.6)).toBe(37);
     expect(fahrenheitToCelsius(-10)).toBe(-23);
     expect(Object.is(fahrenheitToCelsius(32.5), 0)).toBe(true);
@@ -89,26 +92,37 @@ describe('convertTemperaturesInText', () => {
   it('converts the ways recipes write Fahrenheit', () => {
     expect(convert('Preheat the oven to 350°F.')).toBe('Preheat the oven to 180°C (350°F).');
     expect(convert('Bake at 375 °F for 20 minutes')).toBe('Bake at 190°C (375 °F) for 20 minutes');
-    expect(convert('Heat to 400ºF')).toBe('Heat to 200°C (400ºF)');
-    expect(convert('Heat to 400˚ F')).toBe('Heat to 200°C (400˚ F)');
-    expect(convert('Heat to 425℉')).toBe('Heat to 220°C (425℉)');
+    expect(convert('Heat the oven to 400ºF')).toBe('Heat the oven to 200°C (400ºF)');
+    expect(convert('Heat the oven to 400˚ F')).toBe('Heat the oven to 200°C (400˚ F)');
+    expect(convert('Roast at 425℉')).toBe('Roast at 220°C (425℉)');
     expect(convert('Set the oven to 350 degrees F.')).toBe('Set the oven to 180°C (350 degrees F).');
-    expect(convert('Set it to 300 degrees Fahrenheit')).toBe('Set it to 150°C (300 degrees Fahrenheit)');
-    expect(convert('dough heated to 80F')).toBe('dough heated to 27°C (80F)');
+    expect(convert('Set the oven to 300 degrees Fahrenheit')).toBe('Set the oven to 150°C (300 degrees Fahrenheit)');
+    expect(convert('Bake at 350 deg. F')).toBe('Bake at 180°C (350 deg. F)');
+    expect(convert('Bake at 350 °f')).toBe('Bake at 180°C (350 °f)');
+    expect(convert('Bake in a 375°F oven.')).toBe('Bake in a 190°C (375°F) oven.');
+    expect(convert('Fry at 350F.')).toBe('Fry at 177°C (350F).');
     expect(convert('Chill to -10°F')).toBe('Chill to -23°C (-10°F)');
-    expect(convert('Cook to 165 °F inside')).toBe('Cook to 74°C (165 °F) inside');
+    expect(convert('Cook to 165\u00a0°F inside')).toBe('Cook to 74°C (165\u00a0°F) inside');
   });
 
-  it('converts a range as one temperature', () => {
+  it('keeps exact degrees for oil and sugar, rounding only oven settings', () => {
+    expect(convert('Heat the oil to 350°F.')).toBe('Heat the oil to 177°C (350°F).');
+    expect(convert('Boil the syrup to 275°F (soft crack).')).toBe('Boil the syrup to 135°C (275°F) (soft crack).');
+  });
+
+  it('converts a range as one temperature, however it is joined', () => {
     expect(convert('Bake at 325–350°F.')).toBe('Bake at 160–180°C (325–350°F).');
-    expect(convert('Fry at 350-375 °F')).toBe('Fry at 180–190°C (350-375 °F)');
+    expect(convert('Fry at 350-375 °F')).toBe('Fry at 177–191°C (350-375 °F)');
+    expect(convert('Bake at 325 to 350 degrees F.')).toBe('Bake at 160–180°C (325 to 350 degrees F).');
+    expect(convert('Heat the oil to between 350 and 375°F.')).toBe('Heat the oil to between 177–191°C (350 and 375°F).');
+    expect(convert('Bake at 325/350°F.')).toBe('Bake at 160–180°C (325/350°F).');
   });
 
   it('converts every temperature in the text', () => {
     expect(convert('Roast at 450°F, then lower to 350°F.')).toBe('Roast at 230°C (450°F), then lower to 180°C (350°F).');
   });
 
-  it('leaves a temperature that already has Celsius beside it', () => {
+  it('leaves a temperature that already has Celsius near it', () => {
     for (const text of [
       'Bake at 425°F / 220°C until golden.',
       'Preheat the oven to 300°F (150°C).',
@@ -116,6 +130,7 @@ describe('convertTemperaturesInText', () => {
       'Preheat to 180C/350F.',
       '烤箱预热至350°F（175°C）。',
       'Heat to 350 degrees F (175 degrees C).',
+      'Bake at 350°F — about 180 degrees C.',
     ]) {
       expect(convert(text)).toBe(text);
     }
@@ -126,7 +141,11 @@ describe('convertTemperaturesInText', () => {
       'Bake at 350° for 8-10 minutes.',
       'Preheat oven to 350 degrees.',
       'Bake 20-25 minutes.',
+      'Bake 10 to 15 minutes.',
+      'Use a 9x13-inch pan.',
       'Use 2 cups of flour, about 8F worth.',
+      'Use a 12F probe.',
+      'dough heated to 80F',
       'Model X350F oven',
       'Add 1 tbsp. Fold gently.',
     ]) {
