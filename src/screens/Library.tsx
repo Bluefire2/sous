@@ -35,6 +35,14 @@ import {
   readPersistedLibraryView,
   writePersistedLibraryView,
 } from '../lib/librarySearchMemory';
+import {
+  LIBRARY_PAGE_SIZE,
+  libraryListKey,
+  readPersistedLibraryPaging,
+  showMore,
+  shownCount,
+  writePersistedLibraryPaging,
+} from '../lib/libraryPaging';
 import { sortLibraryRecipes } from '../lib/librarySort';
 import { useLastCookedOn } from '../lib/cookLogStore';
 import { lastCookedLabel } from '../lib/relativeTime';
@@ -44,6 +52,7 @@ import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
 import { useMountedFlow } from '../lib/useMountedFlow';
 import { useSyncStatus } from '../lib/syncEngine';
+import { useNearViewport } from '../lib/useNearViewport';
 import { AssistantEntryLink } from '../agent/index';
 import {
   backLink,
@@ -60,10 +69,14 @@ import {
 } from '../lib/uiClasses';
 import { StoredPhotoImage } from '../components/BlobImage';
 
+// A card's photo is fetched only once the card nears the screen, so a long
+// list does not download every photo when it opens.
 function CardThumb({ photoId }: { photoId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const near = useNearViewport(ref);
   return (
-    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
-      <StoredPhotoImage photoId={photoId} alt="" className="h-full w-full object-cover" />
+    <div ref={ref} className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
+      {near && <StoredPhotoImage photoId={photoId} alt="" className="h-full w-full object-cover" />}
     </div>
   );
 }
@@ -96,6 +109,18 @@ export default function Library() {
   useEffect(() => {
     writePersistedLibraryView({ query, browseAll, sort });
   }, [query, browseAll, sort]);
+  // How far down the list the person has paged. It belongs to one list (see
+  // libraryListKey), so a new search, scope, order, or collection shows one
+  // page again without an effect to reset it.
+  const [paging, setPaging] = useState(readPersistedLibraryPaging);
+  useEffect(() => {
+    writePersistedLibraryPaging(paging);
+  }, [paging]);
+  const listKey = libraryListKey({ collectionId, browseAll, query, sort });
+  const shown = shownCount(paging, listKey);
+  // Show more moves focus to the first card it added.
+  const listRef = useRef<HTMLUListElement>(null);
+  const focusCardAt = useRef<number | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -133,6 +158,12 @@ export default function Library() {
     query,
     browseAll,
   });
+  const sorted =
+    recipes === undefined
+      ? undefined
+      : sortLibraryRecipes(recipes, sort, { lastCooked: lastCookedOn, locale });
+  const pageRecipes = sorted?.slice(0, shown);
+  const hiddenCount = (sorted?.length ?? 0) - (pageRecipes?.length ?? 0);
 
   const pendingDelete =
     sheet.kind === 'deleteRecipe'
@@ -175,17 +206,28 @@ export default function Library() {
       : recipes
           .filter((recipe) => !recipeStore.isShared(recipe.id))
           .map((recipe) => recipe.id);
+  // Select all covers the cards on screen, not the pages behind Show more.
+  const ownedPageIds =
+    pageRecipes === undefined || namedIsShared
+      ? []
+      : pageRecipes
+          .filter((recipe) => !recipeStore.isShared(recipe.id))
+          .map((recipe) => recipe.id);
   const canSelect = ownedVisibleIds.length > 0;
+  // A page of only shared recipes has nothing for Select all to check.
+  const canSelectPage = ownedPageIds.length > 0;
   // The selection the bar, Move, and the header act on. A search can hide a
   // checked recipe one render before the effect below drops it from
-  // selectedIds; counting only what is on screen keeps them in agreement.
-  // While the library loads nothing is on screen, so keep the whole set.
+  // selectedIds; counting only what the search matches keeps them in
+  // agreement. A checked recipe that a refresh pushes past the last page
+  // stays checked and counted. While the library loads nothing is on screen,
+  // so keep the whole set.
   const activeSelectedIds =
     recipes === undefined
       ? [...selectedIds]
       : ownedVisibleIds.filter((id) => selectedIds.has(id));
   const allOwnedSelected =
-    canSelect && activeSelectedIds.length === ownedVisibleIds.length;
+    ownedPageIds.length > 0 && ownedPageIds.every((id) => selectedIds.has(id));
   const someOwnedSelected = activeSelectedIds.length > 0 && !allOwnedSelected;
   // Undefined while the library is still loading, so a refresh does not
   // clear a selection that has not been shown yet. An empty string means
@@ -217,8 +259,27 @@ export default function Library() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allOwnedSelected ? new Set() : new Set(ownedVisibleIds));
+    // Select none clears every check, including any past the last page (a
+    // sort or refresh can push them there), so Move never acts on a recipe
+    // the person can no longer see checked.
+    if (allOwnedSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds((prev) => new Set([...prev, ...ownedPageIds]));
   };
+
+  const showMoreRecipes = () => {
+    focusCardAt.current = shown;
+    setPaging((prev) => showMore(prev, listKey));
+  };
+
+  useEffect(() => {
+    const index = focusCardAt.current;
+    if (index === null) return;
+    focusCardAt.current = null;
+    listRef.current?.querySelectorAll<HTMLElement>('[data-card-title]')[index]?.focus();
+  }, [shown]);
 
   // indeterminate is DOM-only. A ref callback also sets it on an input that
   // remounts while someOwnedSelected is unchanged, which an effect would miss.
@@ -819,7 +880,7 @@ export default function Library() {
         <p className="py-12 text-center text-ink-muted">{emptyCopy()}</p>
       ) : (
         <>
-          {selecting && canSelect && (
+          {selecting && canSelectPage && (
             <label className="mb-1 flex cursor-pointer items-center gap-1">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center">
                 <input
@@ -833,8 +894,8 @@ export default function Library() {
               <span className="text-sm font-medium">{t('library.selectAll')}</span>
             </label>
           )}
-          <ul className="flex flex-col gap-3">
-            {sortLibraryRecipes(recipes, sort, { lastCooked: lastCookedOn, locale }).map((recipe) => {
+          <ul ref={listRef} className="flex flex-col gap-3">
+            {(pageRecipes ?? []).map((recipe) => {
               const shared = recipeStore.isShared(recipe.id);
               const checked = selectedIds.has(recipe.id);
               const cookedOn = shared ? undefined : lastCookedOn.get(recipe.id);
@@ -866,6 +927,7 @@ export default function Library() {
                       <Link
                         to={`/recipe/${recipe.id}`}
                         state={{ from: libraryHref(collectionId) }}
+                        data-card-title=""
                         className="after:absolute after:inset-0 after:rounded-2xl"
                       >
                         {recipe.title}
@@ -952,6 +1014,19 @@ export default function Library() {
               );
             })}
           </ul>
+          {hiddenCount > 0 && (
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <button type="button" onClick={showMoreRecipes} className={secondaryBtn}>
+                {t('library.showMore', { count: Math.min(hiddenCount, LIBRARY_PAGE_SIZE) })}
+              </button>
+              <p className="text-sm text-ink-subtle">
+                {t('library.shownOfTotal', {
+                  shown: pageRecipes?.length ?? 0,
+                  total: sorted?.length ?? 0,
+                })}
+              </p>
+            </div>
+          )}
         </>
       )}
 
@@ -989,7 +1064,7 @@ export default function Library() {
               <button
                 type="button"
                 onClick={toggleSelectAll}
-                disabled={!canSelect}
+                disabled={!canSelectPage}
                 className={`${ghostBtn} disabled:opacity-40`}
               >
                 {allOwnedSelected ? t('library.selectNone') : t('library.selectAll')}

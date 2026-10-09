@@ -12,7 +12,7 @@ import ImportScreen from './screens/ImportScreen';
 import Settings from './screens/Settings';
 import SuggestFeature from './screens/SuggestFeature';
 import Admin from './screens/Admin';
-import PublicCollection from './screens/PublicCollection';
+import PublicLink from './screens/PublicLink';
 import PublicRecipe from './screens/PublicRecipe';
 import PublicReturn from './screens/PublicReturn';
 import { AssistantScreen } from './agent/index';
@@ -45,7 +45,7 @@ function AppRoutes() {
       <Route path="/admin" element={<Admin />} />
       {/* Public collection links: readable without an account (docs/plans/public-collections.md). */}
       <Route path="/p" element={<PublicReturn />} />
-      <Route path="/p/:token" element={<PublicCollection />} />
+      <Route path="/p/:token" element={<PublicLink />} />
       <Route path="/p/:token/r/:recipeId" element={<PublicRecipe />} />
     </Routes>
   );

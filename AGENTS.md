@@ -80,6 +80,24 @@ that line and its 30-day retention (the `_Default` log bucket); change them
 with it. Photo import's share of the line is bound by
 `docs/constitutions/image-import.md` principle 3.
 
+**Daily AI budget** (`docs/plans/llm-budget.md`, `server/llmBudget.ts`,
+prices in `server/llmPricing.ts`): every model call is charged, from the
+usage Gemini reports, to `users/{sub}/llmUsage/{YYYY-MM-DD}` (UTC), and a
+member at `LLM_DAILY_BUDGET_MICRO_USD` ($10, a code constant) gets 429
+`llm-budget-exceeded` until UTC midnight; owners too. A route admits with
+`admitLlm` after auth and body checks and before its first model call
+(a failed read is 503, never 429), charges each call (`meteredAi` for
+`generateContent` clients, `onUsage` for streams), and releases the meter
+when the request ends; more than `LLM_MAX_IN_FLIGHT_PER_MEMBER` (2) at once
+per instance is 429 `llm-busy`. A new model call must be metered the same
+way. Chat is metered by `withChatBudget` in `scripts/server.ts`, since
+`api/chat.ts` cannot import it; chat text is capped by `MAX_CHAT_TEXT_CHARS`
+and `MAX_CHAT_CONTEXT_CHARS`, and the client trims old messages to fit
+(`fitChatHistory`). An unknown model is priced at the highest rates in the
+table; update the table when a model or price changes. The `llm` and
+`llm_refused` log lines never hold prompt, reply, or error text. `/privacy`
+and `/terms` describe the counter and the lines; change them with it.
+
 Import feedback (`docs/plans/import-feedback.md`): after a failed or flagged
 import, or a 👎 on a clean preview, the person can send a report
 (`POST /api/import-feedback`, `server/importFeedback.ts`, `withMembership`). Reports
@@ -113,6 +131,18 @@ text. `/privacy` describes both; change it with them, and change the schema
 section in the plan with `FeatureRequestDoc`. Suggestions and import reports
 sit outside `users/{uid}`; `scripts/delete-account-data.ts` removes them with
 the rest of an account (see Account deletion).
+
+Kitchen profile (`docs/plans/kitchen-profile.md`, `server/kitchenProfile.ts`):
+allergen and diet codes plus four short text fields a member sets in
+Settings, stored at `users/{sub}/settings/kitchen` (`GET`/`POST
+/api/settings/kitchen`, `withMembership`). Ask, the library assistant, and
+Generate read it on the server for the session `sub`, never from a request
+body. Chat gets it through `withKitchenProfile` in `scripts/server.ts`,
+because `api/chat.ts` cannot import siblings. A failed read is 503, never a
+reply without the allergies. The research call of a searched brief never
+sees it, and page, paste, and photo import never read it. No log line holds
+any of it. It is not in backups and not on MCP. `/privacy` and `/terms`
+describe it; change them with it.
 
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
@@ -200,7 +230,7 @@ set `FIRESTORE_EMULATOR_HOST` to a loopback `host:port`; any other host is
 refused.
 
 Open `http://localhost:5173/__test/` and pick a persona (`owner`, `member`,
-`empty`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
+`empty`, `capped`, `viewer`, `outsider`, `declined`). Each start clears the emulator and
 reseeds it; `npm run dev:test -- --keep` keeps the data. `--static --port 4173`
 serves `dist/` as well, for CI and browser automation without Vite;
 `GET /__test/personas` answers 503 until the seed is done and then lists the
@@ -253,6 +283,12 @@ names a recipe that is gone. Only `createFromAsk` and MCP `create_recipe`
 stored value, the server pins the owner's value on an editor's put, shared
 pull carries it (an opaque id that grants no access), `publicRecipeBody` and
 `recipeForChat` strip it, and backup import remaps it.
+Optional `Recipe.savedFrom` (`{ name?, savedAt }`, `server/recipeSavedFrom.ts`:
+the sharer's display name when a copy was saved from a recipe link) is the
+fourth (`docs/plans/recipe-links.md`); code must work when it is missing. Only
+the save route sets it; `saveRecipe` forces the stored value, the server pins
+the owner's value on an editor's put, `createFromAsk` drops it, and
+`publicRecipeBody`, shared pull, and `recipeForChat` strip it.
 Collections are a separate store kind. Grants live under
 `collections/{id}/grants/{viewerSub}` plus a reverse
 `incomingShares/{viewerSub}` index; they are REST, not LWW push. Shared
@@ -432,6 +468,23 @@ feature on a recipe page decides separately whether it belongs on
 `PublicRecipe`; shared display pieces live in `src/components/RecipeBody.tsx`.
 Collection delete revokes the public link in the grant-cascade transaction.
 
+**Recipe links** (`docs/plans/recipe-links.md`, `server/recipeLinks.ts`,
+`recipeLinksHttp.ts`, `recipeLinkSave.ts`) share one recipe by copy, not by
+grant. The owner turns a link on or off under `/api/recipes/:id/public` (own
+live recipe only, 404 for anyone else); top-level
+`recipeLinks/{sha256(token)}` keeps the token and the owner's display name.
+They reuse the public URL space: `/p/<token>` and `/api/public/<token>` try a
+collection link first, then a recipe link, so the referrer, log-exclusion,
+and denylist rules above cover them unchanged; the body's `kind` says which.
+A visitor sees the recipe and `sharedBy` (display name, never the email);
+AI is locked. `POST /api/public/save { token }` (member) writes the saver's
+own Unfiled copy with `savedFrom`, under an id derived from the saver and the
+link (a second save is `already`; the owner's own link is `own`), and copies
+its photos server-side (`copyPhotoBetweenOwners`). A copy survives the link
+being turned off and the sharer's account deletion. Recipe delete revokes the
+recipe's links in `cascadeRecipeDelete`'s transaction. Do not add a grant or a
+live tie between a copy and its original.
+
 Collection delete tombstones live grants in the same transaction. Forward
 grants carry an internal `active` flag, and the cascade time is
 `grantCascadeAt`, not the client `updatedAt`. Grants written before `active`
@@ -525,9 +578,8 @@ trigger.
 Docker is not installed locally; local `bash scripts/deploy.sh` still uses
 Cloud Build.
 
-As of 2026-09-27, production was `sous-00013-ccs`, deployed from `main` at
-`cdf6d07` (includes #35, #36 cook log, and #37). Commits after `cdf6d07` were
-not in that deploy. This file does not record later revisions.
+This file does not track what is deployed. Read the live revision with
+`gcloud run services describe sous` before a deploy.
 
 The `emailLower` backfill (`node --env-file=.env.local
 scripts/backfill-email-lower.ts`, ADC for `cooking-assistant-508423`, dry run
@@ -676,6 +728,10 @@ this index matches each file's frontmatter.
 Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 `[core]` or `[ui]`. Do not implement 18–22 off memory; read the slice plan.
 
+A PR that adds or changes a row here writes its status as **Merged** (with
+the PR number when known), because merging is what the PR does. The table
+does not record branches or whether something is deployed.
+
 | Plan | Status |
 | --- | --- |
 | `docs/plans/sous-oauth-db.md` | Parent. Identity + sync (1–17) done. |
@@ -683,50 +739,54 @@ Non-trivial features go through `docs/plans/<slug>.md` with steps tagged
 | `docs/plans/photos-and-deploy-docs.md` | Done (GCS photos, deploy.sh, README, legal rewrite). |
 | `docs/plans/invitation-flow.md` | Done (#8). Request access → `/admin` → Firestore membership. |
 | `docs/plans/invite-links.md` | Done (#12). Single-use 7-day bearer invite links that admit on Google consent. Owners mint from `/admin`. |
-| `docs/plans/member-invite-links.md` | Merged (#48; library-header copy in #49). A non-owner member mints one link from Settings (`POST /api/invites`). Not deployed. |
+| `docs/plans/member-invite-links.md` | Merged (#48; library-header copy in #49). A non-owner member mints one link from Settings (`POST /api/invites`). |
 | `docs/plans/server-backed-library.md` | Done: drop IndexedDB; in-memory library over pull/push. |
 | `docs/plans/ask-voice-stt.md` | Done (#7). Ask composer dictation via `POST /api/stt` (Gemini); output remains text. |
 | `docs/plans/sync-engine-hardening.md` | Findings only, not an approved plan. Dexie-lease items no longer apply. |
 | `docs/plans/recipe-gallery.md` | Done (#10, simplified in #18). Main photo + end-of-recipe gallery. |
-| `docs/plans/shared-recipes.md` | Done. PR 2 view-only collection grants (#23) deployed as `sous-00011-td2`; production is now `sous-00013-ccs`. `emailLower` backfill ran 2026-09-27 (0 pending); real-delete `array-contains` check still to run (see Cloud and deploy). Editor role (#45) and grantee leave (#43) are merged, not deployed. |
+| `docs/plans/shared-recipes.md` | Merged: view-only collection grants (#23), editor role (#45), grantee leave (#43). `emailLower` backfill ran 2026-09-27 (0 pending); real-delete `array-contains` check still to run (see Cloud and deploy). |
 | `docs/plans/shared-collections-review-fixes.md`, `shared-access-hardening.md`, `shared-sharing-final-hardening.md`, `pr23-review-fixes-round-2.md` | Done. Review rounds for PR 2; history only, `shared-recipes.md` and the Sharing section here are current. |
 | `docs/plans/bulk-import.md` | Done (#15). Opt-in bulk URL import on `/import`. |
-| `docs/plans/chrome-extension-import.md` | Built: `extension/` + `POST /api/extension/import`. Not deployed. |
-| `docs/plans/recipe-import-module.md` | Built on `recipe-import-module`: import is `server/recipeImport.ts`; one pipeline for web, extension, evals (`evals/recipeImport.eval.ts`). `api/import.ts` is a 401 stub. Not deployed. |
+| `docs/plans/chrome-extension-import.md` | Merged. `extension/` + `POST /api/extension/import`. |
+| `docs/plans/recipe-import-module.md` | Merged. Import is `server/recipeImport.ts`; one pipeline for web, extension, evals (`evals/recipeImport.eval.ts`). `api/import.ts` is a 401 stub. |
 | `docs/plans/import-blocked-fetch.md` | Extension POSTs the tab HTML; empty html is 422, never `fetchPageHtml`. Website URL import stays paste-fallback. No proxy. |
-| `docs/plans/image-import.md` | Built on `cursor/image-import-38e9`, not deployed. Import one recipe from 1–4 photos (handwritten notes) via `images` on `POST /api/import`; Gemini reads them; never stored. Bound by `docs/constitutions/image-import.md`. |
-| `docs/plans/image-import-evals-and-retry.md` | Built, not deployed. Handwritten evals split into dev/holdout with `evals/AGENTS.md` rules and `ocrCompare --thinking`. The photo retry and runaway-unit check were measured and reverted (dev approach A 14/15 → 12/15; holdout stayed 15/15). |
-| `docs/plans/cook-log.md` | Done (#36; constitution `docs/constitutions/cook-log.md`). Included in `sous-00013-ccs`. |
-| `docs/plans/i18n.md` | Merged (#42; constitution `docs/constitutions/i18n.md`). Not deployed. UI language with `src/i18n/` catalogs, `Recipe.lang`, translation at import and on the recipe screen, dictation language. |
+| `docs/plans/image-import.md` | Merged. Import one recipe from 1–4 photos (handwritten notes) via `images` on `POST /api/import`; Gemini reads them; never stored. Bound by `docs/constitutions/image-import.md`. |
+| `docs/plans/image-import-evals-and-retry.md` | Merged. Handwritten evals split into dev/holdout with `evals/AGENTS.md` rules and `ocrCompare --thinking`. The photo retry and runaway-unit check were measured and reverted (dev approach A 14/15 → 12/15; holdout stayed 15/15). |
+| `docs/plans/cook-log.md` | Merged (#36; constitution `docs/constitutions/cook-log.md`). |
+| `docs/plans/i18n.md` | Merged (#42; constitution `docs/constitutions/i18n.md`). UI language with `src/i18n/` catalogs, `Recipe.lang`, translation at import and on the recipe screen, dictation language. |
 | `docs/plans/i18n-follow-ups.md` | Open. Post-deploy owner steps (Cloud Run translate p95, dictation clips, `lang` backfill `--write`), unrun checks, and review nits left after PR #42. |
-| `docs/plans/collection-path.md` | Built on `cursor/collection-path-2d3d`. Named collections open at `/collections/<id>`. Legacy `?c=` redirects removed. Not deployed. |
-| `docs/plans/library-collections-region.md` | Built. Collection switcher on the page background, sideways scroll, and a `/collections` index. No card around it. Not deployed. |
-| `docs/plans/approval-email.md` | Built on `cursor/approval-email-420a`. Email the requester after an admin approves an access request. Not deployed; before deploying, set `MAIL_FROM` to a sender on a Resend-verified domain (the sandbox sender skips the send). |
-| `docs/plans/library-agent.md` | Merged (#34), not deployed. App-level assistant: read-only tools over the user's own library, modular cards (shopping list first), ephemeral threads. |
-| `docs/plans/import-reliability.md` | Phase 2 built on `claude/import-reliability-plan-170fa6`, not deployed. Typed import warnings stored as optional `Recipe.importCheck`, deterministic checks, retries (constant at 0 until phase 3), warning UI. Import logging is #102 (merged, not deployed). Phase 1 still waits on the reporter's failing URLs; phase 3 waits on a deploy and data. |
-| `docs/plans/import-feedback.md` | Merged (#107), not deployed. Optional import reports after a failed or flagged import, 👍/👎 on clean previews, stored in Firestore `importFeedback` for 180 days. TTL policy on `expireAt` applied 2026-10-01. |
-| `docs/plans/feature-requests.md` | Built on `claude/feature-requests`, not deployed. `/suggest` page, stored in Firestore `featureRequests` for one year; TTL policy on `expireAt` is an owner step. |
-| `docs/plans/agent-collection-moves.md` | Built, not deployed. `propose_collection_move` / `collection_move` v1 proposal card; client apply via `collectionStore.moveRecipes`. |
-| `docs/plans/agent-create-collection.md` | Built, not deployed. `propose_create_collection` / `collection_create` v1 proposal card; client apply via `collectionStore.createWithRecipes` in one push. |
-| `docs/plans/html-parser-recipe-import.md` | Built on `cursor/html-parser-recipe-import-11d4`. Not deployed. Replace the hand-rolled HTML scanner in `server/recipeImport.ts` with parse5 (issue #91). |
-| `docs/plans/public-collections.md` | Built on `claude/read-only-unauthenticated-mode-204be2`, not deployed. Unlisted public link per named collection, readable signed out; AI locked; members can add it as viewers. Apply the widened log exclusion before deploying. |
-| `docs/plans/sheet-dialog.md` | Merged (#95). Headless dialog for Sheet and Ask: focus trap, initial focus, restore on close, dialog semantics. Not deployed. |
-| `docs/plans/mcp-collection-writes.md` | Built on `claude/mcp-collection-writes`, not deployed. `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
-| `docs/plans/mcp-server.md` | Built on `claude/llm-api-vs-mcp-04b215`, not deployed. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
+| `docs/plans/collection-path.md` | Merged. Named collections open at `/collections/<id>`. Legacy `?c=` redirects removed. |
+| `docs/plans/library-collections-region.md` | Merged. Collection switcher on the page background, sideways scroll, and a `/collections` index. No card around it. |
+| `docs/plans/approval-email.md` | Merged. Email the requester after an admin approves an access request. Before deploying, set `MAIL_FROM` to a sender on a Resend-verified domain (the sandbox sender skips the send). |
+| `docs/plans/library-agent.md` | Merged (#34). App-level assistant: read-only tools over the user's own library, modular cards (shopping list first), ephemeral threads. |
+| `docs/plans/import-reliability.md` | Phase 2 merged. Typed import warnings stored as optional `Recipe.importCheck`, deterministic checks, retries (constant at 0 until phase 3), warning UI. Import logging is #102 (merged). Phase 1 still waits on the reporter's failing URLs; phase 3 waits on a deploy and data. |
+| `docs/plans/import-feedback.md` | Merged (#107). Optional import reports after a failed or flagged import, 👍/👎 on clean previews, stored in Firestore `importFeedback` for 180 days. TTL policy on `expireAt` applied 2026-10-01. |
+| `docs/plans/feature-requests.md` | Merged. `/suggest` page, stored in Firestore `featureRequests` for one year; TTL policy on `expireAt` is an owner step. |
+| `docs/plans/agent-collection-moves.md` | Merged. `propose_collection_move` / `collection_move` v1 proposal card; client apply via `collectionStore.moveRecipes`. |
+| `docs/plans/agent-create-collection.md` | Merged. `propose_create_collection` / `collection_create` v1 proposal card; client apply via `collectionStore.createWithRecipes` in one push. |
+| `docs/plans/html-parser-recipe-import.md` | Merged. Replace the hand-rolled HTML scanner in `server/recipeImport.ts` with parse5 (issue #91). |
+| `docs/plans/public-collections.md` | Merged. Unlisted public link per named collection, readable signed out; AI locked; members can add it as viewers. Apply the widened log exclusion before deploying. |
+| `docs/plans/sheet-dialog.md` | Merged (#95). Headless dialog for Sheet and Ask: focus trap, initial focus, restore on close, dialog semantics. |
+| `docs/plans/mcp-collection-writes.md` | Merged. `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
+| `docs/plans/mcp-server.md` | Merged. Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
-| `docs/plans/recipe-generation.md` | Merged (#153), not deployed. Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
-| `docs/plans/recipe-variants.md` | Merged (#148), not deployed. `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` built on `claude/mcp-create-variant` (#149). |
-| `docs/plans/i18n-review-ci.md` | PR 1 built on `claude/i18n-review-ci`: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2 on `claude/i18n-review-workflow`: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6); its live check waits for the merge. |
+| `docs/plans/recipe-generation.md` | Merged (#153). Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
+| `docs/plans/recipe-variants.md` | Merged (#148). `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` merged (#149). |
+| `docs/plans/i18n-review-ci.md` | Merged. PR 1: `npm run test:i18n`, the in-context translation review as a Playwright + Gemini-judge suite in `testing/i18n-review/`, run against test mode with model routes mocked, all 91 states (steps 1–5 and its docs). Amends i18n principle 16. PR 2: the daily workflow on `main` that keeps one `i18n-review` issue of open findings (step 6). |
 | `docs/plans/audit-fixes.md` | Done (all 17 steps). Fixes for the 2026-08-30 audit, now `docs/audits/2026-08-30.md`. Written against the pre-Gemini, password-gated IndexedDB app; history only. |
 | `docs/plans/ui-polish.md` | Done (`6e158ec`). Hover, focus, overflow menu, and sheet polish. Written against the Dexie-era app; history only. |
 | `docs/plans/dark-mode-default.md` | Done. Persisted light/dark theme, dark by default (`src/lib/theme.ts`, Settings → Appearance). |
 | `docs/plans/unit-enum.md` | Done (all 4 steps). Unit `<select>` with a Custom option in `RecipeForm` (`src/lib/units.ts`); storage stays `unit?: string`. |
 | `docs/plans/gemini-provider.md` | Done (all 5 steps). Replaced Anthropic with Gemini (`@google/genai`) for chat and import. |
 | `docs/plans/recipe-gallery-simplification.md` | Done (#18). Simplified gallery photo saving; `recipe-gallery.md` is the feature plan. |
-| `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. Not deployed. |
-| `docs/plans/failed-cook-tap-lww.md` | Done (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. Not deployed. |
+| `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
+| `docs/plans/failed-cook-tap-lww.md` | Merged (`864e4e9`). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
-| `docs/plans/test-coverage.md` | Done: merged as #151, #152, #154, and #157 (the coverage report), not deployed. Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
+| `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
+| `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
+| `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage.expireAt` is an owner step after deploy. |
+| `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -877,7 +937,9 @@ the `.cursor/skills/i18n-visual-review` skill.
 
 `/about` is a short public page that says what the app is for. `/privacy`
 and `/terms` describe Firestore + GCS and that there is no on-device recipe
-database. Theme preference, the UI language (`cook.locale`), and
+database. Theme preference, the UI language (`cook.locale`), the
+cooking-screen settings (`cook.wakeLock`, `cook.recipeTextSize`; device-local,
+never synced, `docs/plans/cooking-screen-settings.md`), and
 `cook.session` stay in localStorage. Do not
 describe IndexedDB, offline edits, or a local library. The Chrome extension
 sends rendered page HTML, possibly from a page behind a login, to the server

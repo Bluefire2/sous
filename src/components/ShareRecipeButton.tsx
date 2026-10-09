@@ -8,12 +8,15 @@ import NoticeToast, { type Notice } from './NoticeToast';
 
 /**
  * Shares a recipe as plain text: the system share sheet where the browser has
- * one, otherwise the clipboard and a toast. It only reads the recipe it is
+ * one, otherwise the clipboard and a notice. It only reads the recipe it is
  * given, so it is the same for an own, a shared and a public recipe. Pass the
  * stored recipe, never a display translation (`docs/constitutions/i18n.md`
  * principle 1).
  */
-export default function ShareRecipeButton({ recipe }: { recipe: Recipe }) {
+export function useRecipeTextShare(recipe: Recipe): {
+  share: () => Promise<void>;
+  notice: Notice | null;
+} {
   const t = useT();
   const locale = useLocale();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -26,7 +29,7 @@ export default function ShareRecipeButton({ recipe }: { recipe: Recipe }) {
     };
   }, []);
 
-  const onShare = async () => {
+  const share = async () => {
     const text = recipeToText(recipe, locale, t);
     const outcome = await shareOrCopy(navigator, { title: recipe.title, text });
     if (!mountedRef.current) return;
@@ -37,9 +40,16 @@ export default function ShareRecipeButton({ recipe }: { recipe: Recipe }) {
     }
   };
 
+  return { share, notice };
+}
+
+/** The Share control that sends the recipe as text, with no other choice. */
+export default function ShareRecipeButton({ recipe }: { recipe: Recipe }) {
+  const t = useT();
+  const { share, notice } = useRecipeTextShare(recipe);
   return (
     <>
-      <button type="button" onClick={() => void onShare()} className={`${ghostBtn} print:hidden`}>
+      <button type="button" onClick={() => void share()} className={`${ghostBtn} print:hidden`}>
         {t('common.share')}
       </button>
       <NoticeToast notice={notice} />

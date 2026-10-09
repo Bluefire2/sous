@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PublicJoinOutcome } from './publicJoin.ts';
 import { hashPublicToken, type PublicLinkRecord } from './publicLinks.ts';
+import type { RecipeLinkRecord } from './recipeLinks.ts';
 import {
   collectionIdFromPublicPath,
   handlePublicGet,
@@ -57,11 +58,111 @@ function visitorDeps(overrides: Partial<PublicVisitorDependencies> = {}) {
         createdAt: 1,
         updatedAt: 2,
       })),
+    readRecipeLink: async () => null,
+    readRecipe: async () => undefined,
     photoResponse,
     ...overrides,
   };
   return { deps, photoResponse };
 }
+
+const recipeToken = 'R'.repeat(43);
+
+function recipeLink(overrides: Partial<RecipeLinkRecord> = {}): RecipeLinkRecord {
+  return {
+    ownerSub,
+    ownerEmail: 'owner@example.com',
+    ownerName: 'Ada',
+    recipeId,
+    token: recipeToken,
+    status: 'live',
+    createdAt: now - 1,
+    ...overrides,
+  };
+}
+
+function recipeVisitorDeps(overrides: Partial<PublicVisitorDependencies> = {}) {
+  return visitorDeps({
+    readLink: async () => null,
+    readRecipeLink: async (id) => (id === hashPublicToken(recipeToken) ? recipeLink() : null),
+    readRecipe: async (_sub, id) => ({
+      id,
+      title: 'Soup',
+      servings: 2,
+      ingredientSections: [],
+      steps: [],
+      tags: [],
+      photoId,
+      notes: 'Salt late.',
+      importCheck: { at: 1, warnings: [] },
+      savedFrom: { name: 'Eve', savedAt: 1 },
+      createdAt: 1,
+      updatedAt: 2,
+    }),
+    ...overrides,
+  });
+}
+
+describe('handlePublicGet for a recipe link', () => {
+  it('serves the recipe and the display name under the visitor headers', async () => {
+    const res = await handlePublicGet(
+      get(`/api/public/${recipeToken}`),
+      recipeVisitorDeps().deps,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.kind).toBe('recipe');
+    expect(body.sharedBy).toBe('Ada');
+    expect(JSON.stringify(body)).not.toContain('owner@example.com');
+    const recipe = body.recipe as Record<string, unknown>;
+    expect(recipe.notes).toBe('Salt late.');
+    expect(recipe).not.toHaveProperty('importCheck');
+    expect(recipe).not.toHaveProperty('savedFrom');
+  });
+
+  it('prefers a collection link and labels its body', async () => {
+    const res = await handlePublicGet(get(`/api/public/${token}`), visitorDeps().deps);
+    expect(((await res.json()) as { kind: string }).kind).toBe('collection');
+  });
+
+  it('answers the generic 404 for a revoked link, an unadmitted owner, or a deleted recipe', async () => {
+    for (const overrides of [
+      { readRecipeLink: async () => recipeLink({ status: 'revoked' as const }) },
+      { ownerAdmitted: async () => false },
+      { readRecipe: async () => ({ id: recipeId, deletedAt: 5 }) },
+      { readRecipe: async () => undefined },
+    ] satisfies Partial<PublicVisitorDependencies>[]) {
+      const res = await handlePublicGet(
+        get(`/api/public/${recipeToken}`),
+        recipeVisitorDeps(overrides).deps,
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Not found', code: 'not-found' });
+    }
+  });
+
+  it("streams the link recipe's photo and nothing else", async () => {
+    const { deps, photoResponse } = recipeVisitorDeps();
+    const ok = await handlePublicGet(
+      get(`/api/public/${recipeToken}/recipes/${recipeId}/photos/${photoId}`),
+      deps,
+    );
+    expect(ok.status).toBe(200);
+    expect(photoResponse).toHaveBeenCalledWith(ownerSub, photoId, 'GET');
+    const otherRecipe = '77777777-7777-4777-8777-777777777777';
+    const otherPhoto = '66666666-6666-4666-8666-666666666666';
+    for (const path of [
+      `/api/public/${recipeToken}/recipes/${otherRecipe}/photos/${photoId}`,
+      `/api/public/${recipeToken}/recipes/${recipeId}/photos/${otherPhoto}`,
+    ]) {
+      const res = await handlePublicGet(get(path), deps);
+      expect(res.status, path).toBe(404);
+    }
+    expect(photoResponse).toHaveBeenCalledTimes(1);
+  });
+});
 
 function get(path: string, method = 'GET'): Request {
   return new Request(`${ORIGIN}${path}`, { method });

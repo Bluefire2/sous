@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { ingredientLine } from '../lib/recipeText';
+import type { RecipeTextSize } from '../lib/settings';
 import type { Recipe } from '../lib/types';
 
 /**
@@ -24,6 +25,12 @@ export const translateChipClass =
  * room kept clear of the floating Ask pill goes.
  */
 export const recipePageClass = 'mx-auto max-w-xl px-4 pb-24 print:max-w-none print:px-0 print:pb-0';
+
+/**
+ * Ingredient and step rows one size step up for reading from across the
+ * kitchen (Settings → Cooking). Paper keeps the normal size.
+ */
+const largeRowText = 'text-lg print:text-base';
 
 export function SourceCredit({ source }: { source: URL }) {
   const t = useT();
@@ -92,6 +99,7 @@ export function IngredientsSection({
   onServings,
   checkedKeys,
   onToggle,
+  textSize = 'normal',
 }: {
   recipe: Recipe;
   /** The text shown, possibly translated; quantities always come from `recipe`. */
@@ -100,6 +108,8 @@ export function IngredientsSection({
   onServings: (servings: number) => void;
   checkedKeys: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -154,6 +164,8 @@ export function IngredientsSection({
                       type="button"
                       onClick={() => onToggle(key)}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors print:p-0 print:text-ink ${
+                        textSize === 'large' ? `${largeRowText} ` : ''
+                      }${
                         isChecked
                           ? 'bg-surface-muted text-ink-subtle hover:bg-surface active:bg-surface'
                           : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
@@ -196,6 +208,7 @@ export function StepsSection({
   currentStep,
   onStep,
   afterDone,
+  textSize = 'normal',
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
@@ -203,8 +216,13 @@ export function StepsSection({
   onStep: (step: number) => void;
   /** Shown under "Done" once every step is ticked, such as the cook-log link. */
   afterDone?: ReactNode;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
 }) {
   const t = useT();
+  const large = textSize === 'large';
+  // The current step stays one step above the others at either size.
+  const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
@@ -219,6 +237,8 @@ export function StepsSection({
                 type="button"
                 onClick={() => onStep(i === currentStep ? i + 1 : i)}
                 className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors print:px-0 print:py-1 print:text-ink ${
+                  large ? `${largeRowText} ` : ''
+                }${
                   isCurrent
                     ? 'bg-surface ring-2 ring-amber-400'
                     : isDone
@@ -241,7 +261,7 @@ export function StepsSection({
                     i + 1
                   )}
                 </span>
-                <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
+                <span className={isCurrent ? currentText : ''}>{text}</span>
               </button>
             </li>
           );

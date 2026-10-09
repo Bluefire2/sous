@@ -6,12 +6,15 @@
  * LWW, and the grant transactions all run. The MCP grant has no HTTP path
  * short of the consent page, which fetches a public client-metadata document,
  * so the seed writes it with the server's own store function and then redeems
- * its code through `POST /oauth/token`.
+ * its code through `POST /oauth/token`. The `capped` persona's spent AI
+ * budget has no HTTP path either (only real model calls add to it), so the
+ * seed writes it with the budget's own store.
  *
  * Loaded by testing/test-server.ts after it has set the test environment.
  */
 import { s256Challenge } from '../server/mcp/oauth/pkce.ts';
 import { createGrantWithCode, touchGrant } from '../server/mcp/oauth/store.ts';
+import { LLM_DAILY_BUDGET_MICRO_USD, firestoreLlmUsageStore, utcDayKey } from '../server/llmBudget.ts';
 import { signAccessRequestTx } from '../server/session.ts';
 import { TEST_PROJECT_ID } from './env.ts';
 import {
@@ -22,6 +25,7 @@ import {
 } from './seededMcp.ts';
 import {
   FIXTURE_IDS,
+  KITCHEN_PROFILES,
   memberLibrary,
   ownerLibrary,
   viewerLibrary,
@@ -226,8 +230,32 @@ export async function seed(baseUrl: string): Promise<number> {
   await request(baseUrl, `/api/collections/${FIXTURE_IDS.member.weeknights}/public`, {
     cookie: cookies.member,
   });
+  // A recipe link on an unfiled recipe (`docs/plans/recipe-links.md`), and a
+  // copy saved from it by `capped`, whose library nothing else checks, so the
+  // copy's "Shared by" line can be reviewed.
+  const recipeLink = (await request(
+    baseUrl,
+    `/api/recipes/${FIXTURE_IDS.member.overnightOats}/public`,
+    { cookie: cookies.member },
+  )) as { url?: string };
+  const recipeToken = /\/p\/([^/?#]+)$/.exec(recipeLink.url ?? '')?.[1];
+  if (recipeToken !== undefined) {
+    await request(baseUrl, '/api/public/save', {
+      cookie: cookies.capped,
+      json: { token: recipeToken },
+    });
+  }
   await request(baseUrl, '/api/admin/invites', { cookie: cookies.owner });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.member, json: KITCHEN_PROFILES.member });
+  await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.viewer, json: KITCHEN_PROFILES.viewer });
 
   await connectApp(baseUrl, now);
+  // Today in UTC: after midnight a kept seed (`--keep`) is no longer capped.
+  await firestoreLlmUsageStore.addSpend(
+    persona('capped').sub,
+    utcDayKey(now),
+    LLM_DAILY_BUDGET_MICRO_USD,
+    new Date(now + DAY),
+  );
   return now;
 }

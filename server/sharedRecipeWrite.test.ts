@@ -257,6 +257,22 @@ describe('planSharedRecipePut', () => {
     expect(plain.body).not.toHaveProperty('variantOf');
   });
 
+  it("keeps the owner's savedFrom, which the editor never sees", () => {
+    const savedFrom = { name: 'Ada', savedAt: 5 };
+    const copy: SharedRecipeAccess = { ...editor, recipe: { ...ownerRecipe, savedFrom } };
+    for (const payload of [editedPayload({ savedFrom: { name: 'Eve', savedAt: 6 } }), editedPayload()]) {
+      const plan = planSharedRecipePut({ ...base, access: copy, payload });
+      expect(plan).toMatchObject({ kind: 'write', body: { savedFrom } });
+    }
+    const plain = planSharedRecipePut({
+      ...base,
+      payload: editedPayload({ savedFrom: { name: 'Eve', savedAt: 6 } }),
+    });
+    expect(plain.kind).toBe('write');
+    if (plain.kind !== 'write') return;
+    expect(plain.body).not.toHaveProperty('savedFrom');
+  });
+
   it('rejects a viewer, a stranger, and an editor whose owner is no longer admitted', () => {
     for (const input of [
       { ...base, access: { ...editor, role: 'viewer' as const } },

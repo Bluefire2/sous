@@ -30,6 +30,13 @@ import {
   type PublicLinkRecord,
   type PublicReadDependencies,
 } from './publicLinks.ts';
+import {
+  readRecipeLink,
+  recipeLinkBody,
+  resolveRecipeLink,
+  resolveRecipeLinkPhoto,
+  type RecipeLinkReadDependencies,
+} from './recipeLinks.ts';
 import { isUuid, readDocData, readDocsData } from './store.ts';
 
 const BODY_LIMIT = 2_000;
@@ -90,17 +97,25 @@ async function readJsonBody(req: Request): Promise<Record<string, unknown> | nul
 // Visitor API: GET /api/public/<token>[/recipes/<id>/photos/<id>]. No session.
 // The token is in the path, so these URLs are covered by the log exclusion in
 // scripts/logExclusions.ts. Never log the request URL here.
+//
+// A token is a public collection link or a recipe link
+// (`server/recipeLinks.ts`); the collection is tried first. The body says
+// which: `{ kind: 'collection', collection, recipes }` or
+// `{ kind: 'recipe', recipe, sharedBy? }`.
 // ---------------------------------------------------------------------------
 
-export type PublicVisitorDependencies = PublicReadDependencies & {
-  photoResponse: (ownerSub: string, photoId: string, method: string) => Promise<Response>;
-};
+export type PublicVisitorDependencies = PublicReadDependencies &
+  RecipeLinkReadDependencies & {
+    photoResponse: (ownerSub: string, photoId: string, method: string) => Promise<Response>;
+  };
 
 const liveVisitorDependencies: PublicVisitorDependencies = {
   readLink: readPublicLink,
   ownerAdmitted: sharingOwnerAdmitted,
   readCollection: (ownerSub, collectionId) => readDocData(ownerSub, 'collections', collectionId),
   readRecipes: (ownerSub, ids) => readDocsData(ownerSub, 'recipes', ids),
+  readRecipeLink,
+  readRecipe: (ownerSub, recipeId) => readDocData(ownerSub, 'recipes', recipeId),
   photoResponse: storedPhotoResponse,
 };
 
@@ -115,9 +130,16 @@ export async function handlePublicGet(
   try {
     if (path.kind === 'collection') {
       const result = await readPublicCollection(path.token, deps);
-      return result === null ? visitorNotFound() : visitorJson(result.body);
+      if (result !== null) {
+        return visitorJson({ kind: 'collection', ...result.body });
+      }
+      const recipe = await resolveRecipeLink(path.token, deps);
+      return recipe === null
+        ? visitorNotFound()
+        : visitorJson(recipeLinkBody(recipe.link, recipe.recipe));
     }
-    const allowed = await resolvePublicPhoto(path, deps);
+    const allowed =
+      (await resolvePublicPhoto(path, deps)) ?? (await resolveRecipeLinkPhoto(path, deps));
     if (allowed === null) {
       return visitorNotFound();
     }
