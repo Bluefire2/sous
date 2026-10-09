@@ -104,10 +104,15 @@ reachable from personas.
   entry against 份量 every time. A Chinese speaker confirmed on 2026-10-09
   that the judge is right: 份量 is the amount in one serving, and
   减少份量 / 增加份量 read as a smaller or larger serving, not fewer or
-  more servings. 份量 is now a `KNOWN_REAL` entry in `calibration.ts`
-  until the catalog is fixed in its own change. With it, a sixth run on
+  more servings. 份量 was a `KNOWN_REAL` entry in `calibration.ts`
+  until the catalog was fixed in its own change. With it, a sixth run on
   3.8: 12 of 12 planted defects confirmed, no false blocker on the 30
   clean pairs, 57 calls. So the judge moves to 3.8.
+- **份量 fixed (2026-10-09).** `zh-Hans` now says 份数 (and 减少份数 /
+  增加份数) wherever the English means a number of servings, and
+  `KNOWN_REAL` is empty again. Calibration on 3.8 after the fix: 11 of 12
+  planted defects confirmed ("Выбор" seen only), no false blocker on the
+  30 clean pairs, 55 calls.
 - **The judge reads the rubric and glossary from their sources.** The rubric
   bullets come from the README's "Rubric" section and the register and
   glossary from the constitution's "Register and glossary" decision, read at
