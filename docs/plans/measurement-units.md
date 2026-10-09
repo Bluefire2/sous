@@ -1,6 +1,6 @@
 # Measurement units
 
-Status: phase 1 merged (#180); phase 2 open.
+Status: phase 1 merged (#180); phase 2 merged.
 Constitutions applied: client state (principle 3: `useUnitSystem` reads a
 module store through `useSyncExternalStore` with a primitive getter; scope
 updated), i18n (catalogs, principle 1: share and copy keep the stored recipe;
@@ -108,7 +108,7 @@ Saves from Settings go to the server one at a time, so two quick taps leave the 
    - `/privacy` (stored setting, `cook.units`, deletion) and AGENTS.md.
    - `writeSmoke` round-trips the setting, and `deletionCheck` checks it is removed with the viewer.
 
-### Phase 2 (separate PR)
+### Phase 2 (separate PR, stacked on #180)
 
 8. [core] Prompt context. `readPromptContext(sub)` reads the kitchen and preferences documents in one Firestore `getAll`.
    - It is used by `withKitchenProfile` (chat), the Generate branch of `server/importRoute.ts`, and `server/agent/route.ts`.

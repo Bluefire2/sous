@@ -30,10 +30,11 @@ const FULL: KitchenProfileFields = {
   notes: 'Cooking for two.',
 };
 
-function memoryStore(docs: Record<string, unknown> = {}) {
+function memoryStore(docs: Record<string, unknown> = {}, preferences: Record<string, unknown> = {}) {
   const writes: { sub: string; profile: KitchenProfile }[] = [];
   const store: KitchenProfileStore = {
     read: vi.fn(async (sub: string) => docs[sub]),
+    readPromptDocs: vi.fn(async (sub: string) => ({ kitchen: docs[sub], preferences: preferences[sub] })),
     write: vi.fn(async (sub: string, profile: KitchenProfile) => {
       writes.push({ sub, profile });
       docs[sub] = profile;
@@ -46,6 +47,7 @@ function failingStore(): KitchenProfileStore {
   return {
     read: () => Promise.reject(new Error('14 UNAVAILABLE: SECRET')),
     write: () => Promise.reject(new Error('14 UNAVAILABLE: SECRET')),
+    readPromptDocs: () => Promise.reject(new Error('14 UNAVAILABLE: SECRET')),
   };
 }
 
@@ -219,10 +221,19 @@ describe('withKitchenProfile', () => {
   });
 
   it('passes no block when nothing useful is saved', async () => {
-    const { store } = memoryStore({ 'sub-1': { ...EMPTY, updatedAt: NOW } });
+    const { store } = memoryStore({ 'sub-1': { ...EMPTY, updatedAt: NOW } }, { 'sub-1': { units: 'asWritten' } });
     const handler = vi.fn(async () => new Response('ok'));
     await withKitchenProfile(handler, store)(new Request('http://localhost/'), CTX);
     expect(handler).toHaveBeenCalledWith(expect.any(Request), CTX);
+  });
+
+  it('passes metric units, with or without a profile, in one read', async () => {
+    const { store } = memoryStore({}, { 'sub-1': { units: 'metric', updatedAt: NOW } });
+    const handler = vi.fn(async () => new Response('ok'));
+    await withKitchenProfile(handler, store)(new Request('http://localhost/'), CTX);
+    expect(handler).toHaveBeenCalledWith(expect.any(Request), { authorizedSub: 'sub-1', units: 'metric' });
+    expect(store.readPromptDocs).toHaveBeenCalledTimes(1);
+    expect(store.read).not.toHaveBeenCalled();
   });
 
   it('answers 503 without calling the handler when the read fails', async () => {

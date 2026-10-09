@@ -15,7 +15,7 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { readKitchenProfileBlock, type KitchenProfileStore } from './kitchenProfile.ts';
+import { readPromptContext, type KitchenProfileStore, type PromptContext } from './kitchenProfile.ts';
 import {
   RequestBodyError,
   readBoundedText,
@@ -423,10 +423,10 @@ async function handleImport(
     }
     // Read before a search slot or the day's budget is taken. A failed read is
     // 503: a recipe written without the member's allergies is worse than none.
-    let kitchenProfile = '';
+    let promptContext: PromptContext = { kitchenProfile: '', units: 'asWritten' };
     if (member !== '') {
       try {
-        kitchenProfile = await readKitchenProfileBlock(member, kitchenStore);
+        promptContext = await readPromptContext(member, kitchenStore);
       } catch {
         entry.outcome = 'store_unavailable';
         return fail('import-profile-unavailable', KITCHEN_PROFILE_UNAVAILABLE, 503);
@@ -443,7 +443,8 @@ async function handleImport(
       const outcome = await generateFromBrief(brief, metered, {
         search,
         translateTo: target.translateTo,
-        kitchenProfile,
+        kitchenProfile: promptContext.kitchenProfile,
+        units: promptContext.units,
       });
       noteImportOutcome(entry, outcome);
       return outcomeResponse(outcome, undefined, {

@@ -21,7 +21,7 @@ import {
 } from './membership.ts';
 import { getStoreFirestore } from './store.ts';
 
-/** Mirrored in `src/lib/accountPreferences.ts`. */
+/** Mirrored in `src/lib/unitConversion.ts`. */
 export const UNIT_SYSTEMS = ['asWritten', 'metric'] as const;
 export type UnitSystem = (typeof UNIT_SYSTEMS)[number];
 

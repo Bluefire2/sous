@@ -153,7 +153,12 @@ only (`src/lib/unitConversion.ts`): lb and oz to g/kg, °F in step and note
 text to °C, volumes never; the stored recipe, share text, the edit form, and
 Ask's proposal card stay as written. The weight test reads the stored unit,
 never a translated one. `cook.units` caches the value per `sub` and is
-cleared on sign-out.
+cleared on sign-out. With `metric`, Ask, the assistant, and Generate add a
+metric rule to their prompts: `readPromptContext` in
+`server/kitchenProfile.ts` reads the kitchen and preferences documents in one
+`getAll` for the session `sub` (chat gets `units` through
+`withKitchenProfile`), and a failed read is 503. The research call of a
+searched brief never sees it.
 
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
@@ -795,7 +800,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
 | `docs/plans/failed-cook-tap-lww.md` | Merged (#94). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
-| `docs/plans/measurement-units.md` | Merged (#180). Settings → Measurements (as written / metric) on the account; the recipe screen shows lb, oz and °F as g/kg and °C with the original beside it. Volumes stay as written. Phase 2 (Generate and Ask write metric) is open. |
+| `docs/plans/measurement-units.md` | Merged (#180). Settings → Measurements (as written / metric) on the account; the recipe screen shows lb, oz and °F as g/kg and °C with the original beside it. Volumes stay as written. Phase 2 merged: with metric, Generate, Ask, and the assistant write new amounts in metric. |
 | `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |

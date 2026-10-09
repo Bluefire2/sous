@@ -12,6 +12,7 @@
  * `GET /api/settings/kitchen` answers `{ profile }` (null when none is
  * saved); `POST` replaces it. Both are gated by `withMembership`.
  */
+import { accountPreferencesFromDoc, type UnitSystem } from './accountPreferences.ts';
 import { sanitizedError } from './importLog.ts';
 import {
   RequestBodyError,
@@ -183,19 +184,34 @@ export interface KitchenProfileStore {
   /** The stored document's data, or undefined when there is none. */
   read(sub: string): Promise<unknown>;
   write(sub: string, profile: KitchenProfile): Promise<void>;
+  /**
+   * The kitchen profile and account preferences documents (each undefined
+   * when there is none), in one read, for the prompts.
+   */
+  readPromptDocs(sub: string): Promise<{ kitchen: unknown; preferences: unknown }>;
 }
 
-function kitchenDoc(sub: string) {
-  return getStoreFirestore().collection('users').doc(sub).collection('settings').doc('kitchen');
+function settingsDoc(sub: string, id: 'kitchen' | 'preferences') {
+  return getStoreFirestore().collection('users').doc(sub).collection('settings').doc(id);
 }
 
 export const firestoreKitchenProfileStore: KitchenProfileStore = {
   read: async (sub) => {
-    const snap = await kitchenDoc(sub).get();
+    const snap = await settingsDoc(sub, 'kitchen').get();
     return snap.exists ? snap.data() : undefined;
   },
   write: async (sub, profile) => {
-    await kitchenDoc(sub).set(profile);
+    await settingsDoc(sub, 'kitchen').set(profile);
+  },
+  readPromptDocs: async (sub) => {
+    const [kitchen, preferences] = await getStoreFirestore().getAll(
+      settingsDoc(sub, 'kitchen'),
+      settingsDoc(sub, 'preferences'),
+    );
+    return {
+      kitchen: kitchen?.exists ? kitchen.data() : undefined,
+      preferences: preferences?.exists ? preferences.data() : undefined,
+    };
   },
 };
 
@@ -206,12 +222,26 @@ export async function readKitchenProfile(
   return kitchenProfileFromDoc(await store.read(sub));
 }
 
-/** The prompt block for `sub`. Throws when the store does; callers answer 503 rather than drop the allergies. */
-export async function readKitchenProfileBlock(
+/**
+ * What the prompts know about the member beyond the request: the kitchen
+ * profile block (`''` when there is none) and their measurement units
+ * (`docs/plans/measurement-units.md`). Each feature adds its own rules.
+ */
+export interface PromptContext {
+  kitchenProfile: string;
+  units: UnitSystem;
+}
+
+/** The prompt context for `sub`, in one store read. Throws when the store does; callers answer 503 rather than drop the allergies. */
+export async function readPromptContext(
   sub: string,
   store: KitchenProfileStore = firestoreKitchenProfileStore,
-): Promise<string> {
-  return kitchenProfilePromptBlock(await readKitchenProfile(sub, store));
+): Promise<PromptContext> {
+  const docs = await store.readPromptDocs(sub);
+  return {
+    kitchenProfile: kitchenProfilePromptBlock(kitchenProfileFromDoc(docs.kitchen)),
+    units: accountPreferencesFromDoc(docs.preferences).units,
+  };
 }
 
 function noStoreJson(body: unknown, status = 200): Response {
@@ -272,25 +302,32 @@ export async function kitchenProfilePost(
   }
 }
 
-/** What `api/chat.ts` accepts beside the session: the prebuilt profile block. */
-export type ChatHandlerContext = MembershipHandlerContext & { kitchenProfile?: string };
+/**
+ * What `api/chat.ts` accepts beside the session: the prebuilt profile block,
+ * and `units: 'metric'` when the member reads in metric.
+ */
+export type ChatHandlerContext = MembershipHandlerContext & { kitchenProfile?: string; units?: 'metric' };
 
 /**
  * Wraps the chat handler (which cannot import this module, see AGENTS.md) so
- * it receives the member's profile block. A failed read is 503: Ask must not
- * answer as if the member had no allergies.
+ * it receives the member's profile block and units. A failed read is 503:
+ * Ask must not answer as if the member had no allergies.
  */
 export function withKitchenProfile(
   handler: (req: Request, ctx: ChatHandlerContext) => Promise<Response>,
   store: KitchenProfileStore = firestoreKitchenProfileStore,
 ): (req: Request, ctx: MembershipHandlerContext) => Promise<Response> {
   return async (req, ctx) => {
-    let kitchenProfile: string;
+    let context: PromptContext;
     try {
-      kitchenProfile = await readKitchenProfileBlock(ctx.authorizedSub, store);
+      context = await readPromptContext(ctx.authorizedSub, store);
     } catch {
       return storeUnavailable();
     }
-    return handler(req, kitchenProfile === '' ? ctx : { ...ctx, kitchenProfile });
+    return handler(req, {
+      ...ctx,
+      ...(context.kitchenProfile === '' ? {} : { kitchenProfile: context.kitchenProfile }),
+      ...(context.units === 'metric' ? { units: 'metric' as const } : {}),
+    });
   };
 }

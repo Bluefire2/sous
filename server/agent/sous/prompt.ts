@@ -7,6 +7,8 @@ export function buildSystemPrompt(opts: {
   cards: { rule: string }[];
   /** The member's kitchen profile block (`kitchenProfilePromptBlock`), or `''`. */
   kitchenProfile?: string;
+  /** The member's measurement units (`docs/plans/measurement-units.md`). */
+  units?: 'asWritten' | 'metric';
 }): string {
   const parts: string[] = [];
   parts.push(
@@ -20,6 +22,11 @@ export function buildSystemPrompt(opts: {
     parts.push(opts.kitchenProfile);
     parts.push(
       'Use the kitchen profile when suggesting or choosing recipes: never suggest adding an allergen or a "never include" food, point out when a recipe the user is considering contains one, and prefer recipes that fit the diet and equipment.',
+    );
+  }
+  if (opts.units === 'metric') {
+    parts.push(
+      'The user cooks in metric: any new quantity or temperature you write uses g, kg, ml, l and °C (teaspoons and tablespoons are fine for small amounts). Quote a recipe\'s own amounts as the recipe gives them unless the user asks you to convert.',
     );
   }
   parts.push(

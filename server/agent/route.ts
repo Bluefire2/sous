@@ -23,7 +23,7 @@ import {
   requireMember,
   storeUnavailable,
 } from '../membership.ts';
-import { readKitchenProfileBlock } from '../kitchenProfile.ts';
+import { readPromptContext, type PromptContext } from '../kitchenProfile.ts';
 import { admitLlm, llmRefusal } from '../llmBudget.ts';
 
 const LIBRARY_LOAD_TIMEOUT_MS = 90_000;
@@ -80,12 +80,12 @@ export async function agentPost(req: Request): Promise<Response> {
   void loadPromise.catch(() => {});
   // Read beside the library; a failed read is 503, never an answer that
   // ignores the member's allergies.
-  const profilePromise = readKitchenProfileBlock(access.sub);
+  const profilePromise = readPromptContext(access.sub);
   void profilePromise.catch(() => {});
   let library;
-  let kitchenProfile: string;
+  let promptContext: PromptContext;
   try {
-    [library, kitchenProfile] = await Promise.race([
+    [library, promptContext] = await Promise.race([
       Promise.all([loadPromise, profilePromise]),
       new Promise<never>((_, reject) => {
         loadTimer = setTimeout(() => reject(new Error('library load timeout')), LIBRARY_LOAD_TIMEOUT_MS);
@@ -127,7 +127,8 @@ export async function agentPost(req: Request): Promise<Response> {
         clientNow: parsed.value.clientNow,
         timeZone: parsed.value.timeZone,
         cards: CARD_SPECS,
-        kitchenProfile,
+        kitchenProfile: promptContext.kitchenProfile,
+        units: promptContext.units,
       }),
       messages,
       tools: dataTools(library),

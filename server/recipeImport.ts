@@ -32,6 +32,7 @@ import {
   type ImportSelfReport,
   type RecipeJsonLd,
 } from './importChecks.ts';
+import type { UnitSystem } from './accountPreferences.ts';
 import { thrownStatus } from './importLog.ts';
 import {
   isBlockingWarning,
@@ -941,6 +942,13 @@ const KITCHEN_PROFILE_GENERATE_RULE =
   'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise. Treat the equipment as notes, not a full list: never need anything the profile says is missing.';
 
 /**
+ * For a member who chose Metric in Settings (`docs/plans/measurement-units.md`).
+ * A unit the request names still wins.
+ */
+const METRIC_GENERATE_RULE =
+  'The user cooks in metric: write weights in g or kg, liquids in ml or l (teaspoons and tablespoons are fine for small amounts), oven temperatures in °C, and sizes in cm, unless the request asks for other units.';
+
+/**
  * The prompt for a recipe written from an idea. It is the opposite of
  * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
  * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
@@ -948,7 +956,7 @@ const KITCHEN_PROFILE_GENERATE_RULE =
  * With `withNotes`, the research call's notes follow the request; with a
  * `kitchenProfile` block, the profile and its rule close the prompt.
  */
-function generatePrompt(withNotes: boolean, kitchenProfile = ''): string {
+function generatePrompt(withNotes: boolean, kitchenProfile = '', units: UnitSystem = 'asWritten'): string {
   const fillIn =
     'Fill in the ingredients with quantities and the method as clear numbered steps from your knowledge of cooking.' +
     (withNotes
@@ -963,6 +971,7 @@ function generatePrompt(withNotes: boolean, kitchenProfile = ''): string {
     'Put a short description of the dish in description, and tips or variations in notes.',
     'If the request is not about something that can be cooked or eaten, save a recipe with the title "NOT_A_RECIPE".',
     ...(kitchenProfile !== '' ? [kitchenProfile, KITCHEN_PROFILE_GENERATE_RULE] : []),
+    ...(units === 'metric' ? [METRIC_GENERATE_RULE] : []),
   ].join('\n');
 }
 
@@ -1047,6 +1056,8 @@ export async function generateFromBrief(
     translateTo?: string;
     /** The member's `kitchenProfilePromptBlock`, or empty. Only the structured call sees it, never the search. */
     kitchenProfile?: string;
+    /** The member's measurement units; `metric` adds a rule to the structured call, never the search. */
+    units?: UnitSystem;
   },
 ): Promise<ImportOutcome> {
   const log: ImportOutcomeLog = { attempts: [] };
@@ -1080,7 +1091,7 @@ export async function generateFromBrief(
     const result = await deps.ai.models.generateContent({
       model: deps.model,
       contents:
-        `${generatePrompt(notes !== undefined, options.kitchenProfile)}\n\nRequest:\n${request}` +
+        `${generatePrompt(notes !== undefined, options.kitchenProfile, options.units)}\n\nRequest:\n${request}` +
         (notes !== undefined ? `\n\nNotes from a web search:\n${notes}` : ''),
       config: { ...RECIPE_OUTPUT_CONFIG },
     });
