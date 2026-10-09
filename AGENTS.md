@@ -107,7 +107,7 @@ written with `create()`; ALREADY_EXISTS, gRPC code 6, is success), never under
 pasted text (or, for `via: 'generate'`, the brief, in the same `pastedText`
 field), and the extracted recipe as capped JSON, but never photos, the
 notes typed with photos, or an email. `expireAt` drives a 180-day Firestore
-TTL policy (owner step in the plan). A 👍 stores nothing and only writes the
+TTL policy (applied 2026-10-01). A 👍 stores nothing and only writes the
 `import_feedback` log line (`sub`, trigger, via, host, warning codes,
 `hasComment`, status; never a path, text, or comment). The handler never lets
 an error escape: a store failure is 503, anything else is rethrown as
@@ -673,8 +673,8 @@ is `server/mcp/`; `scripts/server.ts` imports only `server/mcp/index.ts`.
   `state`, the email, or a full `redirect_uri`. `/privacy` and `/terms`
   describe them, and connected apps; change them with it.
 - **Storage.** Top-level `mcpAuthCodes/{sha256(code)}` and
-  `mcpTokens/{sha256(token)}`, each with `expireAt` for a TTL policy (owner
-  step, after deploy), and `users/{sub}/mcpGrants/{grantId}`. Because codes
+  `mcpTokens/{sha256(token)}`, each with `expireAt` for a TTL policy (applied
+  2026-10-09), and `users/{sub}/mcpGrants/{grantId}`. Because codes
   and tokens sit outside `users/{uid}`, the account deletion script has a
   step for each (see Account deletion); a new MCP collection needs one too.
 - **Rate limits.** Per instance, per `sub` and grant: 300 reads and 60 writes
@@ -762,14 +762,14 @@ does not record branches or whether something is deployed.
 | `docs/plans/library-agent.md` | Merged (#34). App-level assistant: read-only tools over the user's own library, modular cards (shopping list first), ephemeral threads. |
 | `docs/plans/import-reliability.md` | Phase 2 merged (#103). Typed import warnings stored as optional `Recipe.importCheck`, deterministic checks, retries (constant at 0 until phase 3), warning UI. Import logging is #102 (merged). Phase 1 still waits on the reporter's failing URLs; phase 3 waits on a deploy and data. |
 | `docs/plans/import-feedback.md` | Merged (#107). Optional import reports after a failed or flagged import, 👍/👎 on clean previews, stored in Firestore `importFeedback` for 180 days. TTL policy on `expireAt` applied 2026-10-01. |
-| `docs/plans/feature-requests.md` | Merged (#108). `/suggest` page, stored in Firestore `featureRequests` for one year; TTL policy on `expireAt` not applied yet (owner step; checked 2026-10-09). |
+| `docs/plans/feature-requests.md` | Merged (#108). `/suggest` page, stored in Firestore `featureRequests` for one year; TTL policy on `expireAt` applied 2026-10-09. |
 | `docs/plans/agent-collection-moves.md` | Merged (#98). `propose_collection_move` / `collection_move` v1 proposal card; client apply via `collectionStore.moveRecipes`. |
 | `docs/plans/agent-create-collection.md` | Merged (#116). `propose_create_collection` / `collection_create` v1 proposal card; client apply via `collectionStore.createWithRecipes` in one push. |
 | `docs/plans/html-parser-recipe-import.md` | Merged (#93). Replace the hand-rolled HTML scanner in `server/recipeImport.ts` with parse5 (issue #91). |
 | `docs/plans/public-collections.md` | Merged (#120). Unlisted public link per named collection, readable signed out; AI locked; members can add it as viewers. The widened log exclusion is applied (checked 2026-10-09). |
 | `docs/plans/sheet-dialog.md` | Merged (#95). Headless dialog for Sheet and Ask: focus trap, initial focus, restore on close, dialog semantics. |
 | `docs/plans/mcp-collection-writes.md` | Merged (#124). `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
-| `docs/plans/mcp-server.md` | Merged (#118). Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. TTL policies on `mcpAuthCodes` and `mcpTokens` `expireAt` not applied yet (owner step; checked 2026-10-09). |
+| `docs/plans/mcp-server.md` | Merged (#118). Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. TTL policies on `mcpAuthCodes` and `mcpTokens` `expireAt` applied 2026-10-09. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
 | `docs/plans/recipe-generation.md` | Merged (#153). Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148). `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` merged (#149). |
@@ -786,7 +786,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
-| `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage` `expireAt` not applied yet (owner step; checked 2026-10-09). |
+| `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage` `expireAt` applied 2026-10-09. |
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
