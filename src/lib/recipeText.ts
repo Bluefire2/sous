@@ -61,7 +61,10 @@ export function recipeToText(recipe: Recipe, locale: Locale, t: Translate): stri
       if (i > 0) lines.push('');
       if (section.name) lines.push(section.name);
       for (const ing of section.items) {
-        lines.push(`- ${ingredientLine(ing, 1, locale, t)}`);
+        const line = ingredientLine(ing, 1, locale, t);
+        lines.push(
+          ing.optional === true ? `- ${line} · ${t('recipe.optionalIngredient')}` : `- ${line}`,
+        );
       }
     });
     blocks.push(lines);

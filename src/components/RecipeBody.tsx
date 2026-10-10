@@ -181,13 +181,20 @@ export function IngredientsSection({
                       >
                         {isChecked ? '✓' : ''}
                       </span>
-                      {/* Ticks are cook progress on this screen, not part of the printed recipe. */}
-                      <span className={isChecked ? 'line-through print:no-underline' : ''}>
-                        {ingredientLine(
-                          { ...(translatedItem ?? ing), quantity: ing.quantity },
-                          scale,
-                          locale,
-                          t,
+                      <span>
+                        {/* Ticks are cook progress on this screen, not part of the printed recipe. */}
+                        <span className={isChecked ? 'line-through print:no-underline' : ''}>
+                          {ingredientLine(
+                            { ...(translatedItem ?? ing), quantity: ing.quantity },
+                            scale,
+                            locale,
+                            t,
+                          )}
+                        </span>
+                        {ing.optional === true && (
+                          <span className="ml-2 inline-block rounded-full border border-line px-2 py-0.5 align-middle text-xs leading-none text-ink-muted">
+                            {t('recipe.optionalIngredient')}
+                          </span>
                         )}
                       </span>
                     </button>

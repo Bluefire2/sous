@@ -34,7 +34,8 @@ const MAX_PAYLOAD_CHARS = 200_000;
 
 export type FieldError = { path: string; message: string };
 
-export type RecipeIngredient = { item: string; quantity?: number; unit?: string; note?: string };
+/** `optional` is only ever `true`; absent means required, as in the app. */
+export type RecipeIngredient = { item: string; quantity?: number; unit?: string; note?: string; optional?: true };
 export type RecipeIngredientSection = { name?: string; items: RecipeIngredient[] };
 
 /** The text a model may write. Photos, collections, and the import check are not part of it. */
@@ -165,7 +166,7 @@ function numberInRange(
   return value;
 }
 
-const INGREDIENT_FIELDS: ReadonlySet<string> = new Set(['item', 'quantity', 'unit', 'note']);
+const INGREDIENT_FIELDS: ReadonlySet<string> = new Set(['item', 'quantity', 'unit', 'note', 'optional']);
 const SECTION_FIELDS: ReadonlySet<string> = new Set(['name', 'items']);
 const STEP_FIELDS: ReadonlySet<string> = new Set(['text']);
 
@@ -196,6 +197,13 @@ function validateIngredient(
   if (raw.note !== undefined) {
     const note = optionalText(raw.note, `${path}.note`, RECIPE_LIMITS.note, errors);
     if (note !== undefined) out.note = note;
+  }
+  if (raw.optional !== undefined) {
+    if (typeof raw.optional !== 'boolean') {
+      errors.push({ path: `${path}.optional`, message: 'must be true or false' });
+    } else if (raw.optional) {
+      out.optional = true;
+    }
   }
   return errors.length === before ? out : undefined;
 }
