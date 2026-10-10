@@ -644,7 +644,7 @@
   {
     "id": "public-collection-member",
     "route": "/p/:token",
-    "setup": "The same public link opened while signed in (see public-collection; same opt-in). The header has the gray chat bubble and the language menu but no Sign in link, and under \"Public collection\" there is an \"Add to my library\" button. Hover the chat bubble: the tooltip says to add the collection to your library to use the assistant and translation. Then tap the chat bubble: the sheet title says to add the collection first, a paragraph explains it appears next to your own collections and can be left at any time, with \"Add to my library\" and \"Not now\". Do not press Add to my library.",
+    "setup": "The same public link opened while signed in (see public-collection; same opt-in). The header has only the language menu (no Sign in link and no chat bubble), and under \"Public collection\" there is an \"Add to my library\" button. Do not press Add to my library.",
     "needsData": true
   },
   {

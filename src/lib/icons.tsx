@@ -153,7 +153,7 @@ export function InviteIcon({ className }: { className?: string }) {
   );
 }
 
-/** Chat bubble: the assistant's entry button (`src/agent/AssistantEntryLink.tsx`) and its locked copy on public pages. */
+/** Chat bubble: the assistant's entry button (`src/agent/AssistantEntryLink.tsx`). */
 export function ChatBubbleIcon({ className }: { className?: string }) {
   return (
     <svg

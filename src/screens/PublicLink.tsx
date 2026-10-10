@@ -1,14 +1,7 @@
-import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useT } from '../i18n';
 import LanguageMenu from '../components/LanguageMenu';
-import {
-  AiLockedSheet,
-  LockedAiButton,
-  lockedIconBtn,
-  PublicSignInLink,
-} from '../components/LockedAi';
-import { ChatBubbleIcon } from '../lib/icons';
+import { PublicSignInLink } from '../components/LockedAi';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../lib/uiClasses';
@@ -46,27 +39,11 @@ function PublicCollection({
   const { status } = useSession();
   const member = status === 'signedIn';
   const join = usePublicJoin(token);
-  const [lockedOpen, setLockedOpen] = useState(false);
-  // Until the link reads as a collection (loading, missing, an error), it may
-  // be a recipe link: offer nothing that only a collection can do.
-  const isCollection = result?.kind === 'ok' && result.data.kind === 'collection';
 
   const header = (
     <header className="flex items-center justify-between py-4">
       <span className="text-2xl font-bold">Sous</span>
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
-        {/* A visitor gets no assistant control at all: Sign in is the way in. */}
-        {isCollection && member && (
-          <LockedAiButton
-            label={t('assistant.ask')}
-            hint={t('public.aiLockedMember')}
-            onOpen={() => setLockedOpen(true)}
-            className={lockedIconBtn}
-            placement="below-end"
-          >
-            <ChatBubbleIcon className="block h-5 w-5" />
-          </LockedAiButton>
-        )}
         {!member && (
           <PublicSignInLink token={token} className={ghostBtn}>
             {t('public.signIn')}
@@ -112,7 +89,7 @@ function PublicCollection({
               >
                 {join.state.kind === 'busy' ? t('public.adding') : t('public.addToLibrary')}
               </button>
-              {join.state.kind === 'error' && !lockedOpen && (
+              {join.state.kind === 'error' && (
                 <p role="alert" className="mt-2 text-sm text-danger">
                   {join.state.message}
                 </p>
@@ -173,15 +150,6 @@ function PublicCollection({
     <div className="mx-auto max-w-xl px-4 pb-24">
       {header}
       {body}
-      {lockedOpen && isCollection && member && (
-        <AiLockedSheet
-          token={token}
-          member={member}
-          subject="collection"
-          action={{ state: join.state, run: join.add }}
-          onClose={() => setLockedOpen(false)}
-        />
-      )}
     </div>
   );
 }
