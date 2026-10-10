@@ -200,7 +200,13 @@
   {
     "id": "import-create-writing",
     "route": "/import",
-    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the button reads Generating… with its spinner, the textarea is read-only, and the status line under the button says the recipe is being generated.",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the page dims and a cooking animation (one of ten, picked at random) plays in the middle, with Generating… and a line under it saying the recipe is being generated. The button underneath reads Generating… and the textarea is read-only.",
+    "needsData": false
+  },
+  {
+    "id": "import-extracting",
+    "route": "/import",
+    "setup": "Import mode, a single recipe link pasted, Extract recipe pressed with the import call mocked to never answer: the page dims and a cooking animation (one of ten, picked at random) plays in the middle, with Extracting… and a line under it saying the recipe is being read. The button underneath reads Extracting… and the textarea is read-only.",
     "needsData": false
   },
   {

@@ -347,6 +347,13 @@ export const MOCKS = {
   importHangs: async (context) => {
     await context.route('**/api/import', () => new Promise<void>(() => {}));
   },
+  /**
+   * `Math.random` always answers 0, so the import busy overlay shows the same
+   * one of its randomly picked animations (the first) on every capture.
+   */
+  pinnedRandom: async (context) => {
+    await context.addInitScript({ content: 'Math.random = () => 0;' });
+  },
   /** Bulk rows by URL: `…/check` warns, `…/broken` fails, anything else is clean. */
   importBulk: importMock((request) => {
     const url = typeof request.url === 'string' ? request.url : '';
