@@ -189,7 +189,7 @@ function ogTitle(html: unknown): string | undefined {
 /**
  * Link-preview tags on `/p` pages (server/publicPreview.ts). The page is the
  * SPA shell, so this needs the server started with `--static`; without it
- * the checks are skipped.
+ * the checks are skipped locally and fail in CI.
  */
 async function checkLinkPreviews(
   collectionToken: string | undefined,
@@ -197,7 +197,11 @@ async function checkLinkPreviews(
   listedIds: readonly string[],
 ): Promise<void> {
   if ((await get('/p')).status === 404) {
-    console.log('skip  link previews (no --static)');
+    if (process.env.CI !== undefined) {
+      check('link previews need the server started with --static', false);
+    } else {
+      console.log('skip  link previews (no --static)');
+    }
     return;
   }
   const titleOf = (id: string) => member.recipes.find((r) => r.id === id)?.title;

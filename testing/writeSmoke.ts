@@ -403,10 +403,14 @@ async function publicJoin(http: Http, cookieOf: (name: string) => string, check:
 
 /**
  * A turned-off link's page is the plain shell, with no preview tags
- * (server/publicPreview.ts). Needs the server started with `--static`.
+ * (server/publicPreview.ts). Needs the server started with `--static`;
+ * skipped without it locally, failed in CI.
  */
 async function checkNoPreview(http: Http, check: Check, token: string, name: string): Promise<void> {
-  if ((await http.get('/p')).status === 404) return;
+  if ((await http.get('/p')).status === 404) {
+    if (process.env.CI !== undefined) check(`${name} (needs --static)`, false);
+    return;
+  }
   const page = await http.get(`/p/${token}`);
   check(
     name,

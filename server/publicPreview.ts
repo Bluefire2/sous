@@ -23,7 +23,12 @@ import { isLiveDoc, isUuid } from './store.ts';
  * The token is in the path: never log the path, the token, or the text.
  */
 
-export const PREVIEW_LOOKUP_TIMEOUT_MS = 1_500;
+/**
+ * Every visit to a `/p` page waits on this lookup before its first byte (the
+ * service worker never serves `/p`), so keep it short: a crawler that misses
+ * it just gets no tags.
+ */
+export const PREVIEW_LOOKUP_TIMEOUT_MS = 500;
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 200;
 
@@ -33,9 +38,9 @@ export type PreviewMeta = { title: string; description?: string; imageUrl?: stri
 
 export type PreviewDependencies = PublicReadDependencies & RecipeLinkReadDependencies;
 
-/** `/p/<token>` or `/p/<token>/r/<recipeId>`; null for any other shape. */
+/** `/p/<token>` or `/p/<token>/r/<recipeId>`, with one trailing slash allowed; null for any other shape. */
 export function previewPath(pathname: string): PreviewPath | null {
-  const parts = pathname.split('/');
+  const parts = (pathname.endsWith('/') ? pathname.slice(0, -1) : pathname).split('/');
   // ['', 'p', token] or ['', 'p', token, 'r', recipeId]
   if (parts[0] !== '' || parts[1] !== 'p' || !isPublicTokenShape(parts[2])) {
     return null;

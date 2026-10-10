@@ -42,7 +42,10 @@ type World = {
   recipeLink: RecipeLinkRecord | null;
   admitted: boolean;
   collection: Record<string, unknown> | undefined;
+  /** Keyed by recipe id; every one is the owner's. */
   recipes: Record<string, Record<string, unknown>>;
+  /** Recipes under some other account, keyed by `${sub}/${id}`. */
+  foreign: Record<string, Record<string, unknown>>;
 };
 
 function world(overrides: Partial<World> = {}): World {
@@ -71,8 +74,13 @@ function world(overrides: Partial<World> = {}): World {
       [UNLISTED]: recipe(UNLISTED),
       [LINKED]: recipe(LINKED, { title: 'Overnight oats', description: 'Oats, soaked.' }),
     },
+    foreign: {},
     ...overrides,
   };
+}
+
+function readAs(w: World, owner: string, id: string): Record<string, unknown> | undefined {
+  return owner === OWNER ? w.recipes[id] : w.foreign[`${owner}/${id}`];
 }
 
 function deps(w: World): PreviewDependencies {
@@ -83,8 +91,8 @@ function deps(w: World): PreviewDependencies {
       w.recipeLink !== null && id === hashPublicToken(w.recipeLink.token) ? w.recipeLink : null,
     ownerAdmitted: async () => w.admitted,
     readCollection: async () => w.collection,
-    readRecipes: async (_owner, ids) => ids.map((id) => w.recipes[id]),
-    readRecipe: async (_owner, id) => w.recipes[id],
+    readRecipes: async (owner, ids) => ids.map((id) => readAs(w, owner, id)),
+    readRecipe: async (owner, id) => readAs(w, owner, id),
   };
 }
 
@@ -97,12 +105,20 @@ describe('previewPath', () => {
     });
   });
 
+  it('allows one trailing slash', () => {
+    expect(previewPath(`/p/${COLLECTION_TOKEN}/`)).toEqual({ token: COLLECTION_TOKEN });
+    expect(previewPath(`/p/${COLLECTION_TOKEN}/r/${LISTED}/`)).toEqual({
+      token: COLLECTION_TOKEN,
+      recipeId: LISTED,
+    });
+  });
+
   it('refuses every other shape', () => {
     for (const path of [
       '/p',
       '/p/',
       '/p/short',
-      `/p/${COLLECTION_TOKEN}/`,
+      `/p/${COLLECTION_TOKEN}//`,
       `/p/${COLLECTION_TOKEN}/r/not-a-uuid`,
       `/p/${COLLECTION_TOKEN}/r/${LISTED}/x`,
       `/p/${COLLECTION_TOKEN}/x/${LISTED}`,
@@ -144,6 +160,16 @@ describe('resolvePreview', () => {
       title: 'Listed soup',
       imageUrl: `${ORIGIN}/api/public/${COLLECTION_TOKEN}/recipes/${LISTED}/photos/${PHOTO}`,
     });
+  });
+
+  it("reads the recipe from the link owner's library only", async () => {
+    const w = world();
+    w.publicLink = { ...w.publicLink!, ownerSub: 'other-sub' };
+    w.recipeLink = { ...w.recipeLink!, ownerSub: 'other-sub' };
+    expect(await resolvePreview({ token: COLLECTION_TOKEN, recipeId: LISTED }, ORIGIN, deps(w))).toBeNull();
+    expect(await resolvePreview({ token: RECIPE_TOKEN }, ORIGIN, deps(w))).toBeNull();
+    w.foreign[`other-sub/${LINKED}`] = recipe(LINKED, { title: 'Their oats' });
+    expect(await resolvePreview({ token: RECIPE_TOKEN }, ORIGIN, deps(w))).toEqual({ title: 'Their oats' });
   });
 
   it('refuses a recipe that is not listed, or deleted', async () => {

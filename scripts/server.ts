@@ -262,7 +262,8 @@ async function handleRequest(
 
     if (publicPage && method === 'GET') {
       // Link-preview tags for a live link (server/publicPreview.ts); null
-      // serves the plain shell below.
+      // serves the plain shell below. HEAD skips the lookup and describes the
+      // plain shell; crawlers fetch with GET.
       const html = await previewHtml(decodedPath, {
         readIndex: () => readFile(resolve(staticRoot, 'index.html'), 'utf8'),
         origin: publicOrigin,
