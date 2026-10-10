@@ -141,7 +141,7 @@ export function memberLibrary(now: number): PersonaLibrary {
           { quantity: 400, unit: 'g', item: 'tinned chopped tomatoes' },
           { quantity: 2, item: 'garlic cloves', note: 'sliced' },
           { quantity: 2, unit: 'tbsp', item: 'olive oil' },
-          { item: 'basil leaves' },
+          { item: 'basil leaves', optional: true },
         ],
       },
     ],

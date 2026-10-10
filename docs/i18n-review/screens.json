@@ -356,7 +356,7 @@
   {
     "id": "recipe-view",
     "route": "/recipe/:id",
-    "setup": "An owned recipe as it loads: title, ingredients, and steps. The top row has the Library back link on the left and Share and Edit on the right. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip or Share. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "setup": "An owned recipe as it loads: title, ingredients, and steps. The last ingredient carries a small optional label after its text. The top row has the Library back link on the left and Share and Edit on the right. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip or Share. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -410,7 +410,7 @@
   {
     "id": "recipe-edit",
     "route": "/recipe/:id/edit",
-    "setup": "The edit form for an owned recipe (heading Edit recipe), including the Recipe language field. Do not change fields and do not save. A viewer share has no Edit link; that route shows Recipe not found. An editor share has an edit form and is a separate entry. If there is no owned recipe, mark skipped: needs data.",
+    "setup": "The edit form for an owned recipe (heading Edit recipe), including the Recipe language field. Each ingredient row has an Optional toggle button; the last one is on (highlighted). Do not change fields and do not save. A viewer share has no Edit link; that route shows Recipe not found. An editor share has an edit form and is a separate entry. If there is no owned recipe, mark skipped: needs data.",
     "needsData": true
   },
   {

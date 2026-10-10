@@ -196,14 +196,32 @@ describe('isUsableRecipe', () => {
     ).toBe(false);
   });
 
-  it('accepts a boolean ingredient optional flag and rejects any other type', () => {
+  it('accepts any ingredient optional flag and leaves all but true to compact', () => {
     const withOptional = (optional: unknown) => ({
       ...required,
-      ingredientSections: [{ items: [{ item: 'chili', optional }] }],
+      ingredientSections: [{ items: [{ item: 'chili', optional }, { item: 'salt' }] }],
     });
-    expect(isUsableRecipe(withOptional(true))).toBe(true);
-    expect(isUsableRecipe(withOptional(false))).toBe(true);
-    expect(isUsableRecipe(withOptional('yes'))).toBe(false);
+    for (const optional of [true, false, 'yes', null]) {
+      expect(isUsableRecipe(withOptional(optional))).toBe(true);
+    }
+    expect(compactRecipe(withOptional(true) as Recipe).ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+    ]);
+    for (const optional of [false, 'yes', null]) {
+      expect(compactRecipe(withOptional(optional) as Recipe).ingredientSections[0].items).toEqual([
+        { item: 'chili' },
+        { item: 'salt' },
+      ]);
+    }
+  });
+
+  it('keeps the ingredient sections array when there is nothing to drop', () => {
+    const clean = {
+      ...required,
+      ingredientSections: [{ items: [{ item: 'chili', optional: true }] }],
+    } as Recipe;
+    expect(compactRecipe(clean).ingredientSections).toBe(clean.ingredientSections);
   });
 
   it('returns false when galleryPhotoIds is not a string array', () => {

@@ -112,7 +112,7 @@ function isValidIngredient(item: unknown): item is Ingredient {
   if ('quantity' in item && finiteNumber(item.quantity) === undefined) return false;
   if ('unit' in item && typeof item.unit !== 'string') return false;
   if ('note' in item && typeof item.note !== 'string') return false;
-  if ('optional' in item && typeof item.optional !== 'boolean') return false;
+  // A malformed `optional` reads as required; compactRecipe drops it.
   return true;
 }
 
