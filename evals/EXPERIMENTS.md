@@ -42,11 +42,12 @@ summary, approach A.
   3/3, hundred-good-cookies 3/3, lemon-tea-bread 0/3, sweet-sour-pork
   0/3), holdout 15/15; two lemon-tea-bread A runs ended `MAX_TOKENS`
   (parse error); every call was 1.
-- Decision: pending owner decision. It fails the acceptance rule (dev
-  10 → 7; holdout 13 → 15 passes). Each side lost two runs to a
+- Decision: kept by the owner (2026-10-10) despite failing the acceptance
+  rule (dev 10 → 7; holdout 13 → 15 passes). Each side lost two runs to a
   `MAX_TOKENS` runaway, and the 2026-10-08 entries show unchanged setups
   ranging 8–12 on dev, so the drop may be variance, but the rule counts
-  it as measured. Not re-run.
+  it as measured. Not re-run; page and paste evals (`npm run
+  test:import`) were not run.
 - Run by: agent, model default (`gemini-3.8-flash`).
 
 ## 2026-10-09 — Import default `gemini-3.7-flash` → `gemini-3.8-flash` (3.7 now redirects)
