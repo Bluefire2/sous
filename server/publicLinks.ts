@@ -212,7 +212,7 @@ export function publicCollectionBody(
   };
 }
 
-function listedRecipeIds(collection: Record<string, unknown>): string[] {
+export function listedRecipeIds(collection: Record<string, unknown>): string[] {
   if (!Array.isArray(collection.recipeIds)) {
     return [];
   }
@@ -244,7 +244,7 @@ export type PublicReadDependencies = {
 type LiveChain = { link: PublicLinkRecord; collection: Record<string, unknown> };
 
 /** Live link, admitted owner, live collection; null for every way that fails. */
-async function resolveLiveChain(
+export async function resolveLiveChain(
   token: string,
   deps: Pick<PublicReadDependencies, 'readLink' | 'ownerAdmitted' | 'readCollection'>,
 ): Promise<LiveChain | null> {

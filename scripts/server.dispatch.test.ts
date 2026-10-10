@@ -366,6 +366,22 @@ describe('static files', () => {
     expect((await send(staticBase, 'GET', '/settings')).headers.get('referrer-policy')).toBeNull();
   });
 
+  // A well-formed token reads Firestore for preview tags (server/publicPreview.ts);
+  // test mode covers that. These shapes never reach the store.
+  it('never lets a public page shell be cached, and gives a bad token no tags', async () => {
+    for (const path of ['/p', '/p/sometoken', '/p/sometoken/r/abc']) {
+      for (const method of ['GET', 'HEAD']) {
+        const res = await send(staticBase, method, path);
+        expect(res.status, `${method} ${path}`).toBe(200);
+        expect(res.headers.get('cache-control'), `${method} ${path}`).toBe('no-store');
+        expect(res.headers.get('content-type'), `${method} ${path}`).toContain('text/html');
+        expect(await res.text(), `${method} ${path}`).toBe(
+          method === 'GET' ? '<!doctype html><title>Sous</title>' : '',
+        );
+      }
+    }
+  });
+
   it('answers HEAD with the headers and no body', async () => {
     const res = await send(staticBase, 'HEAD', '/');
     expect(res.status).toBe(200);
