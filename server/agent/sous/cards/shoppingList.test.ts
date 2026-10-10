@@ -44,6 +44,24 @@ describe('shoppingListCard', () => {
     expect(shoppingListCard.toolName).toBe('show_shopping_list');
   });
 
+  it('marks optional items in the history text', () => {
+    const text = shoppingListCard.historyText({
+      title: 'Shop',
+      recipes: [{ id: 'r1', title: 'Pasta', servings: 2 }],
+      sections: [
+        {
+          name: 'Produce',
+          items: [
+            { key: 'basil', item: 'basil', optional: true, recipeIds: ['r1'] },
+            { key: 'lemon', item: 'lemon', quantity: 1, recipeIds: ['r1'] },
+          ],
+        },
+      ],
+    });
+    expect(text).toContain('Produce: basil — as needed, optional (r1)');
+    expect(text).toContain('Produce: lemon — 1 (r1)');
+  });
+
   it('runs fixture cases', () => {
     const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as Fixture;
     const ctx = testLibrary();

@@ -58,6 +58,7 @@ export type ShoppingListData = {
       quantity?: number;
       unit?: string;
       note?: string;
+      optional?: true;
       recipeIds: string[];
     }[];
   }[];
@@ -181,6 +182,14 @@ export function parseShoppingList(v: number, data: unknown): ShoppingListData | 
           return undefined;
         }
         normalized.note = itemEntry.note;
+      }
+      if (itemEntry.optional !== undefined) {
+        if (typeof itemEntry.optional !== 'boolean') {
+          return undefined;
+        }
+        if (itemEntry.optional) {
+          normalized.optional = true;
+        }
       }
       const recipeIdsRaw = itemEntry.recipeIds;
       if (!Array.isArray(recipeIdsRaw)) {

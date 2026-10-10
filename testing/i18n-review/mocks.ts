@@ -212,7 +212,7 @@ const SHOPPING_CARD = {
         items: [
           { key: 'garlic', item: 'garlic', quantity: 1, unit: 'head', recipeIds: [pasta.id, chicken.id] },
           { key: 'lemon', item: 'lemon', quantity: 1, recipeIds: [chicken.id] },
-          { key: 'basil', item: 'basil leaves', recipeIds: [pasta.id] },
+          { key: 'basil', item: 'basil leaves', optional: true, recipeIds: [pasta.id] },
         ],
       },
       {

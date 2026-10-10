@@ -136,6 +136,51 @@ describe('combineIngredients', () => {
     expect(salt?.sourceRecipeIds.sort()).toEqual(['r1', 'r2']);
   });
 
+  it('keeps optional ingredients on their own lines, out of required totals', () => {
+    const library = lib(
+      recipe({
+        id: 'r1',
+        title: 'A',
+        ingredientSections: [{ items: [{ item: 'parmesan', quantity: 200, unit: 'g' }] }],
+      }),
+      recipe({
+        id: 'r2',
+        title: 'B',
+        ingredientSections: [
+          {
+            items: [
+              { item: 'parmesan', quantity: 50, unit: 'g', optional: true },
+              { item: 'basil', optional: true },
+              { item: 'chili', quantity: 1, unit: 'tsp', optional: true },
+            ],
+          },
+        ],
+      }),
+      recipe({
+        id: 'r3',
+        title: 'C',
+        ingredientSections: [
+          { items: [{ item: 'basil' }, { item: 'chili', quantity: 2, unit: 'tsp', optional: true }] },
+        ],
+      }),
+    );
+    const { lines } = combineIngredients(library, [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
+    const of = (item: string) => lines.filter((l) => l.item === item);
+    expect(of('parmesan')).toEqual(
+      expect.arrayContaining([
+        { item: 'parmesan', quantity: 200, unit: 'g', sourceRecipeIds: ['r1'] },
+        { item: 'parmesan', quantity: 50, unit: 'g', optional: true, sourceRecipeIds: ['r2'] },
+      ]),
+    );
+    expect(of('parmesan')).toHaveLength(2);
+    expect(of('basil')).toHaveLength(2);
+    expect(of('basil').find((l) => l.optional)?.sourceRecipeIds).toEqual(['r2']);
+    expect(of('basil').find((l) => !l.optional)?.sourceRecipeIds).toEqual(['r3']);
+    expect(of('chili')).toEqual([
+      { item: 'chili', quantity: 1, unit: 'tbsp', optional: true, sourceRecipeIds: ['r2', 'r3'] },
+    ]);
+  });
+
   it('keeps different unknown units separate', () => {
     const library = lib(
       recipe({
