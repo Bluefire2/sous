@@ -22,6 +22,32 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-09 — Metric rule: every temperature, and search notes
+
+- Change: two changes to the metric rule in `generatePrompt`, both from
+  PR #182's review. Branch `claude/measurement-units-prompts`.
+  - It asks for every temperature in °C (oven, oil, sugar and meat), not
+    only oven temperatures.
+  - With search notes, it adds one more rule: convert the notes' cups,
+    ounces, pounds and °F to metric rather than copy them.
+- Reason (not fixture-specific): the metric rule otherwise left frying and
+  sugar temperatures in °F. Search notes usually come from US pages, and
+  the prompt tells the model to prefer them.
+- Command: `npx vitest run --config vitest.eval.config.ts evals/recipeGenerate.eval.ts -t "search notes taken from US"`.
+  This is one new case: "classic American buttermilk pancakes" with
+  `search: true, units: 'metric'`. It must use no cup, oz, lb or stick
+  unit, and its steps must never name °F.
+- Before (`server/recipeImport.ts` at `e3694d5`, with no notes rule): 3
+  runs, 3/3.
+- After: 3 runs, 3/3. Then one run of the whole file, 8/8. Default model
+  (`gemini-3.7-flash`).
+- Decision: kept as a guard. The new case does not show the risk the
+  review named, because the model already converted the notes without the
+  extra rule, so this measurement neither supports nor argues against it.
+  It costs one sentence and only applies to searched briefs from metric
+  members.
+- Run by: agent.
+
 ## 2026-10-09 — Metric rule in generatePrompt
 
 - Change: when the member set Settings → Measurements to Metric,

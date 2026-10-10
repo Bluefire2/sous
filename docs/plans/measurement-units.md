@@ -114,9 +114,11 @@ Saves from Settings go to the server one at a time, so two quick taps leave the 
    - It is used by `withKitchenProfile` (chat), the Generate branch of `server/importRoute.ts`, and `server/agent/route.ts`.
    - A failed read stays 503.
 9. [core] Prompt lines, added when the account is set to `metric`:
-   - **Generate:** write weights in g/kg and oven temperatures in °C, and volumes in ml/l or spoons.
-   - **Ask and the assistant:** use metric for new quantities, and do not convert existing ones unless asked.
-   - Read `evals/AGENTS.md` first, add a dev Generate eval with metric, and log it in `evals/EXPERIMENTS.md`.
+   - **Generate:** write weights in g/kg, every temperature in °C, sizes in cm, and volumes in ml/l or spoons. With search notes, convert the notes' US units rather than copy them.
+   - **Ask:** use metric for an ingredient or temperature it adds. When it changes an existing amount, for example when scaling, it keeps that amount's unit.
+   - **The assistant:** the same rule. `combine_ingredients` turns pounds and ounces into grams in code, rounded to 5 g, so a shopping list never relies on the model's arithmetic.
+   - Read `evals/AGENTS.md` first, add dev Generate evals with metric (one plain, one with search), and log them in `evals/EXPERIMENTS.md`.
+10. [core] `testing/writeSmoke.ts` posts an empty chat body as the metric member. A 400 shows the real `getAll` read ran, because a failed read would be 503 first.
 
 ## Known limits
 

@@ -974,7 +974,16 @@ describe('POST /api/import with a brief', () => {
       const structured = String(grounded.calls[1].contents);
       expect(structured).toContain('The user cooks in metric');
       expect(structured).not.toContain('kitchen_profile');
+      expect(structured).toContain('Convert any cups, ounces, pounds, or °F in the notes');
       expect(structured.indexOf('The user cooks in metric')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('only mentions search notes in the metric rule when there are notes', async () => {
+      const store = kitchenStore({}, { 'sub-1': { units: 'metric', updatedAt: 1 } });
+      const { calls } = await post({ brief: BRIEF }, undefined, { kitchenStore: store });
+      const prompt = String(calls[0].contents);
+      expect(prompt).toContain('every temperature');
+      expect(prompt).not.toContain('in the notes');
     });
 
     it('answers 503 without calling the model or taking a search slot when the profile cannot be read', async () => {

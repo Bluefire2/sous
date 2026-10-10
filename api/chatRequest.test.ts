@@ -327,7 +327,7 @@ describe('POST /api/chat kitchen profile', () => {
   it('asks for metric only when the server context says so', async () => {
     const prompt = await systemInstructionFor({ ...ctx, units: 'metric' });
     expect(prompt).toContain('The user cooks in metric');
-    expect(prompt).toContain('Do not convert the quantities the');
+    expect(prompt).toContain('keep its unit');
     expect(prompt.indexOf('metric')).toBeLessThan(prompt.indexOf('Current recipe (JSON):'));
     expect(await systemInstructionFor(ctx)).not.toContain('metric');
   });

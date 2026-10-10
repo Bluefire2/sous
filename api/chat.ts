@@ -441,10 +441,12 @@ const KITCHEN_PROFILE_RULES = [
  * writes new amounts in metric and leaves the stored ones alone.
  */
 const METRIC_RULES = [
-  'The user cooks in metric. Any new quantity or temperature you write, in',
-  'your reply or in update_recipe, uses g, kg, ml, l and °C; teaspoons and',
-  'tablespoons are fine for small amounts. Do not convert the quantities the',
-  'recipe already has unless the user asks: the app shows them in metric.',
+  'The user cooks in metric. For an ingredient or temperature you add, in',
+  'your reply or in update_recipe, use g, kg, ml, l and °C; teaspoons and',
+  'tablespoons are fine for small amounts. When you change an existing amount',
+  '(for example when scaling), keep its unit, and do not convert the',
+  "recipe's units unless the user asks: the app already shows its pounds,",
+  'ounces and °F in metric.',
 ];
 
 function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string, units?: 'metric'): string {

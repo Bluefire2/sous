@@ -26,7 +26,7 @@ export function buildSystemPrompt(opts: {
   }
   if (opts.units === 'metric') {
     parts.push(
-      'The user cooks in metric: any new quantity or temperature you write uses g, kg, ml, l and °C (teaspoons and tablespoons are fine for small amounts). Quote a recipe\'s own amounts as the recipe gives them unless the user asks you to convert.',
+      'The user cooks in metric: any new quantity or temperature you write uses g, kg, ml, l and °C (teaspoons and tablespoons are fine for small amounts). Quote a recipe\'s own amounts as the recipe gives them unless the user asks you to convert. combine_ingredients already returns pounds and ounces in grams for this user: give its totals as returned.',
     );
   }
   parts.push(

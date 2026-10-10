@@ -541,4 +541,10 @@ async function accountPreferences(http: Http, cookieOf: (name: string) => string
   check('as written saves', back.status === 200 && (await units(empty)) === 'asWritten', `status ${back.status}`);
 
   check('signed out is 401', (await http.get('/api/settings/preferences')).status === 401);
+
+  // Chat reads the kitchen profile and these preferences (one Firestore getAll)
+  // before it parses the body, so an empty body answers 400 only when that read
+  // worked; a failed read is 503 "Store unavailable". No model call is made.
+  const chat = await http.post('/api/chat', cookieOf('member'), {});
+  check('chat reads the prompt context from the store before refusing an empty body', chat.status === 400, `status ${chat.status} ${JSON.stringify(chat.body)}`);
 }

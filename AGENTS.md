@@ -158,7 +158,8 @@ metric rule to their prompts: `readPromptContext` in
 `server/kitchenProfile.ts` reads the kitchen and preferences documents in one
 `getAll` for the session `sub` (chat gets `units` through
 `withKitchenProfile`), and a failed read is 503. The research call of a
-searched brief never sees it.
+searched brief never sees it. For the assistant, `combine_ingredients` converts
+pounds and ounces to grams in code (`dataTools(library, { metric })`).
 
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,

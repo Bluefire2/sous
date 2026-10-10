@@ -124,3 +124,20 @@ describe('dataTools', () => {
     expect(result).toEqual({ error: 'aborted' });
   });
 });
+
+describe('combine_ingredients for a member who reads in metric', () => {
+  const lib = library(
+    recipe({ id: 'r1', title: 'Roast', ingredientSections: [{ items: [{ quantity: 2, unit: 'lb', item: 'potatoes' }] }] }),
+  );
+
+  it('returns pounds in grams only when the tools were built for metric', async () => {
+    const run = async (metric: boolean) => {
+      const tool = dataTools(lib, { metric }).find((t) => t.name === 'combine_ingredients')!;
+      const result = await tool.run({ recipes: [{ id: 'r1' }] }, lib, new AbortController().signal);
+      if (!('output' in result)) throw new Error('no output');
+      return (unwrapLibraryData(result.output) as { lines: { quantity: number; unit: string }[] }).lines[0];
+    };
+    expect(await run(true)).toMatchObject({ quantity: 905, unit: 'g' });
+    expect(await run(false)).toMatchObject({ quantity: 2, unit: 'lb' });
+  });
+});

@@ -131,7 +131,7 @@ export async function agentPost(req: Request): Promise<Response> {
         units: promptContext.units,
       }),
       messages,
-      tools: dataTools(library),
+      tools: dataTools(library, { metric: promptContext.units === 'metric' }),
       cards: CARD_SPECS,
       ctx: library,
       limits: defaultAgentLimits(),

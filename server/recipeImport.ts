@@ -946,7 +946,9 @@ const KITCHEN_PROFILE_GENERATE_RULE =
  * A unit the request names still wins.
  */
 const METRIC_GENERATE_RULE =
-  'The user cooks in metric: write weights in g or kg, liquids in ml or l (teaspoons and tablespoons are fine for small amounts), oven temperatures in °C, and sizes in cm, unless the request asks for other units.';
+  'The user cooks in metric: write weights in g or kg, liquids in ml or l (teaspoons and tablespoons are fine for small amounts), every temperature (oven, oil, sugar, meat) in °C, and sizes in cm, unless the request asks for other units.';
+/** With search notes, which usually come from US pages. */
+const METRIC_NOTES_RULE = 'Convert any cups, ounces, pounds, or °F in the notes to these metric units; do not copy them.';
 
 /**
  * The prompt for a recipe written from an idea. It is the opposite of
@@ -971,7 +973,7 @@ function generatePrompt(withNotes: boolean, kitchenProfile = '', units: UnitSyst
     'Put a short description of the dish in description, and tips or variations in notes.',
     'If the request is not about something that can be cooked or eaten, save a recipe with the title "NOT_A_RECIPE".',
     ...(kitchenProfile !== '' ? [kitchenProfile, KITCHEN_PROFILE_GENERATE_RULE] : []),
-    ...(units === 'metric' ? [METRIC_GENERATE_RULE] : []),
+    ...(units === 'metric' ? [METRIC_GENERATE_RULE, ...(withNotes ? [METRIC_NOTES_RULE] : [])] : []),
   ].join('\n');
 }
 
