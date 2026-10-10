@@ -15,7 +15,7 @@
  * Requires Node 22.18+ for native TypeScript type stripping.
  */
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { basename, extname, isAbsolute, relative, resolve } from 'node:path';
 import { Readable, type Writable } from 'node:stream';
@@ -31,7 +31,7 @@ import {
   authSignout,
   authStart,
 } from '../server/auth.ts';
-import { redirectUri } from '../server/env.ts';
+import { publicOrigin, redirectUri } from '../server/env.ts';
 import {
   adminDecisionPost,
   adminInviteRevokePost,
@@ -59,9 +59,11 @@ import {
   collectionPublicLinkGet,
   collectionPublicLinkPost,
   collectionPublicLinkRevokePost,
+  liveVisitorDependencies,
   publicGet,
   publicJoinPost,
 } from '../server/publicLinksHttp.ts';
+import { previewHtml } from '../server/publicPreview.ts';
 import { recipeLinkSavePost } from '../server/recipeLinkSave.ts';
 import {
   recipePublicLinkGet,
@@ -244,7 +246,8 @@ async function handleRequest(
       return;
     }
 
-    if (decodedPath === '/p' || decodedPath.startsWith('/p/')) {
+    const publicPage = decodedPath === '/p' || decodedPath.startsWith('/p/');
+    if (publicPage) {
       // Public collection pages carry their token in the path: keep it out of
       // every Referer (images, the source link, the Google sign-in hop) and
       // out of search results. The SPA renders them from index.html.
@@ -255,6 +258,23 @@ async function handleRequest(
     if (method !== 'GET' && method !== 'HEAD') {
       sendText(nodeReq, nodeRes, 405, 'Method not allowed');
       return;
+    }
+
+    if (publicPage && method === 'GET') {
+      // Link-preview tags for a live link (server/publicPreview.ts); null
+      // serves the plain shell below.
+      const html = await previewHtml(decodedPath, {
+        readIndex: () => readFile(resolve(staticRoot, 'index.html'), 'utf8'),
+        origin: publicOrigin,
+        deps: liveVisitorDependencies,
+      });
+      if (html !== null) {
+        nodeRes.statusCode = 200;
+        nodeRes.setHeader('Content-Type', 'text/html; charset=utf-8');
+        nodeRes.setHeader('Cache-Control', 'no-store');
+        nodeRes.end(html);
+        return;
+      }
     }
 
     const publicRelative = PUBLIC_HTML[decodedPath];
@@ -281,7 +301,9 @@ async function handleRequest(
     if (!lastSegment.includes('.')) {
       const indexPath = resolve(staticRoot, 'index.html');
       if (resolveContained(staticRoot, '/index.html') && (await fileExists(indexPath))) {
-        await sendFile(nodeRes, indexPath, '/index.html', method, 200);
+        // A public page's shell may carry a link's preview: turning the link
+        // off must win on the next fetch, with or without tags.
+        await sendFile(nodeRes, indexPath, '/index.html', method, 200, publicPage ? 'no-store' : undefined);
         return;
       }
     }
@@ -700,12 +722,13 @@ async function sendFile(
   urlPath: string,
   method: string,
   status: number,
+  cache?: string,
 ): Promise<void> {
   const ext = extname(filePath).toLowerCase();
   const type = MIME_BY_EXT[ext] ?? 'application/octet-stream';
   nodeRes.statusCode = status;
   nodeRes.setHeader('Content-Type', type);
-  nodeRes.setHeader('Cache-Control', cacheControl(urlPath, basename(filePath)));
+  nodeRes.setHeader('Cache-Control', cache ?? cacheControl(urlPath, basename(filePath)));
 
   if (method === 'HEAD') {
     nodeRes.end();

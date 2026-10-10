@@ -230,6 +230,7 @@ describe('server', () => {
       'server/publicLinks.ts',
       'server/publicLinksHttp.ts',
       'server/publicJoin.ts',
+      'server/publicPreview.ts',
       'server/recipeLinks.ts',
       'server/recipeLinksHttp.ts',
       'server/recipeLinkSave.ts',

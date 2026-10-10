@@ -485,6 +485,16 @@ being turned off and the sharer's account deletion. Recipe delete revokes the
 recipe's links in `cascadeRecipeDelete`'s transaction. Do not add a grant or a
 live tie between a copy and its original.
 
+**Link previews** (`server/publicPreview.ts`): `GET /p/<token>` and
+`/p/<token>/r/<recipeId>` from `scripts/server.ts` put Open Graph tags in the
+SPA shell's head for a live link, resolved with the visitor chain in the same
+order (collection, then recipe link): a recipe's title, description, and main
+photo URL, or a collection's name only. Never `sharedBy`, an email, a `sub`,
+or `og:url`; the `<title>` stays "Sous". Any failure, or a lookup over
+`PREVIEW_LOOKUP_TIMEOUT_MS`, serves the plain shell, and every `/p` shell is
+`no-store`. Vite (`npm run dev`) serves no tags; check them with `dev:test
+--static`. `/privacy` and `/terms` describe previews; change them with it.
+
 Collection delete tombstones live grants in the same transaction. Forward
 grants carry an internal `active` flag, and the cascade time is
 `grantCascadeAt`, not the client `updatedAt`. Grants written before `active`

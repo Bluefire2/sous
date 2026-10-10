@@ -167,6 +167,8 @@ async function checkMember(cookie: string): Promise<void> {
     check('the recipe link never sends the email', !JSON.stringify(visit.body).includes('@'));
   }
 
+  await checkLinkPreviews(token, oatsToken, weeknights?.recipeIds ?? []);
+
   const grants = await get('/api/mcp/grants', cookie);
   const rows = (grants.body as { grants?: { clientHost: string; scopes: string[] }[] }).grants ?? [];
   check('member has one connected app', rows.length === 1, JSON.stringify(rows));
@@ -175,6 +177,64 @@ async function checkMember(cookie: string): Promise<void> {
     rows[0]?.clientHost === 'claude.ai' &&
       JSON.stringify(sorted(rows[0].scopes)) === JSON.stringify(['recipes:read', 'recipes:write']),
   );
+}
+
+/** The `og:title` in a page's head, or undefined. */
+function ogTitle(html: unknown): string | undefined {
+  return typeof html === 'string'
+    ? /<meta property="og:title" content="([^"]*)" \/>/.exec(html)?.[1]
+    : undefined;
+}
+
+/**
+ * Link-preview tags on `/p` pages (server/publicPreview.ts). The page is the
+ * SPA shell, so this needs the server started with `--static`; without it
+ * the checks are skipped.
+ */
+async function checkLinkPreviews(
+  collectionToken: string | undefined,
+  recipeToken: string | undefined,
+  listedIds: readonly string[],
+): Promise<void> {
+  if ((await get('/p')).status === 404) {
+    console.log('skip  link previews (no --static)');
+    return;
+  }
+  const titleOf = (id: string) => member.recipes.find((r) => r.id === id)?.title;
+  if (recipeToken !== undefined) {
+    const page = await get(`/p/${recipeToken}`);
+    check(
+      'the recipe link page previews the recipe',
+      page.status === 200 && ogTitle(page.body) === titleOf(FIXTURE_IDS.member.overnightOats),
+      String(ogTitle(page.body)),
+    );
+    check(
+      'the preview never names the sharer',
+      typeof page.body === 'string' && !page.body.includes(persona('member').name),
+    );
+  }
+  if (collectionToken !== undefined) {
+    const page = await get(`/p/${collectionToken}`);
+    check('the public collection page previews its name', ogTitle(page.body) === 'Weeknights', String(ogTitle(page.body)));
+    const listed = listedIds[0];
+    if (listed !== undefined) {
+      const recipe = await get(`/p/${collectionToken}/r/${listed}`);
+      check(
+        'a public collection recipe page previews the recipe',
+        ogTitle(recipe.body) === titleOf(listed),
+        String(ogTitle(recipe.body)),
+      );
+    }
+    const unlisted = member.recipes.find((r) => !listedIds.includes(r.id));
+    if (unlisted !== undefined) {
+      const recipe = await get(`/p/${collectionToken}/r/${unlisted.id}`);
+      check(
+        'an unlisted recipe page is the plain shell',
+        recipe.status === 200 && ogTitle(recipe.body) === undefined,
+        String(ogTitle(recipe.body)),
+      );
+    }
+  }
 }
 
 async function checkViewer(cookie: string): Promise<void> {
