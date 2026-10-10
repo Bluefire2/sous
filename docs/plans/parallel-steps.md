@@ -34,6 +34,15 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   step.
 - **A replacement import keeps lanes** where a step's text is unchanged
   (from review), with the same `carryStepLanes` as Ask Apply.
+- **An Ask lane over 24 characters is cut, not dropped** (from review).
+  `normalizeRecipeDraft` cuts it at a word break; dropping it read as "no
+  lane field", and the carry then put the stored lane back, so a rename
+  silently did not happen. A cut lane never takes another lane's name ("… 2"
+  instead). Every other path still drops a malformed lane, and a lane is
+  kept on one line (whitespace runs become one space).
+- **A step that states its lane still claims the stored step at its
+  position** in `carryStepLanes` (from review), so a later step with the
+  same text cannot take that step's old lane.
 
 ## Context
 
@@ -56,7 +65,7 @@ Reading: a recipe without lanes renders exactly as today. A block renders as one
 
 - **Lane value**: trimmed string, 1–24 chars (`MAX_LANE_CHARS`). Malformed is dropped, not rejected, on every compact path (the `variantOf` / `importCheck` policy). MCP input is the one strict path. Lane names are recipe text: not translated in v1, never passed through `t()`.
 - **Blocks**: a maximal run of consecutive steps that have a lane is a block; its lanes are the distinct names in first-appearance order, each an ordered sub-list of global indexes; a run with one lane name is still a block (author mid-way through tagging). An unlaned step is a sync point. A lane name may recur in a later block. Blocks come from the **stored** recipe's steps, never the display translation.
-- **Progress**: `currentStep` keeps its meaning (done prefix). `doneSteps` holds only indexes `>= currentStep` done out of order. `normalizeStepProgress` drops non-integers, negatives, `>= steps.length`, duplicates; sorts; folds the prefix into `currentStep`; caps at 200. The key is omitted when empty, so a row with no block progress is byte-for-byte what today's client writes, and old clients ignore it.
+- **Progress**: `currentStep` keeps its meaning (done prefix). `doneSteps` holds only indexes `>= currentStep` done out of order. `normalizeStepProgress` drops non-integers, negatives, `>= steps.length`, duplicates; sorts; folds the prefix into `currentStep`; caps at 200. The key is omitted when empty, so a row with no block progress is byte-for-byte what today's client writes. A client from before this change does not read `doneSteps`, and its writes drop it (and its recipe saves drop lanes) until it updates.
 - **Tap** `tapStep(steps, progress, i)` on the done set `D = [0, currentStep) ∪ doneSteps`:
   - sync step `i`: first undone → `D ∪ {i}`; otherwise `D' = [0, i)` (jump there).
   - lane step `i` in block `[s, e)`, lane `L`: done → `(D ∩ [0, e)) \ { j ∈ L : j ≥ i }`; not done → `D ∪ [0, s) ∪ { j ∈ L : j ≤ i }`.
@@ -80,7 +89,7 @@ Multi-device coop (two phones seeing each other's progress live) is not in this 
 | File | Change |
 | --- | --- |
 | `docs/constitutions/cook-log.md` | Principle 1 retitled to ban **log data** on `Recipe`/`ChatMessage`/`CookStateRow`; amendment-log entry for `doneSteps`. |
-| `AGENTS.md` | "Do not add fields" paragraph: fourth deliberate exception (`RecipeStep.lane`, `CookStateRow.doneSteps`); Plans table row. |
+| `AGENTS.md` | "Do not add fields" paragraph: fifth deliberate exception, after `Recipe.savedFrom` (`RecipeStep.lane`, `CookStateRow.doneSteps`); Plans table row. |
 | `src/lib/types.ts` | `RecipeStep.lane?`, `CookStateRow.doneSteps?`, doc comments. |
 | `server/recipeSteps.ts` (new) + `src/lib/recipeSteps.ts` (re-export) | `MAX_LANE_CHARS`, `compactLane`, `compactSteps`. Dependency-free, the `server/recipeVariant.ts` pattern. |
 | `src/lib/stepLanes.ts` (new) + test | Blocks, lanes, progress normalization, tap, active set, lane carry. Imports only types and `recipeSteps`. |
@@ -110,8 +119,8 @@ Confirmed not to need changes: `server/store.ts validateRecipePut` (only checks 
 
 ### 0. [core] Constitution amendment and schema-lock notes
 
-- `docs/constitutions/cook-log.md` principle 1: retitle "The cook log is its own entity. Cook-log data never adds fields to `Recipe`, `ChatMessage`, or `CookStateRow`." Keep the Why; add that other features extend `CookStateRow` only through the `AGENTS.md` schema-lock process. Amendment-log entry: what (`CookStateRow.doneSteps`, cook progress from this plan, not log data), why (lanes need out-of-order progress; a sibling entity would split one row's LWW), guard (resets with `recipeUpdatedAt` like `currentStep`, normalized on every write, omitted when empty, lock tests changed on purpose, old clients ignore it). Status stays `ratified`; the index line is unchanged so `scripts/constitutions.test.ts` passes.
-- `AGENTS.md` paragraph after `variantOf`: the fourth exception; `compactSteps` is the only step compaction on both ends; `doneSteps` normalized by `normalizeStepProgress`. Plans table row.
+- `docs/constitutions/cook-log.md` principle 1: retitle "The cook log is its own entity. Cook-log data never adds fields to `Recipe`, `ChatMessage`, or `CookStateRow`." Keep the Why; add that other features extend `CookStateRow` only through the `AGENTS.md` schema-lock process. Amendment-log entry: what (`CookStateRow.doneSteps`, cook progress from this plan, not log data), why (lanes need out-of-order progress; a sibling entity would split one row's LWW), guard (resets with `recipeUpdatedAt` like `currentStep`, normalized on every write, omitted when empty, lock tests changed on purpose, old clients drop it until they update). Status stays `ratified`; the index line is unchanged so `scripts/constitutions.test.ts` passes.
+- `AGENTS.md` paragraph after `savedFrom` (recipe links, #176, merged first): the fifth exception; `compactSteps` is the only step compaction on both ends; `doneSteps` normalized by `normalizeStepProgress`. Plans table row.
 - PR description: a "Constitution amendment" heading naming the file.
 
 ### 1. [core] Types and shared step compaction

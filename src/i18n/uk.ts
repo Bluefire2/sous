@@ -534,7 +534,7 @@ export const uk: Messages = {
   'form.stepLane': 'Частина для кроку {n}',
   'form.noLane': 'Без частини',
   'form.newLane': 'Нова частина…',
-  'form.laneName': 'Назва частини',
+  'form.laneName': 'Назва частини для кроку {n}',
   'form.lanePlaceholder': 'напр. Соус',
   'form.notesPlaceholder': 'Що варто запам’ятати наступного разу',
   'form.gallery': 'Галерея',

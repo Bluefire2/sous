@@ -65,22 +65,59 @@ describe('normalizeRecipeDraft', () => {
     });
   });
 
-  it('keeps a valid step lane, a blank one as "none", and drops a too long one', () => {
+  it('keeps a valid step lane, a blank one as "none", and drops a non-string one', () => {
     const draft = normalizeRecipeDraft({
       ...wellFormedProposal,
       steps: [
-        { text: 'Boil water.', lane: ' Pasta ' },
+        { text: 'Boil water.', lane: ' Pasta\n sauce ' },
         { text: 'Fry garlic.', lane: '   ' },
-        { text: 'Toss.', lane: 'x'.repeat(25) },
         { text: 'Serve.', lane: 3 },
       ],
     });
     expect(draft?.steps).toEqual([
-      { text: 'Boil water.', lane: 'Pasta' },
+      { text: 'Boil water.', lane: 'Pasta sauce' },
       { text: 'Fry garlic.', lane: '' },
-      { text: 'Toss.' },
       { text: 'Serve.' },
     ]);
+  });
+
+  it('cuts a too long lane at a word break instead of dropping it', () => {
+    const draft = normalizeRecipeDraft({
+      ...wellFormedProposal,
+      steps: [
+        { text: 'Make pesto.', lane: 'Pesto and garnish station' },
+        { text: 'Grate cheese.', lane: 'Pesto and garnish station' },
+        { text: 'Toss.', lane: 'x'.repeat(30) },
+      ],
+    });
+    expect(draft?.steps).toEqual([
+      { text: 'Make pesto.', lane: 'Pesto and garnish' },
+      { text: 'Grate cheese.', lane: 'Pesto and garnish' },
+      { text: 'Toss.', lane: 'x'.repeat(24) },
+    ]);
+  });
+
+  it('never cuts a lane inside an emoji', () => {
+    const draft = normalizeRecipeDraft({
+      ...wellFormedProposal,
+      steps: [{ text: 'Plate.', lane: `x${'🍝'.repeat(12)}` }],
+    });
+    expect(draft?.steps[0].lane).toBe(`x${'🍝'.repeat(11)}`);
+  });
+
+  it('keeps two long lanes apart when they cut to the same text', () => {
+    const draft = normalizeRecipeDraft({
+      ...wellFormedProposal,
+      steps: [
+        { text: 'A.', lane: 'Person one: sauce and garnish' },
+        { text: 'B.', lane: 'Person one: sauce and pasta' },
+        { text: 'C.', lane: 'Person one: sauce and' },
+      ],
+    });
+    const lanes = draft?.steps.map((step) => step.lane) ?? [];
+    expect(lanes[2]).toBe('Person one: sauce and');
+    expect(new Set(lanes).size).toBe(3);
+    for (const lane of lanes) expect(lane?.length).toBeLessThanOrEqual(24);
   });
 
   it.each([null, [], 'nope', 42])('drops non-object input (%s)', (value) => {

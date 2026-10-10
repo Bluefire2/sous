@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useId, useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { ingredientLine } from '../lib/recipeText';
 import type { RecipeTextSize } from '../lib/settings';
@@ -272,6 +272,7 @@ export function LaneChips({
   onChange: (lane: string | undefined) => void;
 }) {
   const t = useT();
+  const labelId = useId();
   const chip = (pressed: boolean) =>
     `rounded-full border px-3 py-1 text-sm font-medium shadow-sm ${
       pressed
@@ -281,10 +282,12 @@ export function LaneChips({
   return (
     <div
       role="group"
-      aria-label={t('recipe.laneChips')}
+      aria-labelledby={labelId}
       className="mt-2 flex flex-wrap items-center gap-2 print:hidden"
     >
-      <span className="text-sm text-ink-muted">{t('recipe.laneChips')}</span>
+      <span id={labelId} className="text-sm text-ink-muted">
+        {t('recipe.laneChips')}
+      </span>
       <button
         type="button"
         aria-pressed={active === undefined}

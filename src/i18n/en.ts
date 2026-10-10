@@ -523,7 +523,7 @@ export const en = {
   'form.stepLane': 'Lane for step {n}',
   'form.noLane': 'No lane',
   'form.newLane': 'New lane…',
-  'form.laneName': 'Lane name',
+  'form.laneName': 'Lane name for step {n}',
   'form.lanePlaceholder': 'e.g. Sauce',
   'form.notesPlaceholder': 'Anything worth remembering next time',
   'form.gallery': 'Gallery',

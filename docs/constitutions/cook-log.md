@@ -283,8 +283,12 @@ should treat it as a failing check.
   How handled: `doneSteps` resets with `recipeUpdatedAt` exactly like
   `currentStep`, so it is never history; it is normalized on every write and
   omitted when empty, so a recipe without lanes writes the old row; the
-  `CookStateRow` key-set lock tests were changed on purpose; older clients
-  ignore it. No cook-log field was added anywhere.
+  `CookStateRow` key-set lock tests were changed on purpose. A client from
+  before this change does not read `doneSteps`, and a cook tap from it
+  rewrites the row without the key, so lane progress done ahead of
+  `currentStep` is lost (the steps before it stay done); its recipe saves
+  drop lanes the same way. The PWA updates itself, so that lasts only until
+  an open tab reloads. No cook-log field was added anywhere.
 
 - **Principle 3 (tightened), with the merge of view-only shared collections.**
   What changed: the parent recipe must be owned by this account. Chat and cook

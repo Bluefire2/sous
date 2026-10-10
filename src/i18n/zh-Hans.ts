@@ -484,7 +484,7 @@ export const zhHans: Messages = {
   'form.stepLane': '第 {n} 步的分工',
   'form.noLane': '不分工',
   'form.newLane': '新建分工…',
-  'form.laneName': '分工名称',
+  'form.laneName': '第 {n} 步的分工名称',
   'form.lanePlaceholder': '例如：酱汁',
   'form.notesPlaceholder': '下次值得记住的事',
   'form.gallery': '图集',

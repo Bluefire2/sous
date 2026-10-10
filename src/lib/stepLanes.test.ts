@@ -259,6 +259,16 @@ describe('carryStepLanes', () => {
     ]);
   });
 
+  it('lets a step that states its lane claim the stored step at its position', () => {
+    const stored = [
+      { text: 'Stir', lane: 'Sauce' },
+      { text: 'Stir', lane: 'Pasta' },
+    ];
+    expect(
+      carryStepLanes(stored, [{ text: 'Stir', lane: 'Pasta' }, { text: 'Chop' }, { text: 'Stir' }]),
+    ).toEqual([{ text: 'Stir', lane: 'Pasta' }, { text: 'Chop' }, { text: 'Stir', lane: 'Pasta' }]);
+  });
+
   it('removes every lane when the proposal sets them to empty', () => {
     const proposed = pasta.map(({ text }) => ({ text, lane: '' }));
     expect(carryStepLanes(pasta, proposed)).toEqual(pasta.map(({ text }) => ({ text })));

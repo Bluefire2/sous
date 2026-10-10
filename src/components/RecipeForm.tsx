@@ -974,7 +974,7 @@ export default function RecipeForm({
                 {typing && (
                   <input
                     type="text"
-                    aria-label={t('form.laneName')}
+                    aria-label={t('form.laneName', { n: i + 1 })}
                     placeholder={t('form.lanePlaceholder')}
                     maxLength={MAX_LANE_CHARS}
                     value={step.lane}

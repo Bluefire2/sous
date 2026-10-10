@@ -22,10 +22,14 @@ export interface CompactStep {
   lane?: string;
 }
 
-/** A trimmed lane of 1 to `MAX_LANE_CHARS` characters, or `undefined`. Malformed is dropped, not rejected. */
+/**
+ * A lane of 1 to `MAX_LANE_CHARS` characters on one line (runs of
+ * whitespace, newlines included, become one space; ends trimmed), or
+ * `undefined`. Malformed is dropped, not rejected.
+ */
 export function compactLane(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const lane = value.trim();
+  const lane = value.replace(/\s+/g, ' ').trim();
   return lane.length >= 1 && lane.length <= MAX_LANE_CHARS ? lane : undefined;
 }
 

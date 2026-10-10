@@ -7,6 +7,10 @@ describe('compactLane', () => {
     expect(compactLane('x'.repeat(MAX_LANE_CHARS))).toBe('x'.repeat(MAX_LANE_CHARS));
   });
 
+  it('puts a label on one line', () => {
+    expect(compactLane('Sauce\n and\tgarnish')).toBe('Sauce and garnish');
+  });
+
   it('drops a blank, too long, or non-string label', () => {
     expect(compactLane('   ')).toBeUndefined();
     expect(compactLane('x'.repeat(MAX_LANE_CHARS + 1))).toBeUndefined();

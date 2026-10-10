@@ -532,7 +532,7 @@ export const ru: Messages = {
   'form.stepLane': 'Часть для шага {n}',
   'form.noLane': 'Без части',
   'form.newLane': 'Новая часть…',
-  'form.laneName': 'Название части',
+  'form.laneName': 'Название части для шага {n}',
   'form.lanePlaceholder': 'напр. Соус',
   'form.notesPlaceholder': 'Что стоит запомнить на следующий раз',
   'form.gallery': 'Галерея',

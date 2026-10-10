@@ -647,7 +647,7 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page, ctx) => {
       const select = page.getByLabel(ctx.t('form.stepLane', { n: 6 }), { exact: true });
       await select.selectOption({ label: ctx.t('form.newLane') });
-      await page.getByLabel(ctx.t('form.laneName'), { exact: true }).waitFor();
+      await page.getByLabel(ctx.t('form.laneName', { n: 6 }), { exact: true }).waitFor();
     },
   },
   'recipe-edit-lang-hint': {

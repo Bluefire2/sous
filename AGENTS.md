@@ -302,7 +302,9 @@ replacement import keep stored lanes when the new steps have none
 (`carryStepLanes`, per step: a lane is kept as given, an empty lane removes
 it, and a step with no lane field gets the lane of a stored step with the
 same text, the same position first). Ask is told to state every step's lane
-when a recipe has lanes; the carry is the fallback. Keep progress a
+when a recipe has lanes; the carry is the fallback. An Ask lane over the
+cap is cut to fit (`normalizeRecipeDraft`), never dropped, or the carry
+would undo a rename. Keep progress a
 set of done steps (a prefix plus `doneSteps`), never one pointer: a later
 shared cooking session merges two cooks' progress by union.
 

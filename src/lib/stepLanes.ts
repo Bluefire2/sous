@@ -212,6 +212,9 @@ export function tapStep(
  *   text: the one at the same position if it matches, otherwise the first
  *   such step not already matched. So inserting or moving a step keeps the
  *   others' lanes; a reworded step without a lane field loses its lane.
+ * A step that states its lane still claims the stored step with the same
+ * text at its own position, so a later repeat of that text cannot take that
+ * step's old lane.
  */
 export function carryStepLanes(
   stored: readonly RecipeStep[],
@@ -220,10 +223,9 @@ export function carryStepLanes(
   const matched = new Map<number, number>();
   const used = new Set<number>();
   proposed.forEach((step, i) => {
-    if (step.lane === undefined && stored[i]?.text === step.text) {
-      matched.set(i, i);
-      used.add(i);
-    }
+    if (stored[i]?.text !== step.text) return;
+    used.add(i);
+    if (step.lane === undefined) matched.set(i, i);
   });
   proposed.forEach((step, i) => {
     if (step.lane !== undefined || matched.has(i)) return;
