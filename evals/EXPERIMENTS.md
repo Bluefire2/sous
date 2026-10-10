@@ -39,8 +39,9 @@ summary, approach A.
   unit, and its steps must never name °F.
 - Before (`server/recipeImport.ts` at `e3694d5`, with no notes rule): 3
   runs, 3/3.
-- After: 3 runs, 3/3. Then one run of the whole file, 8/8. Default model
-  (`gemini-3.7-flash`).
+- After: 3 runs, 3/3. Then one run of the whole file, 8/8. Default model,
+  then named `gemini-3.7-flash` and already served as 3.8 (see the
+  import-default entry below).
 - Decision: kept as a guard. The new case does not show the risk the
   review named, because the model already converted the notes without the
   extra rule, so this measurement neither supports nor argues against it.
