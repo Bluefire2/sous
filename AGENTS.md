@@ -553,6 +553,24 @@ being turned off and the sharer's account deletion. Recipe delete revokes the
 recipe's links in `cascadeRecipeDelete`'s transaction. Do not add a grant or a
 live tie between a copy and its original.
 
+**Link previews** (`server/publicPreview.ts`): `GET /p/<token>` and
+`/p/<token>/r/<recipeId>` from `scripts/server.ts` put Open Graph tags in the
+SPA shell's head for a live link, resolved with the visitor chain in the same
+order (collection, then recipe link): a recipe's title, description, and main
+photo URL, or a collection's name only. Never `sharedBy`, an email, a `sub`,
+or `og:url`; the `<title>` stays "Sous". Any failure, or a lookup over
+`PREVIEW_LOOKUP_TIMEOUT_MS` (500), serves the plain shell, and every `/p`
+shell is `no-store`. The service worker never serves `/p`, so every visit
+pays that lookup before its first byte and the page then repeats the reads
+through `/api/public/<token>`; keep the timeout short rather than sniffing
+user agents. Past `MAX_PREVIEW_LOOKUPS_IN_FLIGHT` (20) unsettled lookups per
+instance a page gets the plain shell without one. The preview matches the raw
+request path and refuses any `%` (the SPA keeps an encoded slash inside a
+segment, so `%2F` must not describe another page). Text is read from a
+bounded prefix ending on a grapheme boundary, since nothing caps a stored
+description. Vite (`npm run dev`) serves no tags; check them with `dev:test
+--static`. `/privacy` and `/terms` describe previews; change them with it.
+
 Collection delete tombstones live grants in the same transaction. Forward
 grants carry an internal `active` flag, and the cascade time is
 `grantCascadeAt`, not the client `updatedAt`. Grants written before `active`

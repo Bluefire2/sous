@@ -394,11 +394,30 @@ async function publicJoin(http: Http, cookieOf: (name: string) => string, check:
   const off = await http.post(`/api/collections/${weeknights}/public/revoke`, memberCookie);
   check('the owner turns the public link off', off.status === 200, `status ${off.status}`);
   check('the old link reads 404', (await http.get(`/api/public/${token}`)).status === 404);
+  await checkNoPreview(http, check, token, 'the old link page has no preview');
   check('and joins 404', (await result(empty)) === 'status 404');
   const on = await http.post(`/api/collections/${weeknights}/public`, memberCookie);
   const fresh = tokenOf((on.body as { url?: unknown }).url);
   check('turning it on again mints a new link', on.status === 200 && fresh !== undefined && fresh !== token);
   check('the new link reads', fresh !== undefined && (await http.get(`/api/public/${fresh}`)).status === 200);
+}
+
+/**
+ * A turned-off link's page is the plain shell, with no preview tags
+ * (server/publicPreview.ts). Needs the server started with `--static`;
+ * skipped without it locally, failed in CI.
+ */
+async function checkNoPreview(http: Http, check: Check, token: string, name: string): Promise<void> {
+  if ((await http.get('/p')).status === 404) {
+    if (process.env.CI !== undefined) check(`${name} (needs --static)`, false);
+    return;
+  }
+  const page = await http.get(`/p/${token}`);
+  check(
+    name,
+    page.status === 200 && typeof page.body === 'string' && page.body.includes('<title>Sous</title>') && !page.body.includes('og:title'),
+    `status ${page.status}`,
+  );
 }
 
 async function recipeLinkSave(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
@@ -442,6 +461,7 @@ async function recipeLinkSave(http: Http, cookieOf: (name: string) => string, ch
   const off = await http.post(`/api/recipes/${oats}/public/revoke`, memberCookie);
   check('the owner turns the recipe link off', off.status === 200, `status ${off.status}`);
   check('the old recipe link reads 404', (await http.get(`/api/public/${token}`)).status === 404);
+  await checkNoPreview(http, check, token, 'the old recipe link page has no preview');
   check('and saves 404', (await save(empty)).result === 'status 404');
   check('the saved copy stays', !isTombstone(byId((await http.pull(empty)).recipes, first.recipeId)));
   const on = await http.post(`/api/recipes/${oats}/public`, memberCookie);
