@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { COOKING_ANIMATIONS } from './CookingAnimations';
 import { pickAnimationIndex } from '../lib/loadingAnimation';
 
@@ -18,6 +19,10 @@ export type ImportBusyProgress = {
  * Dims the Import screen while a recipe is being read or generated and plays
  * one of the cooking animations in the middle, picked at random on mount.
  * The text is the screen's own busy wording; the animation is decorative.
+ *
+ * Rendered into document.body because the screen marks itself inert while
+ * busy, and an inert subtree would hide this status from screen readers.
+ * z-[25] keeps it under toasts and sheets (z-30).
  */
 export default function ImportBusyOverlay({
   label,
@@ -34,8 +39,8 @@ export default function ImportBusyOverlay({
   }, [index]);
   const Animation = COOKING_ANIMATIONS[index];
 
-  return (
-    <div className="ca-overlay fixed inset-0 z-40 flex flex-col items-center justify-center gap-5 bg-stone-950/75 px-4 backdrop-blur-[3px]">
+  return createPortal(
+    <div className="ca-overlay fixed inset-0 z-[25] flex flex-col items-center justify-center gap-5 bg-stone-950/75 px-4 backdrop-blur-[3px]">
       <div className="ca-stage w-[min(55vw,12.5rem)]">
         <Animation />
       </div>
@@ -59,6 +64,7 @@ export default function ImportBusyOverlay({
           />
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

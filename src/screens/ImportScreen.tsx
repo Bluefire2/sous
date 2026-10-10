@@ -491,7 +491,8 @@ export default function ImportScreen() {
     }`;
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-24">
+    // While busy the screen is inert (no focus, no clicks) under ImportBusyOverlay.
+    <div className="mx-auto max-w-xl px-4 pb-24" inert={busy}>
       <header className="py-4">
         <Link to={backTo} className={backLink}>
           &larr; {t('common.library')}
@@ -899,7 +900,6 @@ export default function ImportScreen() {
             }
             aria-busy={busy || undefined}
             className={`${primaryBtn} mt-3 inline-flex w-full items-center justify-center gap-2 py-3`}
-            style={{ opacity: busy ? 1 : undefined }}
           >
             {mode === 'create'
               ? busy
