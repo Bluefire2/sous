@@ -386,11 +386,20 @@ export const STATES: Record<string, StateEntry> = {
   'import-create-writing': {
     persona: 'member',
     path: '/import',
-    mocks: ['importHangs'],
+    mocks: ['importHangs', 'pinnedRandom'],
     reach: async (page, ctx) => {
       await clickButton(page, ctx.t('import.modeCreate'));
       await writeRecipe(page, ctx, GUMBO_BRIEF);
       await page.getByText(ctx.t('import.generatingHint'), { exact: true }).waitFor();
+    },
+  },
+  'import-extracting': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importHangs', 'pinnedRandom'],
+    reach: async (page, ctx) => {
+      await extractUrl(page, ctx);
+      await page.getByText(ctx.t('import.readingHint'), { exact: true }).waitFor();
     },
   },
   'import-create-too-long': {

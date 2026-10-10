@@ -347,6 +347,24 @@ export const MOCKS = {
   importHangs: async (context) => {
     await context.route('**/api/import', () => new Promise<void>(() => {}));
   },
+  /**
+   * `Math.random` is a seeded generator (mulberry32), so the import busy
+   * overlay picks the same one of its animations on every capture. Seeded
+   * rather than constant so other callers still get distinct values.
+   */
+  pinnedRandom: async (context) => {
+    await context.addInitScript({
+      content: `(() => {
+        let seed = 0x5005;
+        Math.random = () => {
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      })();`,
+    });
+  },
   /** Bulk rows by URL: `…/check` warns, `…/broken` fails, anything else is clean. */
   importBulk: importMock((request) => {
     const url = typeof request.url === 'string' ? request.url : '';
