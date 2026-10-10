@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LANE_CHARS, compactLane, compactSteps } from './recipeSteps.ts';
+import { MAX_LANES, MAX_LANE_CHARS, compactLane, compactSteps } from './recipeSteps.ts';
 
 describe('compactLane', () => {
   it('trims and keeps a label of 1 to MAX_LANE_CHARS characters', () => {
@@ -20,6 +20,25 @@ describe('compactLane', () => {
 });
 
 describe('compactSteps', () => {
+  it('keeps the first MAX_LANES lanes and makes steps in later ones shared', () => {
+    expect(MAX_LANES).toBe(3);
+    expect(
+      compactSteps([
+        { text: 'a', lane: 'A' },
+        { text: 'b', lane: 'B' },
+        { text: 'c', lane: 'C' },
+        { text: 'd', lane: 'D' },
+        { text: 'e', lane: 'A' },
+      ]),
+    ).toEqual([
+      { text: 'a', lane: 'A' },
+      { text: 'b', lane: 'B' },
+      { text: 'c', lane: 'C' },
+      { text: 'd' },
+      { text: 'e', lane: 'A' },
+    ]);
+  });
+
   it('keeps text and a valid lane, and nothing else', () => {
     expect(
       compactSteps([

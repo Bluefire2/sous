@@ -2,7 +2,7 @@ import { useId, useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { displayTemperatures, ingredientLine } from '../lib/recipeText';
 import type { RecipeTextSize } from '../lib/settings';
-import { activeSteps, isStepDone, stepBlocks } from '../lib/stepLanes';
+import { activeSteps, isStepDone, stepBlocks, waitsForLanes } from '../lib/stepLanes';
 import type { Recipe } from '../lib/types';
 import type { UnitSystem } from '../lib/unitConversion';
 
@@ -215,6 +215,7 @@ function StepButton({
   isCurrent,
   isDone,
   dimmed,
+  afterLanes,
   large,
   onTap,
 }: {
@@ -223,17 +224,21 @@ function StepButton({
   isCurrent: boolean;
   isDone: boolean;
   dimmed: boolean;
+  /** A shared step that waits for lanes not finished yet (`waitsForLanes`). */
+  afterLanes: boolean;
   /** The device's large recipe text (Settings → Cooking). */
   large: boolean;
   onTap: (index: number) => void;
 }) {
+  const t = useT();
   // The current step stays one step above the others at either size.
   const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
   return (
     <button
       type="button"
       onClick={() => onTap(index)}
-      className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition print:px-0 print:py-1 print:text-ink print:opacity-100 ${
+      aria-current={isCurrent ? 'step' : undefined}
+      className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink focus-visible:outline-solid print:px-0 print:py-1 print:text-ink print:opacity-100 ${
         large ? `${largeRowText} ` : ''
       }${
         isCurrent
@@ -246,17 +251,31 @@ function StepButton({
       <span
         className={`font-semibold print:text-ink ${isCurrent ? 'text-amber-500' : 'text-ink-subtle'}`}
       >
-        {/* Paper shows every step's number, whatever the cook progress. */}
+        {/* Paper shows every step's number, whatever the cook progress. A
+            screen reader hears the number and "Done", not the tick. */}
         {isDone ? (
           <>
-            <span className="print:hidden">✓</span>
-            <span className="hidden print:inline">{index + 1}</span>
+            <span aria-hidden="true" className="print:hidden">
+              ✓
+            </span>
+            <span className="sr-only">{index + 1}</span>
+            <span aria-hidden="true" className="hidden print:inline">
+              {index + 1}
+            </span>
           </>
         ) : (
           index + 1
         )}
       </span>
-      <span className={isCurrent ? currentText : ''}>{text}</span>
+      <span className="min-w-0">
+        <span className={isCurrent ? currentText : ''}>{text}</span>
+        {isDone && <span className="sr-only"> {t('common.done')}</span>}
+        {afterLanes && (
+          <span className="mt-0.5 block text-sm text-ink-muted print:hidden">
+            {t('recipe.afterEveryLane')}
+          </span>
+        )}
+      </span>
     </button>
   );
 }
@@ -364,6 +383,7 @@ export function StepsSection({
       isCurrent={active.has(index)}
       isDone={isStepDone(progress, index)}
       dimmed={dimmed}
+      afterLanes={waitsForLanes(recipe.steps, progress, index)}
       large={large}
       onTap={onTap}
     />
@@ -378,6 +398,9 @@ export function StepsSection({
             return <li key={block.index}>{row(block.index, false)}</li>;
           }
           const headingId = `steps-together-${block.start}`;
+          // One lane alone runs at the same time as nothing, so its box is
+          // named by the lane, without the "At the same time" heading.
+          const together = block.lanes.length > 1;
           return (
             <li key={block.start}>
               <div
@@ -385,19 +408,25 @@ export function StepsSection({
                 aria-labelledby={headingId}
                 className="rounded-xl border border-line p-2 print:border-0 print:p-0"
               >
-                <p
-                  id={headingId}
-                  className="px-1 text-xs font-semibold tracking-wide text-amber-600 uppercase print:text-ink"
+                {together && (
+                  <p
+                    id={headingId}
+                    className="px-1 text-xs font-semibold tracking-wide text-amber-600 uppercase print:text-ink"
+                  >
+                    {t('recipe.atTheSameTime')}
+                  </p>
+                )}
+                {/* At most MAX_LANES lanes, so they fit side by side. */}
+                <div
+                  className={`grid gap-3 sm:auto-cols-fr sm:grid-flow-col ${together ? 'mt-2' : ''}`}
                 >
-                  {t('recipe.atTheSameTime')}
-                </p>
-                <div className="mt-2 grid gap-3 sm:auto-cols-fr sm:grid-flow-col">
                   {block.lanes.map((run) => {
                     const dimmed = activeLane !== undefined && run.lane !== activeLane;
                     return (
                       <div key={run.lane} className="min-w-0">
                         {/* A lane name is recipe text, shown as written. */}
                         <h3
+                          id={together ? undefined : headingId}
                           className={`px-1 text-sm font-semibold print:opacity-100 ${dimmed ? 'opacity-50' : ''}`}
                         >
                           {run.lane}

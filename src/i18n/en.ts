@@ -219,6 +219,7 @@ export const en = {
   'recipe.moreServings': 'More servings',
   'recipe.doneEnjoy': 'Done — enjoy!',
   'recipe.atTheSameTime': 'At the same time',
+  'recipe.afterEveryLane': 'After every lane is done',
   'recipe.laneChips': "I'm on",
   'recipe.laneEveryone': 'Everyone',
   'recipe.sharedByView': 'Shared with you by {email}. View only.',

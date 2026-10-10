@@ -312,7 +312,11 @@ ahead of `currentStep` in such a block) are the fifth
 (`docs/plans/parallel-steps.md`); code must work when either is missing.
 `compactSteps` (`server/recipeSteps.ts`, re-exported by
 `src/lib/recipeSteps.ts`) is the only step compaction on both ends and drops
-a malformed lane and any other step key. `doneSteps` is normalized by
+a malformed lane and any other step key. A recipe has at most `MAX_LANES`
+(3) lanes, so they fit side by side: compaction makes a step in a fourth
+lane shared, MCP rejects one, Ask is told the cap, and the form stops
+offering a new lane. A tap changes only the tapped lane and the shared
+steps, never another lane's progress (`tapStep`). `doneSteps` is normalized by
 `normalizeStepProgress` (`src/lib/stepLanes.ts`) on every write and left out
 when empty. Import never produces lanes; Ask Apply, save-as-variant and a
 replacement import keep stored lanes when the new steps have none

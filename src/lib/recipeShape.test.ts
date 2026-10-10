@@ -97,6 +97,14 @@ describe('normalizeRecipeDraft', () => {
     ]);
   });
 
+  it('makes steps in a lane past the third shared', () => {
+    const draft = normalizeRecipeDraft({
+      ...wellFormedProposal,
+      steps: ['A', 'B', 'C', 'D', 'A'].map((lane, i) => ({ text: `Step ${i}.`, lane })),
+    });
+    expect(draft?.steps.map((step) => step.lane)).toEqual(['A', 'B', 'C', '', 'A']);
+  });
+
   it('never cuts a lane inside an emoji', () => {
     const draft = normalizeRecipeDraft({
       ...wellFormedProposal,

@@ -182,7 +182,7 @@ const RECIPE_SCHEMA: Schema = {
           lane: {
             type: Type.STRING,
             description:
-              'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta" (24 characters max). Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. If the recipe has lanes, give every step its lane: copy existing lanes exactly unless asked to change them, and use an empty string for a step everyone does.',
+              'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta" (24 characters max, at most 3 different lanes in a recipe). Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. If the recipe has lanes, give every step its lane: copy existing lanes exactly unless asked to change them, and use an empty string for a step everyone does.',
           },
         },
         required: ['text'],
@@ -492,7 +492,8 @@ function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: s
     'or add next to, unless the user asks to change it, and use an empty',
     'string for a step everyone does. When asked to split a recipe for two',
     'cooks, give consecutive steps that can happen at once short lane names',
-    'and every shared step an empty lane. In the',
+    '(at most 3 different lanes in the recipe) and every shared step an empty',
+    'lane. In the',
     'cooking state, "doneSteps" lists step numbers already done ahead of',
     '"currentStep", and "lane" is the lane the user is cooking.',
     '',

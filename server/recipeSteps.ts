@@ -11,6 +11,12 @@
 export const MAX_LANE_CHARS = 24;
 
 /**
+ * The most distinct lanes a recipe may have. Lanes sit side by side on a
+ * wide screen, and more than three no longer fit as readable columns.
+ */
+export const MAX_LANES = 3;
+
+/**
  * The most `CookStateRow.doneSteps` entries a cook row may hold. Matches the
  * MCP step cap; a real block never comes close.
  */
@@ -40,14 +46,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /**
  * Steps reduced to `{ text }` plus `lane` when it is valid. An entry that is
  * not an object with string `text` is dropped; any other key is dropped.
- * Text is kept as stored (not trimmed), as it was before lanes existed.
+ * Only the first `MAX_LANES` distinct lanes are kept; a step in a later one
+ * becomes a shared step. Text is kept as stored (not trimmed), as it was
+ * before lanes existed.
  */
 export function compactSteps(value: unknown): CompactStep[] {
   if (!Array.isArray(value)) return [];
   const steps: CompactStep[] = [];
+  const lanes = new Set<string>();
   for (const entry of value) {
     if (!isPlainObject(entry) || typeof entry.text !== 'string') continue;
-    const lane = compactLane(entry.lane);
+    let lane = compactLane(entry.lane);
+    if (lane !== undefined && !lanes.has(lane)) {
+      if (lanes.size < MAX_LANES) lanes.add(lane);
+      else lane = undefined;
+    }
     steps.push(lane === undefined ? { text: entry.text } : { text: entry.text, lane });
   }
   return steps;

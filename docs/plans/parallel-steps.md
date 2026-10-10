@@ -47,6 +47,31 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   the first unmatched step with that text, so a moved step with a stated
   lane does not lend that lane to its twin. A cut Ask lane also avoids the
   stored recipe's lane names, which the carry may put back.
+- **Taps stay in their lane** (from the UX review). The plan's tap rule
+  ticked everything before a block, so tapping your lane's step in a later
+  block ticked the other cook's earlier steps. Now an undone lane step ticks
+  itself and every earlier step that is shared or in the same lane, and a
+  done one un-ticks itself and every later step that is shared or in the
+  same lane. A tap never changes another lane. To match, `activeSteps` reads
+  the lanes as a graph: a step is current when the steps it waits for are
+  done (a lane step waits for the previous step in its lane, or the sync step
+  before its block; a sync step waits for every lane's last step). A sync
+  step that is current is ticked; any other is jumped to, as before.
+- **"After every lane is done"** (from the UX review). A shared step after
+  a block shows that muted line while a lane in the block is unfinished,
+  since tapping it early finishes every lane (`waitsForLanes`).
+- **At most three lanes** (`MAX_LANES`, owner decision after the UX review:
+  five lanes squeezed into one-word columns). Compaction makes a step in a
+  fourth lane shared, MCP rejects one, Ask's schema and prompt state the cap,
+  `normalizeRecipeDraft` makes a fourth lane's steps shared, and the form
+  disables "New lane…" at three (renaming a lane only one step uses still
+  works).
+- **A one-lane block** is named by its lane, without "At the same time".
+- **Form**: a lane being typed shows its name in the menu once it has one,
+  and the menu and the name field are wider.
+- **Steps for screen readers**: the current steps have
+  `aria-current="step"`, a done step reads its number and "Done" (the tick is
+  hidden), and step rows have a focus ring unlike the amber current ring.
 
 ## Context
 

@@ -8,7 +8,7 @@ import { photoStore } from '../lib/photoStore';
 import { blankDraft } from '../lib/recipeDraft';
 import { defaultRecipeFormLang, detectedLangHint } from '../lib/recipeFormLang';
 import { MAX_GALLERY_PHOTOS } from '../lib/recipePhotos';
-import { MAX_LANE_CHARS, compactLane } from '../lib/recipeSteps';
+import { MAX_LANES, MAX_LANE_CHARS, compactLane } from '../lib/recipeSteps';
 import { settings } from '../lib/settings';
 import { getDetectedLang } from '../lib/translationStore';
 import type { Ingredient, IngredientSection, Recipe, RecipeDraft } from '../lib/types';
@@ -910,6 +910,12 @@ export default function RecipeForm({
         <ol className="mt-2 flex flex-col gap-2">
           {form.steps.map((step, i) => {
             const typing = typingLanes.has(step.key);
+            const ownLane = laneName(step.lane);
+            // Renaming a lane only this step uses does not add one, so it stays
+            // possible at the MAX_LANES cap.
+            const ownLaneAlone =
+              ownLane !== '' && form.steps.filter((o) => laneName(o.lane) === ownLane).length === 1;
+            const canAddLane = typing || ownLaneAlone || lanesInForm.length < MAX_LANES;
             return (
               <li
                 key={step.key}
@@ -922,7 +928,9 @@ export default function RecipeForm({
                     </span>
                     <select
                       aria-label={t('form.stepLane', { n: i + 1 })}
-                      value={typing ? NEW_LANE : laneName(step.lane)}
+                      // A lane being typed shows its name once it has one, so a
+                      // lone lane reads as saved, not as "New lane…".
+                      value={typing && ownLane === '' ? NEW_LANE : ownLane}
                       onChange={(e) => {
                         const next = e.target.value;
                         if (next === NEW_LANE) {
@@ -933,7 +941,7 @@ export default function RecipeForm({
                           setTypingLane(step.key, false);
                         }
                       }}
-                      className={`max-w-40 min-w-0 ${cellClass} bg-surface text-ink`}
+                      className={`max-w-56 min-w-0 ${cellClass} bg-surface text-ink`}
                     >
                       <option value="">{t('form.noLane')}</option>
                       {lanesInForm.map((lane) => (
@@ -941,7 +949,9 @@ export default function RecipeForm({
                           {lane}
                         </option>
                       ))}
-                      <option value={NEW_LANE}>{t('form.newLane')}</option>
+                      <option value={NEW_LANE} disabled={!canAddLane}>
+                        {t('form.newLane')}
+                      </option>
                     </select>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
@@ -985,7 +995,7 @@ export default function RecipeForm({
                     value={step.lane}
                     // Raw value: compactLane tidies it on submit.
                     onChange={(e) => patchStep(step.key, { lane: e.target.value })}
-                    className={`mt-1.5 w-40 ${cellClass}`}
+                    className={`mt-1.5 w-full max-w-56 ${cellClass}`}
                   />
                 )}
                 <textarea

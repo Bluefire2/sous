@@ -234,7 +234,7 @@ const stepsSchema: JsonSchema = {
         minLength: 1,
         maxLength: RECIPE_LIMITS.lane,
         description:
-          'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta". Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes a recipe already has when you update its steps.',
+          'Only for steps two cooks do at the same time: a short label for who does it, e.g. "Sauce" or "Pasta". At most 3 different lanes in a recipe. Consecutive steps with lanes run together; a step without a lane is done by everyone, in order. Keep the lanes a recipe already has when you update its steps.',
       },
     },
     required: ['text'],

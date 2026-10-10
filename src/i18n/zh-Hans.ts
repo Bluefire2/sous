@@ -190,6 +190,7 @@ export const zhHans: Messages = {
   'recipe.moreServings': '增加份数',
   'recipe.doneEnjoy': '完成——开动吧！',
   'recipe.atTheSameTime': '同时进行',
+  'recipe.afterEveryLane': '所有分工完成后',
   'recipe.laneChips': '我负责',
   'recipe.laneEveryone': '全部',
   'recipe.sharedByView': '{email} 分享给你。只能查看。',

@@ -7,7 +7,7 @@
  */
 import { reconcileImportCheck, type ImportCheck } from '../importWarnings.ts';
 import { normalizeLang } from '../lang.ts';
-import { MAX_LANE_CHARS } from '../recipeSteps.ts';
+import { MAX_LANES, MAX_LANE_CHARS } from '../recipeSteps.ts';
 import { compactVariantOf } from '../recipeVariant.ts';
 import { compactRecipeFields, MAX_RECIPE_LANG_CHARS } from '../store.ts';
 
@@ -284,6 +284,10 @@ function validateSteps(raw: unknown, path: string, errors: FieldError[]): Recipe
     }
     if (text !== undefined) steps.push(lane === undefined ? { text } : { text, lane });
   });
+  const lanes = new Set(steps.flatMap((step) => (step.lane === undefined ? [] : [step.lane])));
+  if (lanes.size > MAX_LANES) {
+    errors.push({ path, message: `must use at most ${MAX_LANES} different lanes` });
+  }
   return errors.length === before ? steps : undefined;
 }
 

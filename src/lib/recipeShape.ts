@@ -2,7 +2,7 @@
  * Guards data that entered from outside the app (the update_recipe tool, a backup file)
  * and therefore has no compile-time relationship to Recipe.
  */
-import { MAX_LANE_CHARS } from './recipeSteps';
+import { MAX_LANES, MAX_LANE_CHARS } from './recipeSteps';
 import type { Ingredient, IngredientSection, Recipe, RecipeDraft, RecipeStep } from './types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -108,10 +108,17 @@ function normalizeSteps(value: unknown, storedLanes: readonly string[]): RecipeS
     storedLanes,
   );
   // A blank lane stays '': Ask's way of saying "take this lane off", which
-  // `carryStepLanes` honours and strips.
-  return entries.map(({ text, lane }) =>
-    lane === undefined ? { text } : { text, lane: fitted.get(lane) ?? lane },
-  );
+  // `carryStepLanes` honours and strips. A lane past the first MAX_LANES
+  // becomes '' too, so its steps are shared rather than given a stored lane.
+  const kept = new Set<string>();
+  return entries.map(({ text, lane }) => {
+    if (lane === undefined) return { text };
+    const fit = fitted.get(lane) ?? lane;
+    if (fit === '' || kept.has(fit)) return { text, lane: fit };
+    if (kept.size >= MAX_LANES) return { text, lane: '' };
+    kept.add(fit);
+    return { text, lane: fit };
+  });
 }
 
 function normalizeTags(value: unknown): string[] {

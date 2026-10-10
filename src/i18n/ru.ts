@@ -214,6 +214,7 @@ export const ru: Messages = {
   'recipe.moreServings': 'Больше порций',
   'recipe.doneEnjoy': 'Готово — приятного аппетита!',
   'recipe.atTheSameTime': 'Одновременно',
+  'recipe.afterEveryLane': 'Когда все части готовы',
   'recipe.laneChips': 'Моя часть',
   'recipe.laneEveryone': 'Всё',
   'recipe.sharedByView': 'Общий доступ от {email}. Только просмотр.',

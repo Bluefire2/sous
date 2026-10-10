@@ -217,6 +217,7 @@ export const uk: Messages = {
   'recipe.moreServings': 'Більше порцій',
   'recipe.doneEnjoy': 'Готово — смачного!',
   'recipe.atTheSameTime': 'Одночасно',
+  'recipe.afterEveryLane': 'Коли всі частини готові',
   'recipe.laneChips': 'Моя частина',
   'recipe.laneEveryone': 'Усе',
   'recipe.sharedByView': 'Спільний доступ від {email}. Лише перегляд.',

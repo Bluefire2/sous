@@ -7,6 +7,7 @@ import {
   recipeLanes,
   stepBlocks,
   tapStep,
+  waitsForLanes,
   type StepProgress,
 } from './stepLanes';
 import type { RecipeStep } from './types';
@@ -197,7 +198,7 @@ describe('tapStep', () => {
     expect(tapStep(pasta, at(1, [3]), 5)).toEqual({ currentStep: 5, doneSteps: [] });
   });
 
-  it('un-ticks a done lane step, the rest of its lane, and everything after the block', () => {
+  it('un-ticks a done lane step, the rest of its lane, and the shared steps after it', () => {
     expect(tapStep(pasta, at(6), 3)).toEqual({ currentStep: 3, doneSteps: [] });
     expect(tapStep(pasta, at(2, [3, 4]), 3)).toEqual({ currentStep: 2, doneSteps: [] });
     expect(tapStep(pasta, at(3, [4]), 1)).toEqual({ currentStep: 1, doneSteps: [4] });
@@ -205,6 +206,62 @@ describe('tapStep', () => {
 
   it('clears the block when a sync step before it is tapped', () => {
     expect(tapStep(pasta, at(1, [3]), 0)).toEqual({ currentStep: 0, doneSteps: [] });
+  });
+
+  /** 0 Curry, 1 Rice, 2 shared check, 3 Curry, 4 Rice: one lane name per cook across two blocks. */
+  const split: RecipeStep[] = [
+    { text: 'Chop the onion', lane: 'Curry' },
+    { text: 'Rinse the rice', lane: 'Rice' },
+    { text: 'Taste together' },
+    { text: 'Simmer the curry', lane: 'Curry' },
+    { text: 'Fluff the rice', lane: 'Rice' },
+  ];
+
+  it('ticks only shared steps and the same lane before a step in a later block', () => {
+    expect(tapStep(split, at(0), 4)).toEqual({ currentStep: 0, doneSteps: [1, 2, 4] });
+    // The Curry cook's onion is still theirs to do, and their next step.
+    expect([...activeSteps(split, at(0, [1, 2, 4]))]).toEqual([0, 3]);
+  });
+
+  it('un-ticks only its own lane and the shared steps after it', () => {
+    const allDone = at(5);
+    expect(tapStep(split, allDone, 1)).toEqual({ currentStep: 1, doneSteps: [3] });
+  });
+
+  it('makes the shared step current only once both lanes before it are done', () => {
+    // The Rice cook rinsed; the check still waits for Curry's onion.
+    expect([...activeSteps(split, at(0, [1]))]).toEqual([0]);
+    expect(waitsForLanes(split, at(0, [1]), 2)).toBe(true);
+  });
+
+  it('ticks a current sync step without ticking another lane’s earlier step', () => {
+    // 0 X, 1 shared, 2 Y, 3 shared. The Y cook finished their step, so the
+    // last shared step is current while X's first step is still to do.
+    const steps: RecipeStep[] = [
+      { text: 'Whisk', lane: 'X' },
+      { text: 'Rest' },
+      { text: 'Fold', lane: 'Y' },
+      { text: 'Bake' },
+    ];
+    const progress = tapStep(steps, at(0), 2);
+    expect(progress).toEqual({ currentStep: 0, doneSteps: [1, 2] });
+    expect([...activeSteps(steps, progress)]).toEqual([0, 3]);
+    expect(tapStep(steps, progress, 3)).toEqual({ currentStep: 0, doneSteps: [1, 2, 3] });
+  });
+});
+
+describe('waitsForLanes', () => {
+  it('is true for the sync step after a block until every lane is done', () => {
+    expect(waitsForLanes(pasta, at(1), 5)).toBe(true);
+    expect(waitsForLanes(pasta, at(3), 5)).toBe(true);
+    expect(waitsForLanes(pasta, at(5), 5)).toBe(false);
+  });
+
+  it('is false for lane steps, a sync step not after a block, and a done step', () => {
+    expect(waitsForLanes(pasta, at(0), 1)).toBe(false);
+    expect(waitsForLanes(pasta, at(0), 0)).toBe(false);
+    expect(waitsForLanes(pasta, at(6), 5)).toBe(false);
+    expect(waitsForLanes(plain(3), at(0), 2)).toBe(false);
   });
 });
 
