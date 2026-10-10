@@ -74,14 +74,22 @@ const graphemes = new Intl.Segmenter('und', { granularity: 'grapheme' });
 /** Code units read per grapheme kept; far more than any real text needs. */
 const SOURCE_UNITS_PER_GRAPHEME = 8;
 
+/** Code units past the limit read to find the last grapheme boundary before it. */
+const CLIP_LOOKAHEAD = 32;
+
+/** Bidi controls: ALM, LRM, RLM, LRE-RLO, LRI-PDI. */
+const BIDI_CONTROLS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
 /**
  * One line of plain text, at most `max` characters as people see them
  * (graphemes, so an emoji sequence or an accented letter is never split),
  * `…` when cut. Bidi controls are dropped so recipe text cannot reorder the
  * preview around it.
  *
- * Only a bounded prefix is read: nothing caps a stored description, and this
- * runs for every signed-out visit to a `/p` page.
+ * Only a bounded prefix is read, ending on a grapheme boundary: nothing caps a
+ * stored description, and this runs for every signed-out visit to a `/p`
+ * page. Text that goes on past the prefix is marked as cut even when what was
+ * read would fit, since the reader is not seeing all of it.
  */
 export function previewText(raw: unknown, max: number): string {
   if (typeof raw !== 'string') {
@@ -91,14 +99,19 @@ export function previewText(raw: unknown, max: number): string {
   let source = raw;
   const clipped = raw.length > limit;
   if (clipped) {
-    source = raw.slice(0, limit);
-    // Never end on half a surrogate pair.
-    if (/[\ud800-\udbff]$/.test(source)) {
-      source = source.slice(0, -1);
+    // Boundaries up to the limit depend only on the text around them, so a
+    // window just past it decides them; segmenting all of `raw` would copy it.
+    let end = 0;
+    for (const { index, segment } of graphemes.segment(raw.slice(0, limit + CLIP_LOOKAHEAD))) {
+      if (index + segment.length > limit) {
+        break;
+      }
+      end = index + segment.length;
     }
+    source = raw.slice(0, end);
   }
   const flat = source
-    .replace(/[؜‎‏‪-‮⁦-⁩]/g, '')
+    .replace(BIDI_CONTROLS, '')
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -112,7 +125,9 @@ export function previewText(raw: unknown, max: number): string {
   if (parts.length <= max && !clipped) {
     return flat;
   }
-  return `${parts.slice(0, max - 1).join('').trimEnd()}…`;
+  const kept = parts.slice(0, max - 1).join('').trimEnd();
+  // Nothing but padding before the clip: no text, not a lone "…".
+  return kept === '' ? '' : `${kept}…`;
 }
 
 function escapeAttribute(value: string): string {

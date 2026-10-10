@@ -499,7 +499,8 @@ user agents. Past `MAX_PREVIEW_LOOKUPS_IN_FLIGHT` (20) unsettled lookups per
 instance a page gets the plain shell without one. The preview matches the raw
 request path and refuses any `%` (the SPA keeps an encoded slash inside a
 segment, so `%2F` must not describe another page). Text is read from a
-bounded prefix, since nothing caps a stored description. Vite (`npm run dev`) serves no tags; check them with `dev:test
+bounded prefix ending on a grapheme boundary, since nothing caps a stored
+description. Vite (`npm run dev`) serves no tags; check them with `dev:test
 --static`. `/privacy` and `/terms` describe previews; change them with it.
 
 Collection delete tombstones live grants in the same transaction. Forward

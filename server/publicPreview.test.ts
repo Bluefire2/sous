@@ -141,35 +141,48 @@ describe('previewText', () => {
   });
 
   it('cuts by character as people see it, never inside one', () => {
-    expect(previewText('🍝🍝🍝🍝', 3)).toBe('🍝🍝…');
+    const pasta = '\u{1f35d}';
+    expect(previewText(pasta.repeat(4), 3)).toBe(`${pasta.repeat(2)}\u2026`);
     expect(previewText('abc', 3)).toBe('abc');
-    expect(previewText('ab cd', 4)).toBe('ab…');
-    const family = '👨‍👩‍👧';
+    expect(previewText('ab cd', 4)).toBe('ab\u2026');
+    const family = '\u{1f468}\u200d\u{1f469}\u200d\u{1f467}';
     expect(previewText(family.repeat(3), 3)).toBe(family.repeat(3));
-    expect(previewText(family.repeat(4), 3)).toBe(`${family.repeat(2)}…`);
-    expect(previewText('é'.repeat(4), 3)).toBe('éé…');
-    expect(previewText('🇺🇦🇺🇦🇺🇦', 2)).toBe('🇺🇦…');
+    expect(previewText(family.repeat(4), 3)).toBe(`${family.repeat(2)}\u2026`);
+    const accented = 'e\u0301';
+    expect(previewText(accented.repeat(4), 3)).toBe(`${accented.repeat(2)}\u2026`);
+    const flag = '\u{1f1fa}\u{1f1e6}';
+    expect(previewText(flag.repeat(3), 2)).toBe(`${flag}\u2026`);
   });
 
-  it('reads only a bounded prefix of a huge string, and still says it was cut', () => {
+  it('never reads past a bounded prefix', () => {
+    // max 10 reads 80 code units, so the tail is never seen; the text is
+    // still marked as cut, since the source went on.
+    expect(previewText(`Soup${' '.repeat(2_000)}tail`, 10)).toBe('Soup\u2026');
     const huge = 'soup '.repeat(200_000);
-    const started = performance.now();
-    expect(previewText(huge, 200)).toBe(`${'soup '.repeat(40).trimEnd().slice(0, 199).trimEnd()}…`);
-    expect(performance.now() - started).toBeLessThan(50);
-    // Mostly whitespace: the prefix collapses to fewer than `max` characters,
-    // but the source went on, so the text is marked as cut.
-    expect(previewText(`a${' '.repeat(5_000)}b`, 10)).toBe('a…');
+    expect(previewText(huge, 200)).toBe(`${'soup '.repeat(40).slice(0, 199).trimEnd()}\u2026`);
   });
 
-  it('never ends a clipped prefix on half a surrogate pair', () => {
-    // max 3 reads 24 code units: 22 spaces, 'a', then the high half of 🍝.
-    const cut = previewText(`${' '.repeat(22)}a🍝${' '.repeat(100)}`, 3);
-    expect(cut).toBe('a…');
+  it('clips the prefix on a grapheme boundary', () => {
+    // A four-person family is 11 code units: max 120 reads 960, which is 87
+    // whole families; the 88th would cross the limit and is left out whole.
+    const family = '\u{1f468}\u200d\u{1f469}\u200d\u{1f467}\u200d\u{1f466}';
+    expect(previewText(family.repeat(100), 120)).toBe(`${family.repeat(87)}\u2026`);
+    // A letter with 20 marks is 21 code units: max 5 reads 40, one letter.
+    const heavy = `e${'\u0301'.repeat(20)}`;
+    expect(previewText(heavy.repeat(5), 5)).toBe(`${heavy}\u2026`);
+    // 22 spaces and 'a' fill 23 of 24 units; the pasta emoji would cross.
+    const cut = previewText(`${' '.repeat(22)}a\u{1f35d}${' '.repeat(100)}`, 3);
+    expect(cut).toBe('a\u2026');
     expect(cut).not.toMatch(/[\ud800-\udbff]/);
   });
 
+  it('gives no text, not a lone ellipsis, when only padding was read', () => {
+    expect(previewText(`${' '.repeat(2_000)}Borscht`, 120)).toBe('');
+    expect(previewText(`${'\u200e'.repeat(2_000)}Borscht`, 120)).toBe('');
+  });
+
   it('drops bidi controls', () => {
-    expect(previewText('a‮b⁦c⁩‏d؜', 50)).toBe('abcd');
+    expect(previewText('a\u202eb\u2066c\u2069\u200fd\u061c', 50)).toBe('abcd');
   });
 
   it('treats a non-string as empty', () => {
