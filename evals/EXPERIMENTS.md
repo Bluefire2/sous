@@ -22,6 +22,33 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-10 — `optional` on ingredients in `RECIPE_SCHEMA` (PR #130)
+
+- Change: `RECIPE_SCHEMA` gains a boolean `optional` per ingredient,
+  described as "true only when the recipe marks this ingredient as
+  optional; then leave "optional" out of the note. Omit otherwise."
+  `normalizeIngredient` keeps it only when `true` (`290220a`, merged up to
+  `68b2239`). Prompts, model, thinking, checks, retries and goldens are
+  unchanged.
+- Reason (not fixture-specific): recipes mark ingredients optional in
+  general; the app now stores that as a flag instead of a note.
+- Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per
+  side. `.env.local` sets no `CHAT_MODEL`.
+- Before (`1267906`, the main the PR merged): dev 10/15
+  (blueberry-muffins 2/3, choc-pie-tea-towel 3/3, hundred-good-cookies
+  3/3, lemon-tea-bread 2/3, sweet-sour-pork 0/3), holdout 13/15; two
+  holdout A runs ended `MAX_TOKENS` (parse error); every call was 1.
+- After (`68b2239`): dev 7/15 (blueberry-muffins 1/3, choc-pie-tea-towel
+  3/3, hundred-good-cookies 3/3, lemon-tea-bread 0/3, sweet-sour-pork
+  0/3), holdout 15/15; two lemon-tea-bread A runs ended `MAX_TOKENS`
+  (parse error); every call was 1.
+- Decision: pending owner decision. It fails the acceptance rule (dev
+  10 → 7; holdout 13 → 15 passes). Each side lost two runs to a
+  `MAX_TOKENS` runaway, and the 2026-10-08 entries show unchanged setups
+  ranging 8–12 on dev, so the drop may be variance, but the rule counts
+  it as measured. Not re-run.
+- Run by: agent, model default (`gemini-3.8-flash`).
+
 ## 2026-10-09 — Import default `gemini-3.7-flash` → `gemini-3.8-flash` (3.7 now redirects)
 
 - Change: `DEFAULT_MODEL` in `server/recipeImport.ts` becomes
