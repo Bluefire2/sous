@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import KitchenProfileSection from '../components/KitchenProfileSection';
 import { isSupportedLocale, localeDisplayName, SUPPORTED_LOCALES, t as translate, useLocale, useT } from '../i18n';
+import { setUnitSystem, useUnitSystem } from '../lib/accountPreferences';
 import { exportLibrary, importLibrary } from '../lib/backup';
 import {
   disconnectApp,
@@ -14,7 +16,52 @@ import { notifyImportComplete, sync, useSyncStatus } from '../lib/syncEngine';
 import { signInHref, signOut, useSession } from '../lib/session';
 import { settings, type Theme } from '../lib/settings';
 import { applyTheme } from '../lib/theme';
-import { backLink, inputClass, primaryBtn, secondaryBtn } from '../lib/uiClasses';
+import { backLink, inputClass, inputFocus, primaryBtn, secondaryBtn } from '../lib/uiClasses';
+import { UNIT_SYSTEMS, type UnitSystem } from '../lib/unitConversion';
+import { useRecipeTextSize, useWakeLockSetting } from '../lib/useDeviceSettings';
+
+/** Account-wide (`docs/plans/measurement-units.md`), unlike the device-only Cooking settings. */
+function Measurements() {
+  const t = useT();
+  const units = useUnitSystem();
+  const [error, setError] = useState(false);
+
+  const choose = (next: UnitSystem) => {
+    setError(false);
+    setUnitSystem(next).catch(() => setError(true));
+  };
+
+  return (
+    <section>
+      <h2 id="settings-measurements" className="mt-8 text-lg font-semibold">
+        {t('settings.measurements')}
+      </h2>
+      <p className="mt-1 text-sm text-ink-muted">{t('settings.measurementsHint')}</p>
+      <div role="group" aria-labelledby="settings-measurements" className="mt-3 flex gap-2">
+        {UNIT_SYSTEMS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={units === option}
+            onClick={() => choose(option)}
+            className={`flex-1 rounded-full py-2.5 font-medium ${
+              units === option
+                ? 'bg-ink text-page'
+                : 'border border-line-strong text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
+            }`}
+          >
+            {option === 'metric' ? t('settings.unitsMetric') : t('settings.unitsAsWritten')}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-danger">
+          {t('settings.measurementsSaveFailed')}
+        </p>
+      )}
+    </section>
+  );
+}
 
 function MemberInvite() {
   const t = useT();
@@ -224,6 +271,8 @@ export default function Settings() {
   const syncStatus = useSyncStatus();
   const t = useT();
   const locale = useLocale();
+  const wakeLock = useWakeLockSetting();
+  const textSize = useRecipeTextSize();
   const [theme, setTheme] = useState(settings.getTheme());
   const [status, setStatus] = useState<string | null>(null);
   const [statusKind, setStatusKind] = useState<'ok' | 'err' | null>(null);
@@ -378,6 +427,10 @@ export default function Settings() {
         </>
       )}
 
+      {sessionStatus === 'signedIn' && <KitchenProfileSection />}
+
+      {sessionStatus === 'signedIn' && <Measurements />}
+
       {sessionStatus === 'signedIn' && <ConnectedApps />}
 
       <h2 className="mt-8 text-lg font-semibold">{t('settings.appearance')}</h2>
@@ -395,6 +448,38 @@ export default function Settings() {
             }`}
           >
             {option === 'dark' ? t('settings.dark') : t('settings.light')}
+          </button>
+        ))}
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold">{t('settings.cooking')}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t('settings.cookingDeviceOnly')}</p>
+      <label className="mt-3 flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={wakeLock}
+          onChange={(event) => settings.setWakeLock(event.target.checked)}
+          className={`mt-1 h-4 w-4 shrink-0 accent-ink ${inputFocus}`}
+        />
+        <span>{t('settings.keepScreenAwake')}</span>
+      </label>
+      <p id="settings-text-size" className="mt-4">
+        {t('settings.recipeTextSize')}
+      </p>
+      <div role="group" aria-labelledby="settings-text-size" className="mt-2 flex gap-2">
+        {(['normal', 'large'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={textSize === option}
+            onClick={() => settings.setRecipeTextSize(option)}
+            className={`flex-1 rounded-full py-2.5 font-medium ${
+              textSize === option
+                ? 'bg-ink text-page'
+                : 'border border-line-strong text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
+            }`}
+          >
+            {option === 'normal' ? t('settings.textSizeNormal') : t('settings.textSizeLarge')}
           </button>
         ))}
       </div>

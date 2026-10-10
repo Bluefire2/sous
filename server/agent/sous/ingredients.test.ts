@@ -161,3 +161,31 @@ describe('combineIngredients', () => {
     expect(missingIds).toEqual(['missing']);
   });
 });
+
+describe('combineIngredients for a member who reads in metric', () => {
+  const butter = (id: string, quantity: number, unit: string) =>
+    recipe({ id, title: id, ingredientSections: [{ items: [{ quantity, unit, item: 'butter' }] }] });
+
+  it('turns pounds and ounces into grams and merges them with grams', () => {
+    const library = lib(butter('r1', 1, 'lb'), butter('r2', 200, 'g'), butter('r3', 4, 'oz'));
+    const { lines } = combineIngredients(library, [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }], { metric: true });
+    // 453.6 + 200 + 113.4 = 767 g, read to the nearest 5 g.
+    expect(lines).toEqual([{ item: 'butter', quantity: 765, unit: 'g', sourceRecipeIds: ['r1', 'r2', 'r3'] }]);
+  });
+
+  it('reads a converted total of a kilogram or more in kg', () => {
+    const library = lib(butter('r1', 3, 'lb'));
+    expect(combineIngredients(library, [{ id: 'r1' }], { metric: true }).lines[0]).toMatchObject({ quantity: 1.36, unit: 'kg' });
+  });
+
+  it('keeps pounds and grams apart, as before, when the member reads as written', () => {
+    const library = lib(butter('r1', 1, 'lb'), butter('r2', 200, 'g'));
+    const { lines } = combineIngredients(library, [{ id: 'r1' }, { id: 'r2' }]);
+    expect(lines.map((line) => line.unit).sort()).toEqual(['g', 'lb']);
+  });
+
+  it('leaves volumes alone', () => {
+    const library = lib(recipe({ id: 'r1', title: 'r1', ingredientSections: [{ items: [{ quantity: 2, unit: 'cup', item: 'milk' }] }] }));
+    expect(combineIngredients(library, [{ id: 'r1' }], { metric: true }).lines[0]).toMatchObject({ quantity: 2, unit: 'cup' });
+  });
+});

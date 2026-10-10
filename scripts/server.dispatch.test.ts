@@ -54,11 +54,16 @@ const ANONYMOUS_STATUS: Record<string, number> = {
   'POST /api/sync/push': 401,
   'POST /api/shared/leave': 401,
   'POST /api/public/join': 401,
+  'POST /api/public/save': 401,
   'POST /api/extension/import': 401,
   // No chrome-extension:// Origin, so no CORS grant.
   'OPTIONS /api/extension/import': 403,
   'GET /api/mcp/grants': 401,
   'POST /api/mcp/grants/revoke': 401,
+  'GET /api/settings/kitchen': 401,
+  'POST /api/settings/kitchen': 401,
+  'GET /api/settings/preferences': 401,
+  'POST /api/settings/preferences': 401,
 };
 
 const UUID = '0b7c9a52-3d7e-4a43-9a43-2f4c5f6f7a10';
@@ -255,6 +260,9 @@ describe('prefix API routes', () => {
       ['GET', `/api/collections/${UUID}/grants/role`, 405],
       ['DELETE', `/api/collections/${UUID}/public`, 405],
       ['GET', `/api/collections/${UUID}/public/revoke`, 405],
+      ['DELETE', `/api/recipes/${UUID}/public`, 405],
+      ['GET', `/api/recipes/${UUID}/public/revoke`, 405],
+      ['GET', `/api/recipes/${UUID}/nope`, 404],
       ['DELETE', `/api/collections/${UUID}/links`, 405],
       ['GET', `/api/collections/${UUID}/links/revoke`, 405],
       ['GET', `/api/collections/${UUID}/nope`, 404],
@@ -265,7 +273,11 @@ describe('prefix API routes', () => {
   });
 
   it('refuses an anonymous owner request on a collection route with 401', async () => {
-    for (const path of [`/api/collections/${UUID}/grants`, `/api/collections/${UUID}/links`]) {
+    for (const path of [
+      `/api/collections/${UUID}/grants`,
+      `/api/collections/${UUID}/links`,
+      `/api/recipes/${UUID}/public`,
+    ]) {
       expect((await send(apiBase, 'GET', path)).status, path).toBe(401);
     }
   });

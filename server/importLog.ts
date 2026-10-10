@@ -27,6 +27,8 @@ export type ImportVia = 'url' | 'paste' | 'photos' | 'extension' | 'generate';
  * `ImportOutcome` kinds, plus the ways a request ends before or after the
  * pipeline. `threw` means the Gemini call (or something after it) threw.
  * `rate_limited` is a searched generation the per-member limit refused.
+ * `llm_refused` is the daily model budget (`server/llmBudget.ts`) refusing,
+ * or unable to read, the member's spend; its own `llm_refused` line says which.
  * `aborted` means the request body stopped before it all arrived, which is
  * the client going away mid-upload (`RequestBodyError`), not a server failure.
  */
@@ -41,7 +43,9 @@ export type ImportLogOutcome =
   | 'bad_photos'
   | 'bad_brief'
   | 'rate_limited'
+  | 'llm_refused'
   | 'save_failed'
+  | 'store_unavailable'
   | 'threw';
 
 export interface ImportLogEntry {

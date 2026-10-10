@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
-import { ingredientLine } from '../lib/recipeText';
+import { displayTemperatures, ingredientLine } from '../lib/recipeText';
+import type { RecipeTextSize } from '../lib/settings';
 import type { Recipe } from '../lib/types';
+import type { UnitSystem } from '../lib/unitConversion';
 
 /**
  * The parts of a recipe page that only display: shared by `RecipeView` (your
@@ -24,6 +26,12 @@ export const translateChipClass =
  * room kept clear of the floating Ask pill goes.
  */
 export const recipePageClass = 'mx-auto max-w-xl px-4 pb-24 print:max-w-none print:px-0 print:pb-0';
+
+/**
+ * Ingredient and step rows one size step up for reading from across the
+ * kitchen (Settings → Cooking). Paper keeps the normal size.
+ */
+const largeRowText = 'text-lg print:text-base';
 
 export function SourceCredit({ source }: { source: URL }) {
   const t = useT();
@@ -92,6 +100,8 @@ export function IngredientsSection({
   onServings,
   checkedKeys,
   onToggle,
+  textSize = 'normal',
+  units = 'asWritten',
 }: {
   recipe: Recipe;
   /** The text shown, possibly translated; quantities always come from `recipe`. */
@@ -100,6 +110,10 @@ export function IngredientsSection({
   onServings: (servings: number) => void;
   checkedKeys: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
+  /** The member's measurement units, read by the screen (`useUnitSystem`). */
+  units?: UnitSystem;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -154,6 +168,8 @@ export function IngredientsSection({
                       type="button"
                       onClick={() => onToggle(key)}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors print:p-0 print:text-ink ${
+                        textSize === 'large' ? `${largeRowText} ` : ''
+                      }${
                         isChecked
                           ? 'bg-surface-muted text-ink-subtle hover:bg-surface active:bg-surface'
                           : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
@@ -176,6 +192,7 @@ export function IngredientsSection({
                           scale,
                           locale,
                           t,
+                          { units, storedUnit: ing.unit },
                         )}
                       </span>
                     </button>
@@ -196,6 +213,8 @@ export function StepsSection({
   currentStep,
   onStep,
   afterDone,
+  textSize = 'normal',
+  units = 'asWritten',
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
@@ -203,8 +222,15 @@ export function StepsSection({
   onStep: (step: number) => void;
   /** Shown under "Done" once every step is ticked, such as the cook-log link. */
   afterDone?: ReactNode;
+  /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
+  textSize?: RecipeTextSize;
+  /** Fahrenheit in the shown text reads in Celsius when metric. */
+  units?: UnitSystem;
 }) {
   const t = useT();
+  const large = textSize === 'large';
+  // The current step stays one step above the others at either size.
+  const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
@@ -212,13 +238,15 @@ export function StepsSection({
         {recipe.steps.map((step, i) => {
           const isCurrent = i === currentStep;
           const isDone = i < currentStep;
-          const text = displayRecipe.steps[i]?.text ?? step.text;
+          const text = displayTemperatures(displayRecipe.steps[i]?.text ?? step.text, units, t);
           return (
             <li key={i}>
               <button
                 type="button"
                 onClick={() => onStep(i === currentStep ? i + 1 : i)}
                 className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors print:px-0 print:py-1 print:text-ink ${
+                  large ? `${largeRowText} ` : ''
+                }${
                   isCurrent
                     ? 'bg-surface ring-2 ring-amber-400'
                     : isDone
@@ -241,7 +269,7 @@ export function StepsSection({
                     i + 1
                   )}
                 </span>
-                <span className={isCurrent ? 'text-lg print:text-base' : ''}>{text}</span>
+                <span className={isCurrent ? currentText : ''}>{text}</span>
               </button>
             </li>
           );
@@ -257,13 +285,13 @@ export function StepsSection({
   );
 }
 
-export function NotesSection({ notes }: { notes: string }) {
+export function NotesSection({ notes, units = 'asWritten' }: { notes: string; units?: UnitSystem }) {
   const t = useT();
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.notes')}</h2>
       <p className="mt-2 rounded-lg bg-surface px-3 py-3 whitespace-pre-line text-ink-muted shadow-sm print:p-0">
-        {notes}
+        {displayTemperatures(notes, units, t)}
       </p>
     </section>
   );

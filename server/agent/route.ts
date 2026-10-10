@@ -23,6 +23,8 @@ import {
   requireMember,
   storeUnavailable,
 } from '../membership.ts';
+import { readPromptContext, type PromptContext } from '../kitchenProfile.ts';
+import { admitLlm, llmRefusal } from '../llmBudget.ts';
 
 const LIBRARY_LOAD_TIMEOUT_MS = 90_000;
 const AGENT_WALL_MS = 90_000;
@@ -76,10 +78,15 @@ export async function agentPost(req: Request): Promise<Response> {
     maxIndexChars: 40_000,
   });
   void loadPromise.catch(() => {});
+  // Read beside the library; a failed read is 503, never an answer that
+  // ignores the member's allergies.
+  const profilePromise = readPromptContext(access.sub);
+  void profilePromise.catch(() => {});
   let library;
+  let promptContext: PromptContext;
   try {
-    library = await Promise.race([
-      loadPromise,
+    [library, promptContext] = await Promise.race([
+      Promise.all([loadPromise, profilePromise]),
       new Promise<never>((_, reject) => {
         loadTimer = setTimeout(() => reject(new Error('library load timeout')), LIBRARY_LOAD_TIMEOUT_MS);
       }),
@@ -93,30 +100,45 @@ export async function agentPost(req: Request): Promise<Response> {
   }
 
   const messages = replayCards(parsed.value.messages, library);
-  const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const modelName = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const stop = new AbortController();
   const deadline = AbortSignal.timeout(AGENT_WALL_MS);
   const signal = AbortSignal.any([deadline, stop.signal]);
+
+  // Admitted last, right before the run, so nothing can throw between taking
+  // the slot and the try that frees it.
+  const admission = await admitLlm(access.sub, 'agent');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
 
   const runStarted = Date.now();
   let agentRun;
   try {
     agentRun = await startAgent({
-      model: googleModel({ apiKey, model: modelName }),
+      model: googleModel({
+        apiKey,
+        model: modelName,
+        onUsage: (model, usage) => void meter.charge(model, usage),
+      }),
       systemInstruction: buildSystemPrompt({
         library,
         clientNow: parsed.value.clientNow,
         timeZone: parsed.value.timeZone,
         cards: CARD_SPECS,
+        kitchenProfile: promptContext.kitchenProfile,
+        units: promptContext.units,
       }),
       messages,
-      tools: dataTools(library),
+      tools: dataTools(library, { metric: promptContext.units === 'metric' }),
       cards: CARD_SPECS,
       ctx: library,
       limits: defaultAgentLimits(),
       signal,
     });
   } catch {
+    meter.release();
     return jsonError('Assistant is unavailable.', 502);
   }
 
@@ -184,7 +206,8 @@ export async function agentPost(req: Request): Promise<Response> {
           })
           .catch(() => {
             /* Stop can close the stream before enqueue or close runs. */
-          });
+          })
+          .finally(meter.release);
       },
       cancel() {
         streamSettled = true;

@@ -5,16 +5,37 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endlessBody } from '../../test/endlessBody.ts';
+import * as kitchen from '../kitchenProfile.ts';
 import * as membership from '../membership.ts';
 import * as run from './harness/run.ts';
 import type { AgentEvent, AgentRunSummary, StartAgentResult } from './harness/types.ts';
 import { MAX_AGENT_BODY_BYTES } from './request.ts';
 import { agentPost } from './route.ts';
 import * as library from './sous/library.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  inFlightForTest,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from '../llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 vi.mock('../membership.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../membership.ts')>();
   return { ...actual, requireMember: vi.fn() };
+});
+
+vi.mock('../kitchenProfile.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../kitchenProfile.ts')>();
+  return { ...actual, readPromptContext: vi.fn() };
 });
 
 vi.mock('./sous/library.ts', async (importOriginal) => {
@@ -29,6 +50,7 @@ vi.mock('./harness/run.ts', async (importOriginal) => {
 
 const requireMember = vi.mocked(membership.requireMember);
 const loadAgentLibrary = vi.mocked(library.loadAgentLibrary);
+const readPromptContext = vi.mocked(kitchen.readPromptContext);
 const startAgent = vi.mocked(run.startAgent);
 
 const LIBRARY = library.buildAgentLibrary([], [], {
@@ -75,6 +97,7 @@ beforeEach(() => {
   vi.stubEnv('GEMINI_API_KEY', 'test-key');
   requireMember.mockReset().mockResolvedValue({ kind: 'ok', sub: 'member-sub', email: 'm@example.com', isOwner: false });
   loadAgentLibrary.mockReset().mockResolvedValue(LIBRARY);
+  readPromptContext.mockReset().mockResolvedValue({ kitchenProfile: '', units: 'asWritten' });
   startAgent.mockReset().mockResolvedValue(fakeRun([{ t: 'text', step: 0, d: 'Soup.' }, { t: 'done' }]));
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -144,6 +167,25 @@ describe('POST /api/agent gates', () => {
     expect(startAgent).not.toHaveBeenCalled();
   });
 
+  it('answers 503 when the kitchen profile cannot be read, rather than run without it', async () => {
+    readPromptContext.mockRejectedValue(new Error('firestore down'));
+    const res = await agentPost(post());
+    expect(res.status).toBe(503);
+    expect(startAgent).not.toHaveBeenCalled();
+  });
+
+  it('reads the session member’s kitchen profile and puts it in the system prompt', async () => {
+    readPromptContext.mockResolvedValue({
+      kitchenProfile: '<kitchen_profile>\nAllergies (never include): peanuts\n</kitchen_profile>',
+      units: 'metric',
+    });
+    const body = JSON.parse(validBody()) as Record<string, unknown>;
+    await agentPost(post(JSON.stringify({ ...body, sub: 'someone-else' })));
+    expect(readPromptContext).toHaveBeenCalledWith('member-sub');
+    expect(startAgent.mock.calls[0]?.[0].systemInstruction).toContain('Allergies (never include): peanuts');
+    expect(startAgent.mock.calls[0]?.[0].systemInstruction).toContain('The user cooks in metric');
+  });
+
   it('answers 503 when the library load outlasts its 90 s budget', async () => {
     vi.useFakeTimers();
     loadAgentLibrary.mockReturnValue(new Promise(() => {}));
@@ -203,5 +245,29 @@ describe('POST /api/agent stream', () => {
     expect(logged).toMatch(/agent steps=1 calls=0 .*finish=text/);
     expect(logged).not.toContain('What can I cook');
     expect(logged).not.toContain('Soup.');
+  });
+});
+
+describe('POST /api/agent daily AI budget', () => {
+  it('refuses over the budget before starting the run', async () => {
+    llmUsage.spent.set(`member-sub/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const res = await agentPost(post());
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(startAgent).not.toHaveBeenCalled();
+  });
+
+  it('holds a slot while the run streams and frees it after', async () => {
+    const res = await agentPost(post());
+    expect(inFlightForTest('member-sub')).toBe(1);
+    await res.text();
+    await vi.waitFor(() => expect(inFlightForTest('member-sub')).toBe(0));
+  });
+
+  it('frees the slot when the run cannot start', async () => {
+    startAgent.mockRejectedValue(new Error('no stream'));
+    const res = await agentPost(post());
+    expect(res.status).toBe(502);
+    expect(inFlightForTest('member-sub')).toBe(0);
   });
 });

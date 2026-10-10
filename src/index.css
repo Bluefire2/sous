@@ -16,6 +16,15 @@
   --color-danger-fill-hover: #b91c1c;
   --color-accent-soft: #fef3c7;
   --color-success: #15803d;
+
+  --animate-dice-roll: dice-roll 0.9s ease-out;
+  @keyframes dice-roll {
+    0% { transform: translateY(0) rotate(0); }
+    30% { transform: translateY(-10px) rotate(240deg); }
+    60% { transform: translateY(0) rotate(420deg); }
+    80% { transform: translateY(-3px) rotate(460deg); }
+    100% { transform: translateY(0) rotate(450deg); }
+  }
 }
 
 @layer theme {

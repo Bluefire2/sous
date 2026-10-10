@@ -6,6 +6,7 @@ import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
 import ImportWarningBanner from '../components/ImportWarningBanner';
 import ShareRecipeButton from '../components/ShareRecipeButton';
+import ShareRecipeControl from '../components/ShareRecipeSheet';
 import VariantLinks from '../components/VariantLinks';
 import {
   askButtonClass,
@@ -19,6 +20,7 @@ import {
   StepsSection,
   translateChipClass,
 } from '../components/RecipeBody';
+import { useUnitSystem } from '../lib/accountPreferences';
 import { libraryHref, libraryPathFromState } from '../lib/collectionHref';
 import { useCookLogs } from '../lib/cookLogStore';
 import { SpinnerIcon, TranslateIcon } from '../lib/icons';
@@ -38,6 +40,7 @@ import {
   translateRecipe,
 } from '../lib/translationStore';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 import { useCookState } from '../lib/useCookState';
 import type { Locale } from '../i18n';
@@ -92,6 +95,8 @@ export default function RecipeView() {
   const location = useLocation();
   const libraryBack = libraryPathFromState(location.state) ?? libraryHref(collectionId);
   useWakeLock();
+  const textSize = useRecipeTextSize();
+  const units = useUnitSystem();
 
   const {
     servings,
@@ -171,6 +176,22 @@ export default function RecipeView() {
         ? t('recipe.sharedEdit')
         : t('recipe.sharedView');
   const source = sourceLink(recipe.sourceUrl);
+  // Where a copy saved from someone's recipe link came from (`docs/plans/recipe-links.md`).
+  const savedFrom = recipe.savedFrom;
+  const savedOn =
+    savedFrom === undefined
+      ? undefined
+      : new Date(savedFrom.savedAt).toLocaleDateString(locale, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+  const savedFromLine =
+    savedFrom === undefined || savedOn === undefined
+      ? undefined
+      : savedFrom.name !== undefined
+        ? t('recipe.savedFrom', { name: savedFrom.name, date: savedOn })
+        : t('recipe.savedFromLink', { date: savedOn });
   // A translation must not flow into chat or save, or it would overwrite the original (principle 1).
   const displayRecipe = displayBody ?? recipe;
   const effective = effectiveRecipeLang(recipe);
@@ -253,7 +274,8 @@ export default function RecipeView() {
           </Link>
           <div className="flex items-center gap-1">
             {/* The stored recipe: a translation is a view and is never shared (i18n principle 1). */}
-            <ShareRecipeButton recipe={recipe} />
+            {/* A recipe link is the owner's; a shared recipe shares as text only. */}
+            {shared ? <ShareRecipeButton recipe={recipe} /> : <ShareRecipeControl recipe={recipe} />}
             {canEdit && (
               <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
                 {t('common.edit')}
@@ -265,6 +287,9 @@ export default function RecipeView() {
           <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted print:hidden">
             {sharedLine}
           </p>
+        )}
+        {savedFromLine !== undefined && (
+          <p className="mt-2 text-sm break-words text-ink-muted">{savedFromLine}</p>
         )}
         <StoredPhotoImage
           photoId={recipe.photoId}
@@ -314,6 +339,8 @@ export default function RecipeView() {
         onServings={setServings}
         checkedKeys={checkedKeys}
         onToggle={toggleChecked}
+        textSize={textSize}
+        units={units}
       />
 
       <StepsSection
@@ -321,6 +348,8 @@ export default function RecipeView() {
         displayRecipe={displayRecipe}
         currentStep={currentStep}
         onStep={setCurrentStep}
+        textSize={textSize}
+        units={units}
         afterDone={
           !shared && (
             <Link
@@ -333,7 +362,7 @@ export default function RecipeView() {
         }
       />
 
-      {displayRecipe.notes && <NotesSection notes={displayRecipe.notes} />}
+      {displayRecipe.notes && <NotesSection notes={displayRecipe.notes} units={units} />}
 
       {recipe.galleryPhotoIds && recipe.galleryPhotoIds.length > 0 && (
         <GallerySection>

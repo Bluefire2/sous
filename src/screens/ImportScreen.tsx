@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { t as translateNow, useLocale, useT } from '../i18n';
+import ImportBusyOverlay from '../components/ImportBusyOverlay';
 import ImportFeedbackCard, {
   newFeedbackCardMemory,
   type FeedbackCardMemory,
@@ -490,7 +491,8 @@ export default function ImportScreen() {
     }`;
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-24">
+    // While busy the screen is inert (no focus, no clicks) under ImportBusyOverlay.
+    <div className="mx-auto max-w-xl px-4 pb-24" inert={busy}>
       <header className="py-4">
         <Link to={backTo} className={backLink}>
           &larr; {t('common.library')}
@@ -775,6 +777,9 @@ export default function ImportScreen() {
           {mode === 'create' ? (
             <>
               <p className="mt-1 text-sm text-ink-subtle">{t('import.createHint')}</p>
+              <Link to="/settings#kitchen-profile" className="mt-1 inline-block text-sm text-ink-subtle underline hover:text-ink">
+                {t('import.kitchenHint')}
+              </Link>
               <label className="mt-3 flex cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"
@@ -895,9 +900,7 @@ export default function ImportScreen() {
             }
             aria-busy={busy || undefined}
             className={`${primaryBtn} mt-3 inline-flex w-full items-center justify-center gap-2 py-3`}
-            style={{ opacity: busy ? 1 : undefined }}
           >
-            {busy && <SpinnerIcon className="block h-5 w-5 animate-spin" />}
             {mode === 'create'
               ? busy
                 ? t('import.generating')
@@ -908,48 +911,34 @@ export default function ImportScreen() {
                   ? t('import.extractRecipes')
                   : t('import.extractRecipe')}
           </button>
-          {busy && progress && (
-            <div className="mt-3">
-              <div
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={progress.total}
-                aria-valuenow={progress.current}
-                aria-valuetext={t('import.readingProgress', {
-                  current: progress.current,
-                  total: progress.total,
-                })}
-                aria-label={t('import.progressLabel')}
-                className="h-2 w-full overflow-hidden rounded-full bg-line"
-              >
-                <div
-                  className="h-full rounded-full bg-ink transition-[width] duration-300 ease-out"
-                  style={{
-                    width: `${Math.round(
-                      (progress.current / progress.total) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-              <p
-                className="mt-2 text-center text-sm text-ink-subtle"
-                role="status"
-              >
-                {t('import.readingProgressHint', {
-                  current: progress.current,
-                  total: progress.total,
-                })}
-              </p>
-            </div>
-          )}
-          {busy && !progress && (
-            <p className="mt-3 text-center text-sm text-ink-subtle" role="status">
-              {mode === 'create'
-                ? t('import.generatingHint')
-                : photos.length > 0
-                  ? t('import.readingPhotosHint')
-                  : t('import.readingHint')}
-            </p>
+          {busy && (
+            <ImportBusyOverlay
+              label={mode === 'create' ? t('import.generating') : t('import.extracting')}
+              hint={
+                progress
+                  ? t('import.readingProgressHint', {
+                      current: progress.current,
+                      total: progress.total,
+                    })
+                  : mode === 'create'
+                    ? t('import.generatingHint')
+                    : photos.length > 0
+                      ? t('import.readingPhotosHint')
+                      : t('import.readingHint')
+              }
+              progress={
+                progress
+                  ? {
+                      ...progress,
+                      label: t('import.progressLabel'),
+                      valueText: t('import.readingProgress', {
+                        current: progress.current,
+                        total: progress.total,
+                      }),
+                    }
+                  : undefined
+              }
+            />
           )}
         </>
       ) : (

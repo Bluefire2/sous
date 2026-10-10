@@ -18,8 +18,23 @@ import {
   MAX_GENERATE_BRIEF_CHARS,
   type RecipeImportDeps,
 } from './recipeImport.ts';
+import type { KitchenProfileStore } from './kitchenProfile.ts';
 import * as recipeImport from './recipeImport.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 // The route fetches pages over the live network; send it through a fake one
 // (`test/fakePageFetch.ts`) so `fetchPageHtml`'s own checks still run.
@@ -53,6 +68,28 @@ interface PostOptions {
   translator?: (input: TranslateInput) => Promise<TranslateOutcome>;
   /** The member the gate admitted; `sub-1` by default. */
   sub?: string;
+  /** Where a brief import reads the kitchen profile; none saved by default. */
+  kitchenStore?: KitchenProfileStore;
+}
+
+/** A kitchen profile store holding `docs` (and preferences) by sub. */
+function kitchenStore(
+  docs: Record<string, unknown> = {},
+  preferences: Record<string, unknown> = {},
+): KitchenProfileStore & { reads: string[] } {
+  const reads: string[] = [];
+  return {
+    reads,
+    read: async (sub) => {
+      reads.push(sub);
+      return docs[sub];
+    },
+    write: async () => {},
+    readPromptDocs: async (sub) => {
+      reads.push(sub);
+      return { kitchen: docs[sub], preferences: preferences[sub] };
+    },
+  };
 }
 
 async function post(
@@ -66,7 +103,12 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.rawBody ?? JSON.stringify(body),
   });
-  const response = await importPost(req, { authorizedSub: options.sub ?? 'sub-1' }, options.deps ?? deps);
+  const response = await importPost(
+    req,
+    { authorizedSub: options.sub ?? 'sub-1' },
+    options.deps ?? deps,
+    options.kitchenStore ?? kitchenStore(),
+  );
   return { status: response.status, body: (await response.json()) as unknown, calls };
 }
 
@@ -885,6 +927,101 @@ describe('POST /api/import with a brief', () => {
     }
   });
 
+  describe('kitchen profile', () => {
+    const PROFILE = {
+      allergens: ['peanuts'],
+      diets: ['vegetarian'],
+      avoid: 'SECRET-AVOID cilantro',
+      dislikes: '',
+      equipment: '',
+      notes: '',
+      updatedAt: 1,
+    };
+
+    it('gives the session member’s profile to the structured call and never to the search', async () => {
+      const grounded = groundedDeps();
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      const { status } = await post({ brief: BRIEF, search: true, sub: 'sub-2' }, undefined, {
+        deps: grounded.deps,
+        kitchenStore: store,
+      });
+      expect(status).toBe(200);
+      expect(store.reads).toEqual(['sub-1']);
+      expect(grounded.calls).toHaveLength(2);
+      expect(String(grounded.calls[0].contents)).not.toContain('kitchen_profile');
+      expect(String(grounded.calls[0].contents)).not.toContain('peanuts');
+      const structured = String(grounded.calls[1].contents);
+      expect(structured).toContain('<kitchen_profile>');
+      expect(structured).toContain('Allergies (never include): peanuts');
+      expect(structured).toContain('Diet: vegetarian');
+      expect(structured).toContain('never include an allergen');
+      expect(structured.indexOf('</kitchen_profile>')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('writes the prompt as before when no profile is saved', async () => {
+      const { calls } = await post({ brief: BRIEF });
+      expect(String(calls[0].contents)).not.toContain('kitchen');
+      expect(String(calls[0].contents)).not.toContain('metric');
+    });
+
+    it('asks the structured call, never the search, for metric when the member reads in metric', async () => {
+      const grounded = groundedDeps();
+      const store = kitchenStore({}, { 'sub-1': { units: 'metric', updatedAt: 1 } });
+      const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps, kitchenStore: store });
+      expect(status).toBe(200);
+      expect(store.reads).toEqual(['sub-1']);
+      expect(String(grounded.calls[0].contents)).not.toContain('metric');
+      const structured = String(grounded.calls[1].contents);
+      expect(structured).toContain('The user cooks in metric');
+      expect(structured).not.toContain('kitchen_profile');
+      expect(structured).toContain('Convert any cups, ounces, pounds, or °F in the notes');
+      expect(structured.indexOf('The user cooks in metric')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('only mentions search notes in the metric rule when there are notes', async () => {
+      const store = kitchenStore({}, { 'sub-1': { units: 'metric', updatedAt: 1 } });
+      const { calls } = await post({ brief: BRIEF }, undefined, { kitchenStore: store });
+      const prompt = String(calls[0].contents);
+      expect(prompt).toContain('every temperature');
+      expect(prompt).not.toContain('in the notes');
+    });
+
+    it('answers 503 without calling the model or taking a search slot when the profile cannot be read', async () => {
+      const failing: KitchenProfileStore = {
+        read: () => Promise.reject(new Error('firestore down')),
+        write: async () => {},
+        readPromptDocs: () => Promise.reject(new Error('firestore down')),
+      };
+      const { status, body, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
+      expect(status).toBe(503);
+      expect(body).toEqual({
+        code: 'import-profile-unavailable',
+        error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      });
+      expect(calls).toHaveLength(0);
+      expect(importLogLines().at(-1)?.entry).toEqual(
+        expect.objectContaining({ via: 'generate', outcome: 'store_unavailable', status: 503 }),
+      );
+      for (let i = 0; i < MAX_IMPORT_SEARCHES_PER_HOUR; i++) {
+        expect((await post({ brief: BRIEF, search: true })).status, `call ${i + 1}`).toBe(200);
+      }
+    });
+
+    it('never logs the profile', async () => {
+      await post({ brief: BRIEF }, undefined, { kitchenStore: kitchenStore({ 'sub-1': PROFILE }) });
+      for (const line of importLogLines()) {
+        expect(line.raw).not.toContain('SECRET-AVOID');
+        expect(line.raw).not.toContain('peanuts');
+      }
+    });
+
+    it('does not read the profile for a paste, page, or photo import', async () => {
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      await post({ text: 'Tomato soup\n6 tomatoes' }, undefined, { kitchenStore: store });
+      expect(store.reads).toEqual([]);
+    });
+  });
+
   it('logs the search count when the searched brief then fails', async () => {
     const grounded = groundedDeps(JSON.stringify({ title: 'NOT_A_RECIPE' }));
     const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
@@ -892,5 +1029,55 @@ describe('POST /api/import with a brief', () => {
     expect(importLogLines().at(-1)?.entry).toEqual(
       expect.objectContaining({ via: 'generate', search: true, outcome: 'not_a_recipe', searchQueries: 1 }),
     );
+  });
+});
+
+describe('importPost daily AI budget', () => {
+  function spendToday(sub: string, microUsd: number): void {
+    llmUsage.spent.set(`${sub}/${utcDayKey(Date.now())}`, microUsd);
+  }
+
+  it.each([
+    ['paste', { text: 'Simmer the tomatoes.' }],
+    ['brief', { brief: 'tomato soup' }],
+    ['photos', { images: [{ mediaType: 'image/jpeg', base64: '/9j/4A==' }] }],
+  ])('refuses a %s import over the budget without calling the model', async (_via, body) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    const { status, body: answer, calls } = await post(body);
+    expect(status).toBe(429);
+    expect(answer).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('logs the refusal as llm_refused on the import line', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    await post({ text: 'Simmer the tomatoes.' });
+    const importLine = log.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((line) => line.event === 'import');
+    expect(importLine).toMatchObject({ outcome: 'llm_refused', status: 429 });
+  });
+
+  it("charges the model's reported usage to the member", async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { status } = await post({ text: 'Simmer the tomatoes.' }, JSON.stringify(RECIPE), {
+      deps: {
+        ...fakeImportDeps(JSON.stringify(RECIPE)).deps,
+        model: 'gemini-3.7-flash',
+        ai: {
+          models: {
+            generateContent: async (params) => {
+              const response = await fakeImportDeps(JSON.stringify(RECIPE)).deps.ai.models.generateContent(params);
+              response.usageMetadata = { promptTokenCount: 1000, candidatesTokenCount: 100 };
+              return response;
+            },
+          },
+        },
+      },
+    });
+    expect(status).toBe(200);
+    expect(llmUsage.spent.get(`sub-1/${utcDayKey(Date.now())}`)).toBe(1000 * 1.5 + 100 * 7.5);
   });
 });

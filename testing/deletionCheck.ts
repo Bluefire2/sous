@@ -96,7 +96,11 @@ async function main(): Promise<void> {
     picks: await grantSubs(owner, FIXTURE_IDS.owner.picks),
     baking: await grantSubs(member, FIXTURE_IDS.member.baking),
     empty: await pullSnapshot(emptyCookie),
+    memberKitchen: JSON.stringify((await request('GET', '/api/settings/kitchen', member)).body),
+    memberPreferences: JSON.stringify((await request('GET', '/api/settings/preferences', member)).body),
   };
+  check('the member starts with metric', before.memberPreferences.includes('"metric"'), before.memberPreferences);
+  check('the member starts with a kitchen profile', before.memberKitchen.includes('"eggs"'), before.memberKitchen);
   check('the viewer starts with grants on Weeknights and on Owner’s picks', before.weeknights.includes(viewer.sub) && before.picks.includes(viewer.sub));
 
   // README step 1: deny access first, or a signed-in client could push its library back.
@@ -129,6 +133,7 @@ async function main(): Promise<void> {
   const dry = runScript([viewer.sub]);
   const pending = toChange(dry.out);
   check('the dry run finds the viewer’s data', dry.status === 0 && pending !== undefined && pending > 0, dry.out);
+  check('the dry run lists the viewer’s kitchen profile', dry.out.includes('users/{sub}/settings'), dry.out);
   const dryAgain = runScript([viewer.sub]);
   check('a second dry run finds the same amount', toChange(dryAgain.out) === pending, dryAgain.out);
   check(
@@ -144,6 +149,14 @@ async function main(): Promise<void> {
 
   check("the member's library is untouched", (await pullSnapshot(member)) === before.member);
   check("the owner's library is untouched", (await pullSnapshot(owner)) === before.owner);
+  check(
+    "the member's kitchen profile is untouched",
+    JSON.stringify((await request('GET', '/api/settings/kitchen', member)).body) === before.memberKitchen,
+  );
+  check(
+    "the member's preferences are untouched",
+    JSON.stringify((await request('GET', '/api/settings/preferences', member)).body) === before.memberPreferences,
+  );
   check("the empty persona's library is untouched", (await pullSnapshot(emptyCookie)) === before.empty);
   check('Baking’s grants are untouched', JSON.stringify(await grantSubs(member, FIXTURE_IDS.member.baking)) === JSON.stringify(before.baking));
   const weeknights = await grantSubs(member, FIXTURE_IDS.member.weeknights);

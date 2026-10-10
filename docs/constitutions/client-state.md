@@ -15,6 +15,7 @@ scope:
   - src/lib/session.ts (subscribeSession, getSessionSnapshot, useSession)
   - src/lib/syncEngine.ts (subscribeSyncStatus, getSyncStatusSnapshot, useSyncStatus)
   - src/agent/store.ts (subscribe, getAgentSnapshot, dispatch)
+  - src/lib/accountPreferences.ts (subscribeUnitSystem, getUnitSystem, useUnitSystem)
   - src/lib/libraryFlow.ts
   - src/screens/Library.tsx (dialog state, in-flight delete/leave, missing-collection reset)
   - src/screens/RecipeView.tsx (access, shared-by, and filed-collection reads)

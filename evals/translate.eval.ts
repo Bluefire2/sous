@@ -200,7 +200,7 @@ async function judgeOnce(
   target: string,
 ): Promise<string> {
   const result = await ai.models.generateContent({
-    model: process.env.CHAT_MODEL || 'gemini-3.7-flash',
+    model: process.env.CHAT_MODEL || 'gemini-3.8-flash',
     contents:
       'You judge a recipe translation against the source recipe. ' +
       'Do not require exact wording. Quantities and known unit tokens are checked separately; ' +

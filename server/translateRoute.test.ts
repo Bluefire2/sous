@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { GenerateContentResponse } from '@google/genai';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
 import { MAX_TRANSLATE_CHARS, MAX_TRANSLATE_SEGMENTS } from './recipeTranslation.ts';
 import { SESSION_COOKIE_NAME, signSession } from './session.ts';
 import {
@@ -143,5 +150,69 @@ describe('translatePost body size', () => {
     });
     expect(endless.cancelled()).toBe(false);
     expect(endless.read()).toBeLessThan(2_000_000);
+  });
+});
+
+describe('translatePost daily AI budget', () => {
+  let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+  let calls = 0;
+  const deps = {
+    model: 'gemini-3.5-flash-lite',
+    ai: {
+      models: {
+        generateContent: () => {
+          calls += 1;
+          const response = new GenerateContentResponse();
+          response.candidates = [
+            {
+              content: {
+                role: 'model',
+                parts: [{ text: JSON.stringify({ detectedLang: 'uk', segments: [{ id: 'title', text: 'Soup' }] }) }],
+              },
+            },
+          ];
+          response.usageMetadata = { promptTokenCount: 100, candidatesTokenCount: 10 };
+          return Promise.resolve(response);
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    process.env.SESSION_SECRET = 'test-secret-for-session-hmac';
+    process.env.ALLOWED_EMAILS = 'allowed@example.com';
+    llmUsage = memoryLlmUsageStore();
+    setLlmBudgetForTest({ store: llmUsage });
+    calls = 0;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    setLlmBudgetForTest(null);
+    vi.restoreAllMocks();
+  });
+
+  function request(): Request {
+    const token = signSession({ sub: 'owner-sub', email: 'allowed@example.com' }, Date.now());
+    return new Request('http://localhost/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+      body: JSON.stringify(body()),
+    });
+  }
+
+  it('refuses over the budget without calling the model', async () => {
+    llmUsage.spent.set(`owner-sub/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const response = await translatePost(request(), deps);
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toBe(0);
+  });
+
+  it("charges the translation's usage", async () => {
+    const response = await translatePost(request(), deps);
+    expect(response.status).toBe(200);
+    expect(calls).toBe(1);
+    expect(llmUsage.spent.get(`owner-sub/${utcDayKey(Date.now())}`)).toBe(100 * 0.3 + 10 * 2.5);
   });
 });

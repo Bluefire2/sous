@@ -51,7 +51,7 @@
   </head>
   <body>
     <h1>Privacy policy</h1>
-    <p class="muted">Last updated: 5 October 2026</p>
+    <p class="muted">Last updated: 9 October 2026</p>
 
     <h2>What is stored</h2>
     <p>
@@ -62,7 +62,17 @@
       scripts. A cached copy of your profile may also be kept in this browser's
       local storage under <code>cook.session</code>, so the app can show who is
       signed in. The UI language preference is kept in this browser's local
-      storage under <code>cook.locale</code>.
+      storage under <code>cook.locale</code>. The cooking-screen settings,
+      whether a recipe keeps the screen awake and the recipe text size, are
+      kept in this browser's local storage under <code>cook.wakeLock</code>
+      and <code>cook.recipeTextSize</code>; they are not sent to Sous. The
+      measurement units you choose in Settings (as written or metric) are
+      stored in Firestore under your account, and a copy is kept in this
+      browser's local storage under <code>cook.units</code> so recipes open in
+      the right units; signing out removes the copy. With metric chosen, a
+      short note asking for metric units goes to Google's Gemini API with
+      each message on a recipe, each library assistant message, and each
+      recipe written from an idea, but not with the web search.
     </p>
     <p>
       Your recipes, chat messages, cooking progress, cook log entries (the
@@ -74,6 +84,24 @@
       account and are deleted when their recipe is deleted. Translations of
       recipes shared with you are not stored; they are translated again each
       session. Photos used only to import a recipe are not kept.
+    </p>
+    <p>
+      If you fill in Kitchen profile in Settings, the allergies, diets, foods
+      to avoid, dislikes, equipment and notes you enter are stored in
+      Firestore (<code>europe-west1</code>) under your account until you
+      change them or your account is deleted. Allergies and diets can say
+      something about your health or beliefs; leave out anything you would
+      rather not store. The profile is not in backups and connected apps
+      cannot read it.
+    </p>
+    <p>
+      Each account has a daily limit on Sous's AI features (Ask, the
+      assistant, recipe import, translation, and dictation), so that a
+      misused account cannot run up costs. To enforce it, Sous stores one
+      record per account per day (UTC) in Firestore under your account: an
+      estimate of what that day's AI requests cost, and how many calls to the
+      AI model they made.
+      It never holds what you asked or what came back.
     </p>
     <p>
       If an import goes wrong, or you mark an import with a thumbs down, you
@@ -134,9 +162,9 @@
       a collection link are left out of that log, so the secret part of such
       a link is not recorded there. Entries written before then can still
       contain such a link until they are deleted automatically (see
-      Retention and deletion). Requests that open a public collection link,
-      and the requests that load its recipes and photos, are left out the
-      same way.
+      Retention and deletion). Requests that open a public collection link
+      or a recipe link, and the requests that load its recipes and photos,
+      are left out the same way.
     </p>
     <p>
       Sous also writes its own log lines for errors and for a few events.
@@ -178,6 +206,12 @@
       includes the text.
     </p>
     <p>
+      Saving a copy from a recipe link writes one line: your account id,
+      whether the copy was new, already in your library, or your own recipe,
+      the response, how many photos were copied, and how long it took. It
+      never includes the link, the recipe, or anyone's name.
+    </p>
+    <p>
       Each request from a connected AI app (see Connected apps) writes one
       line: your account id, the app's host name, which MCP method or tool it
       called, the outcome, the response, how many recipes it found or
@@ -187,6 +221,14 @@
       request, the response, and how long it took. These lines never include
       what the app asked for, recipe text, tokens or codes, your email
       address, or the full address the app returns you to.
+    </p>
+    <p>
+      Each request to an AI feature writes one line per call to Google's
+      Gemini API: your account id, which feature it was, the model, how many
+      tokens went in and came out, how many web searches ran, and the
+      estimated cost. A request refused by the daily limit writes one line
+      with your account id, the feature, and the reason. These lines never
+      include what you asked, the reply, or recipe text.
     </p>
     <p>
       Logs are used only to keep Sous running, to fix problems, and to
@@ -235,6 +277,23 @@
       collection to their library as a viewer. As with any other share, you
       then see their email address, and they see yours as the person who
       shared it.
+    </p>
+    <p>
+      You can also turn on a link for one of your own recipes. Anyone who has
+      the recipe link can then read that live recipe and its photos, without
+      signing in and without a Sous account, and the page shows your Google
+      display name as the person who shared it (never your email address or
+      account id). Like a public collection link, it is not listed anywhere,
+      asks search engines not to index it, keeps working until you turn it
+      off or delete the recipe, and is stored so you can copy it again;
+      turning it on again creates a new link. Visitors cannot use the cooking
+      assistant or translation from it, and cannot change your recipe. A
+      signed-in member who opens it can save a copy to their own library:
+      Sous copies the recipe's text and photos into their account, with your
+      display name and the date as where it came from. That copy is theirs.
+      It does not change when you edit or delete your recipe, turning the
+      link off does not remove it, and deleting your account does not remove
+      it either. You do not see who saved a copy.
     </p>
 
     <h2>Connected apps</h2>
@@ -296,7 +355,10 @@
       recipe. When you ask Sous to write a recipe from an idea, the text you
       type is sent to Google's Gemini API. With Search the web on, Gemini may
       run Google searches based on it; the pages it used are shown to you
-      with the result and are not stored. Gemini processes these requests on
+      with the result and are not stored. If you saved a kitchen profile, it
+      is sent to Google's Gemini API with each message on a recipe, each
+      library assistant message, and each recipe written from an idea, but
+      not with the web search. Gemini processes these requests on
       Google's infrastructure, which is not limited to the
       <code>europe-west1</code> region. Recipe import fetches the URL you
       paste. If you press Request access, the
@@ -329,16 +391,19 @@
       kept until they are redeemed, expire, or they are revoked; a
       redeemed invite keeps a hashed identifier and the Google account id
       that used it. A public collection link record is kept, marked as off,
-      after you turn the link off or delete its collection. There is no automated purge job: none of these records is
+      after you turn the link off or delete its collection, and a recipe
+      link record after you turn it off or delete its recipe. There is no automated purge job: none of these records is
       deleted on a schedule.
     </p>
     <p>
-      Server logs, import reports, suggestions, and connected-app codes and
-      tokens are the exceptions. Google
+      Server logs, import reports, suggestions, daily AI usage records, and
+      connected-app codes and tokens are the exceptions. Google
       Cloud Logging deletes logs automatically 30 days after they are
       written. Logs are not removed earlier, including by an account deletion
       request. Import reports are deleted automatically about 180 days after
       you send them, and suggestions about one year after you send them.
+      Daily AI usage records are deleted automatically about 8 days after
+      their day.
       Fingerprints of connected-app codes and tokens are deleted automatically
       after they expire. A connected app's grant is kept until you disconnect
       it; disconnecting marks it revoked.
@@ -350,10 +415,11 @@
       button. A deletion request covers all of it: your access-request record,
       your membership record, any invite-link redemption recorded for your
       account, any import reports and suggestions you sent, any public
-      collection links you created, your connected apps and their tokens,
+      collection links and recipe links you created, your connected apps and their tokens,
       and your stored library — recipes, chat
       messages, cooking progress, cook log entries (dates, ratings, notes,
-      lessons and photos), photos, and cached translations — and deleting
+      lessons and photos), photos, cached translations, daily AI usage
+      records, your kitchen profile, and your measurement-units setting — and deleting
       these also removes your access. It also covers collection links you
       made, and your email where other members' records hold it: on
       collections you shared and collections shared with you. Revoking

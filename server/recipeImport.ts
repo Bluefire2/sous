@@ -32,6 +32,7 @@ import {
   type ImportSelfReport,
   type RecipeJsonLd,
 } from './importChecks.ts';
+import type { UnitSystem } from './accountPreferences.ts';
 import { thrownStatus } from './importLog.ts';
 import {
   isBlockingWarning,
@@ -235,7 +236,7 @@ export type PageFetchOutcome =
   | { kind: 'blocked' }
   | { kind: 'refused'; status: number };
 
-const DEFAULT_MODEL = 'gemini-3.7-flash';
+const DEFAULT_MODEL = 'gemini-3.8-flash';
 
 const MAX_SOURCE_CHARS = 60000;
 
@@ -932,13 +933,32 @@ export async function importFromImages(
 }
 
 /**
+ * How the structured call uses the member's kitchen profile
+ * (`docs/plans/kitchen-profile.md`). Allergens and "never include" foods are
+ * never written, even when the brief names one; the diet and dislikes give
+ * way to a brief that explicitly asks otherwise.
+ */
+const KITCHEN_PROFILE_GENERATE_RULE =
+  'Write for the kitchen profile above: never include an allergen or a "never include" food, even if the request names one; use a substitute and say so in notes. Follow the diet and leave out the dislikes unless the request explicitly asks otherwise. Treat the equipment as notes, not a full list: never need anything the profile says is missing.';
+
+/**
+ * For a member who chose Metric in Settings (`docs/plans/measurement-units.md`).
+ * A unit the request names still wins.
+ */
+const METRIC_GENERATE_RULE =
+  'The user cooks in metric: write weights in g or kg, liquids in ml or l (teaspoons and tablespoons are fine for small amounts), every temperature (oven, oil, sugar, meat) in °C, and sizes in cm, unless the request asks for other units.';
+/** With search notes, which usually come from US pages. */
+const METRIC_NOTES_RULE = 'Convert any cups, ounces, pounds, or °F in the notes to these metric units; do not copy them.';
+
+/**
  * The prompt for a recipe written from an idea. It is the opposite of
  * `PAGE_PROMPT` and `imageImportPrompt`, which never invent: here the model is
  * asked to fill in everything the brief leaves out. `evals/recipeGenerate.eval.ts`
  * exercises it live; `server/recipeImport.test.ts` pins its key phrases.
- * With `withNotes`, the research call's notes follow the request.
+ * With `withNotes`, the research call's notes follow the request; with a
+ * `kitchenProfile` block, the profile and its rule close the prompt.
  */
-function generatePrompt(withNotes: boolean): string {
+function generatePrompt(withNotes: boolean, kitchenProfile = '', units: UnitSystem = 'asWritten'): string {
   const fillIn =
     'Fill in the ingredients with quantities and the method as clear numbered steps from your knowledge of cooking.' +
     (withNotes
@@ -952,6 +972,8 @@ function generatePrompt(withNotes: boolean): string {
     'Write in the language the request is written in, and set lang to it.',
     'Put a short description of the dish in description, and tips or variations in notes.',
     'If the request is not about something that can be cooked or eaten, save a recipe with the title "NOT_A_RECIPE".',
+    ...(kitchenProfile !== '' ? [kitchenProfile, KITCHEN_PROFILE_GENERATE_RULE] : []),
+    ...(units === 'metric' ? [METRIC_GENERATE_RULE, ...(withNotes ? [METRIC_NOTES_RULE] : [])] : []),
   ].join('\n');
 }
 
@@ -1031,7 +1053,14 @@ function readGrounding(metadata: GroundingMetadata | undefined): GenerateGroundi
 export async function generateFromBrief(
   brief: string,
   deps: RecipeImportDeps,
-  options: { search: boolean; translateTo?: string },
+  options: {
+    search: boolean;
+    translateTo?: string;
+    /** The member's `kitchenProfilePromptBlock`, or empty. Only the structured call sees it, never the search. */
+    kitchenProfile?: string;
+    /** The member's measurement units; `metric` adds a rule to the structured call, never the search. */
+    units?: UnitSystem;
+  },
 ): Promise<ImportOutcome> {
   const log: ImportOutcomeLog = { attempts: [] };
   const request = brief.trim();
@@ -1064,7 +1093,7 @@ export async function generateFromBrief(
     const result = await deps.ai.models.generateContent({
       model: deps.model,
       contents:
-        `${generatePrompt(notes !== undefined)}\n\nRequest:\n${request}` +
+        `${generatePrompt(notes !== undefined, options.kitchenProfile, options.units)}\n\nRequest:\n${request}` +
         (notes !== undefined ? `\n\nNotes from a web search:\n${notes}` : ''),
       config: { ...RECIPE_OUTPUT_CONFIG },
     });
@@ -1170,23 +1199,29 @@ export function importFromHtml(
  * The only environment read in this module. Call it per request, not at module scope.
  * The translator reads env when it is called, the same way extraction reads the key here.
  */
-export function recipeImportDepsFromEnv(): RecipeImportDeps {
+export function recipeImportDepsFromEnv(wrapAi: WrapAi = (ai) => ai): RecipeImportDeps {
   return {
-    ai: new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }),
+    ai: wrapAi(new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })),
     // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
     model: process.env.CHAT_MODEL || DEFAULT_MODEL,
-    translator: translateWithEnv,
+    translator: (input) => translateWithEnv(input, wrapAi),
   };
 }
 
+/**
+ * Wraps each model client the deps build, extraction's and the translator's
+ * alike (the routes pass `meteredAi` from `server/llmBudget.ts`).
+ */
+export type WrapAi = (ai: RecipeImportDeps['ai']) => RecipeImportDeps['ai'];
+
 /** Missing key and provider errors are translation failures, not thrown import errors. */
-async function translateWithEnv(input: TranslateInput): Promise<TranslateOutcome> {
+async function translateWithEnv(input: TranslateInput, wrapAi: WrapAi): Promise<TranslateOutcome> {
   const built = geminiTranslateDepsFromEnv();
   if (!built.ok) {
     return { ok: false, code: TRANSLATE_FAILED };
   }
   try {
-    return await translateSegments(input, built.deps);
+    return await translateSegments(input, { ...built.deps, ai: wrapAi(built.deps.ai) });
   } catch {
     return { ok: false, code: TRANSLATE_FAILED };
   }

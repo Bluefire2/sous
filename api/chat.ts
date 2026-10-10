@@ -1,5 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { GoogleGenAI, Type, type Content, type Part, type Schema } from '@google/genai';
+import {
+  GoogleGenAI,
+  Type,
+  type Content,
+  type GenerateContentResponseUsageMetadata,
+  type Part,
+  type Schema,
+} from '@google/genai';
 
 // NOTE: Duplicated in server/session.ts + server/allowlist.ts.
 // This inline copy is the Vercel gate and must stay in sync with those files.
@@ -229,6 +236,18 @@ export const MAX_CHAT_IMAGE_BYTES = 3 * 1024 * 1024;
  * exceed it, as with import.
  */
 export const MAX_CHAT_BODY_BYTES = 12 * 1024 * 1024;
+/**
+ * Message text, summed over the thread. Without it the 12 MB body could be
+ * almost all text, enough to fill the model's context in one paid request.
+ * The client drops the oldest messages to fit (`MAX_CHAT_HISTORY_CHARS` in
+ * src/lib/chatApi.ts mirrors it).
+ */
+export const MAX_CHAT_TEXT_CHARS = 120_000;
+/**
+ * `recipe` plus `cookingState` as JSON. A stored recipe is under 200 000 JSON
+ * chars (validateRecipePut in server/store.ts), so any real one fits.
+ */
+export const MAX_CHAT_CONTEXT_CHARS = 210_000;
 const CHAT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const ASSISTANT_UNAVAILABLE = 'Assistant is unavailable.';
@@ -327,6 +346,7 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
     return null;
   }
   const messages: ChatRequestMessage[] = [];
+  let textChars = 0;
   for (const item of raw.messages) {
     if (!isPlainObject(item)) {
       return null;
@@ -335,6 +355,10 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
       return null;
     }
     if (typeof item.content !== 'string') {
+      return null;
+    }
+    textChars += item.content.length;
+    if (textChars > MAX_CHAT_TEXT_CHARS) {
       return null;
     }
     const message: ChatRequestMessage = { role: item.role, content: item.content };
@@ -347,7 +371,27 @@ export function parseChatRequest(raw: unknown): ChatRequestBody | null {
     }
     messages.push(message);
   }
+  const contextChars =
+    JSON.stringify(raw.recipe).length + (JSON.stringify(raw.cookingState) ?? '').length;
+  if (contextChars > MAX_CHAT_CONTEXT_CHARS) {
+    return null;
+  }
   return { messages, recipe: raw.recipe, cookingState: raw.cookingState };
+}
+
+/**
+ * A high estimate of the prompt's tokens, for a stream that ended before it
+ * reported usage: one token per character (no script uses more), the
+ * update_recipe schema included, and 1 300 per photo.
+ */
+export function estimatedPromptTokens(system: string, messages: ChatRequestMessage[]): number {
+  let chars = system.length + JSON.stringify(RECIPE_SCHEMA).length;
+  let photos = 0;
+  for (const m of messages) {
+    chars += m.content.length;
+    photos += m.images?.length ?? 0;
+  }
+  return chars + photos * 1300;
 }
 
 /**
@@ -369,13 +413,46 @@ function describeThrown(err: unknown): string {
 }
 
 // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
-const MODEL = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+const MODEL = process.env.CHAT_MODEL || 'gemini-3.8-flash';
 
 // A turn that triggers update_recipe streams a text reply and then the complete recipe JSON —
 // the slowest response this app produces, so Vercel's 10s default can kill it.
 export const maxDuration = 60;
 
-function systemPrompt(recipe: unknown, cookingState: unknown): string {
+/**
+ * Rules for the member's kitchen profile. The block itself is built on Cloud
+ * Run by `kitchenProfilePromptBlock` in `server/kitchenProfile.ts` (this file
+ * cannot import it) and arrives through the handler context.
+ */
+const KITCHEN_PROFILE_RULES = [
+  'Allergies and foods marked "never include" in the kitchen profile are hard',
+  'constraints: never suggest them, and never add them in update_recipe. When',
+  'the recipe contains one and the user asks about cooking it, substituting,',
+  'or changing it, say so in your text reply, naming the ingredient and the',
+  'allergy, before or instead of proposing a safe swap. Follow the diet and',
+  'avoid the dislikes in suggestions and changes unless the user asks',
+  'otherwise. Use the equipment and notes as background only: never change',
+  'servings or anything else the user did not ask about because of them.',
+];
+
+/**
+ * For a member who chose Metric in Settings (`docs/plans/measurement-units.md`).
+ * The app already shows the recipe's pounds, ounces and °F in metric, so Ask
+ * writes new amounts in metric and leaves the stored ones alone.
+ */
+const METRIC_RULES = [
+  'The user cooks in metric. For an ingredient or temperature you add, in',
+  'your reply or in update_recipe, use g, kg, ml, l and °C; teaspoons and',
+  'tablespoons are fine for small amounts. When you change an existing amount',
+  '(for example when scaling), keep its unit, and do not convert the',
+  "recipe's units unless the user asks: the app already shows its pounds,",
+  'ounces and °F in metric.',
+];
+
+function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string, units?: 'metric'): string {
+  const profile =
+    kitchenProfile !== undefined && kitchenProfile !== '' ? ['', kitchenProfile, '', ...KITCHEN_PROFILE_RULES] : [];
+  const metric = units === 'metric' ? ['', ...METRIC_RULES] : [];
   return [
     'You are a cooking assistant embedded in a personal recipe app. The user',
     'is viewing (and possibly mid-way through cooking) the recipe below, so',
@@ -392,6 +469,8 @@ function systemPrompt(recipe: unknown, cookingState: unknown): string {
     'just the changed parts. Briefly say what you changed in your text reply.',
     'The app shows the user a diff and lets them apply it, so do not ask for',
     'permission first. For pure questions, answer without the tool.',
+    ...profile,
+    ...metric,
     '',
     'Current recipe (JSON):',
     JSON.stringify(recipe),
@@ -414,7 +493,21 @@ function toGeminiContents(messages: ChatRequestMessage[]): Content[] {
   });
 }
 
-export async function POST(req: Request, ctx?: { authorizedSub?: string }): Promise<Response> {
+/**
+ * On Cloud Run, `withChatBudget` (server/llmBudget.ts) passes `onUsage`; it is
+ * called once per model call with the stream's last reported usage.
+ * `withKitchenProfile` (server/kitchenProfile.ts) passes the member's profile
+ * block and their measurement units, read from the store, never from the
+ * request body.
+ */
+export interface ChatContext {
+  authorizedSub?: string;
+  onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata | undefined) => void;
+  kitchenProfile?: string;
+  units?: 'metric';
+}
+
+export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   const authorized =
     typeof ctx?.authorizedSub === 'string' && ctx.authorizedSub !== ''
       ? ctx.authorizedSub
@@ -444,6 +537,7 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  const system = systemPrompt(body.recipe, body.cookingState, ctx?.kitchenProfile, ctx?.units);
   const abort = new AbortController();
 
   let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;
@@ -453,7 +547,7 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
       contents: toGeminiContents(body.messages),
       config: {
         abortSignal: abort.signal,
-        systemInstruction: systemPrompt(body.recipe, body.cookingState),
+        systemInstruction: system,
         maxOutputTokens: 4096,
         tools: [
           {
@@ -480,11 +574,27 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
   const encoder = new TextEncoder();
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
+      // After the client cancels, the stream is already closed and close()
+      // or error() would throw out of this detached task as an unhandled
+      // rejection, which ends the process.
+      const settle = (finish: () => void) => {
+        try {
+          finish();
+        } catch {
+          /* already closed by cancel */
+        }
+      };
       void (async () => {
+        let usage: GenerateContentResponseUsageMetadata | undefined;
+        let streamedChars = 0;
         try {
           let proposalArgs: Record<string, unknown> | undefined;
           for await (const chunk of stream) {
-            if (chunk.text) controller.enqueue(encoder.encode(chunk.text));
+            if (chunk.usageMetadata) usage = chunk.usageMetadata;
+            if (chunk.text) {
+              streamedChars += chunk.text.length;
+              controller.enqueue(encoder.encode(chunk.text));
+            }
             const update = chunk.functionCalls?.find(
               (call) => call.name === 'update_recipe' && call.args,
             );
@@ -495,12 +605,24 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
           controller.close();
         } catch (err) {
           if (abort.signal.aborted) {
-            controller.close();
+            settle(() => controller.close());
             return;
           }
           // The dispatcher in scripts/server.ts logs a body error it sees, so
           // pass on a description, never the SDK's error and its message.
-          controller.error(new Error(`Chat stream failed: ${describeThrown(err)}`));
+          const failure = new Error(`Chat stream failed: ${describeThrown(err)}`);
+          settle(() => controller.error(failure));
+        } finally {
+          // A stream cut off before any usage chunk is still billed for its
+          // prompt and what it already wrote, so it is charged an estimate
+          // that errs high.
+          ctx?.onUsage?.(
+            MODEL,
+            usage ?? {
+              promptTokenCount: estimatedPromptTokens(system, body.messages),
+              candidatesTokenCount: streamedChars,
+            },
+          );
         }
       })();
     },

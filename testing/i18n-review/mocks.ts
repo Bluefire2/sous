@@ -11,7 +11,7 @@
 import type { BrowserContext, Route } from 'playwright';
 import type { CollectionCreateData, CollectionMoveData, ShoppingListData } from '../../src/agent/cards/parse.ts';
 import type { RecipeDraft } from '../../src/lib/types.ts';
-import { FIXTURE_IDS, memberLibrary } from '../fixtures.ts';
+import { FIXTURE_IDS, KITCHEN_PROFILES, memberLibrary } from '../fixtures.ts';
 import type { Lang } from './catalog.ts';
 
 export interface MockEnv {
@@ -310,6 +310,14 @@ export const MOCKS = {
     status: 422,
     body: { error: "Couldn't make a recipe from that — describe a dish.", code: 'import-no-recipe-brief' },
   })),
+  /** The member's kitchen profile could not be read: 503 `import-profile-unavailable`, nothing generated. */
+  importBriefProfileUnavailable: importMock(() => ({
+    status: 503,
+    body: {
+      error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      code: 'import-profile-unavailable',
+    },
+  })),
   /** The brief was over the cap: 400 `import-brief-too-long` (the textarea caps it; a mode switch can carry longer text). */
   importBriefTooLong: importMock(() => ({
     status: 400,
@@ -320,6 +328,16 @@ export const MOCKS = {
     status: 429,
     body: { error: 'Too many web searches. Try again later, or turn Search the web off.', code: 'import-search-rate-limited' },
   })),
+  /** Today's AI budget is used up: 429 `llm-budget-exceeded` from import and the assistant (server/llmBudget.ts). */
+  llmBudgetExceeded: async (context) => {
+    const refusal = {
+      error: "You've reached today's limit. It resets at midnight UTC.",
+      code: 'llm-budget-exceeded',
+    };
+    for (const path of ['**/api/import', '**/api/agent']) {
+      await context.route(path, (route) => json(route, 429, refusal));
+    }
+  },
   /** Generation failed (a thrown call, or output that was not a usable recipe): 502 `import-generate-failed`. */
   importGenerateFailed: importMock(() => ({
     status: 502,
@@ -328,6 +346,24 @@ export const MOCKS = {
   /** `POST /api/import` never answers: the Generating… state stays on screen. */
   importHangs: async (context) => {
     await context.route('**/api/import', () => new Promise<void>(() => {}));
+  },
+  /**
+   * `Math.random` is a seeded generator (mulberry32), so the import busy
+   * overlay picks the same one of its animations on every capture. Seeded
+   * rather than constant so other callers still get distinct values.
+   */
+  pinnedRandom: async (context) => {
+    await context.addInitScript({
+      content: `(() => {
+        let seed = 0x5005;
+        Math.random = () => {
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      })();`,
+    });
   },
   /** Bulk rows by URL: `…/check` warns, `…/broken` fails, anything else is clean. */
   importBulk: importMock((request) => {
@@ -380,6 +416,10 @@ export const MOCKS = {
       })();`,
     });
   },
+  /** `Math.random` always returns 0, so a random-recipe roll picks the same recipe on every capture. */
+  randomFirst: async (context) => {
+    await context.addInitScript({ content: 'Math.random = () => 0;' });
+  },
   /**
    * No system share sheet, as in most desktop browsers, so a recipe's Share
    * copies instead. Headless Chromium has one on some platforms; a real one
@@ -403,6 +443,28 @@ export const MOCKS = {
   suggestionAccepted: async (context) => {
     await context.route('**/api/feature-request', (route) => route.fulfill({ status: 204 }));
   },
+  /**
+   * Saving the kitchen profile succeeds and echoes the seeded member profile,
+   * without writing, so other captures still see the seed. GET is not routed.
+   */
+  kitchenProfileSaved: async (context) => {
+    await context.route('**/api/settings/kitchen', (route) =>
+      route.request().method() === 'POST'
+        ? json(route, 200, { profile: { ...KITCHEN_PROFILES.member, updatedAt: 0 } })
+        : route.fallback(),
+    );
+  },
+  kitchenProfileSaveFails: async (context) => {
+    await context.route('**/api/settings/kitchen', (route) =>
+      route.request().method() === 'POST' ? json(route, 503, { error: 'Store unavailable' }) : route.fallback(),
+    );
+  },
+  /** Saving the measurement units fails, so the old choice comes back with an error line. */
+  preferencesSaveFails: async (context) => {
+    await context.route('**/api/settings/preferences', (route) =>
+      route.request().method() === 'POST' ? json(route, 503, { error: 'Store unavailable' }) : route.fallback(),
+    );
+  },
   /** Disconnecting a connected app fails. */
   disconnectFails: async (context) => {
     await context.route('**/api/mcp/grants/revoke', (route) => json(route, 500, { error: 'Internal error' }));
@@ -413,6 +475,34 @@ export const MOCKS = {
   },
   pushFails: async (context) => {
     await context.route('**/api/sync/push', (route) => json(route, 500, { error: 'Internal error' }));
+  },
+  /**
+   * The persona's library plus 25 older recipes, added to the first pull page
+   * and never written, so the list runs past one page and shows Show more.
+   */
+  longLibrary: async (context, env) => {
+    await context.route('**/api/sync/pull?*', async (route) => {
+      const response = await route.fetch();
+      if (new URL(route.request().url()).searchParams.has('cursor') || !response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = (await response.json()) as { changes: { recipes: unknown[] } };
+      for (let i = 1; i <= 25; i += 1) {
+        const at = env.now - (60 + i) * DAY;
+        body.changes.recipes.push({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          title: `Pantry supper ${i}`,
+          servings: 2,
+          ingredientSections: [],
+          steps: [],
+          tags: [],
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
+      await json(route, 200, body);
+    });
   },
 
   /** A collection's live links: none, then one fixed link after Copy link. */
