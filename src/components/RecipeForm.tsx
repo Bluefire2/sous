@@ -57,11 +57,16 @@ function stepFields(text: string, lane = ''): StepFields {
 /** The lane select's "New lane…" option. */
 const NEW_LANE = '__new_lane__';
 
-/** Distinct non-blank lanes in the form, trimmed, in order of first use. */
+/** A typed lane as it will be saved (`compactLane`): one line, single spaces, trimmed. */
+function laneName(lane: string): string {
+  return lane.replace(/\s+/g, ' ').trim();
+}
+
+/** Distinct non-blank lanes in the form, as they will be saved, in order of first use. */
 function formLanes(steps: readonly StepFields[]): string[] {
   const lanes: string[] = [];
   for (const step of steps) {
-    const lane = step.lane.trim();
+    const lane = laneName(step.lane);
     if (lane !== '' && !lanes.includes(lane)) lanes.push(lane);
   }
   return lanes;
@@ -71,8 +76,8 @@ function formLanes(steps: readonly StepFields[]): string[] {
 function loneLaneKeys(steps: readonly StepFields[]): Set<number> {
   const keys = new Set<number>();
   for (const step of steps) {
-    const lane = step.lane.trim();
-    if (lane !== '' && steps.filter((other) => other.lane.trim() === lane).length === 1) {
+    const lane = laneName(step.lane);
+    if (lane !== '' && steps.filter((other) => laneName(other.lane) === lane).length === 1) {
       keys.add(step.key);
     }
   }
@@ -917,7 +922,7 @@ export default function RecipeForm({
                     </span>
                     <select
                       aria-label={t('form.stepLane', { n: i + 1 })}
-                      value={typing ? NEW_LANE : step.lane.trim()}
+                      value={typing ? NEW_LANE : laneName(step.lane)}
                       onChange={(e) => {
                         const next = e.target.value;
                         if (next === NEW_LANE) {
@@ -978,7 +983,7 @@ export default function RecipeForm({
                     placeholder={t('form.lanePlaceholder')}
                     maxLength={MAX_LANE_CHARS}
                     value={step.lane}
-                    // Raw value: compactLane trims on submit.
+                    // Raw value: compactLane tidies it on submit.
                     onChange={(e) => patchStep(step.key, { lane: e.target.value })}
                     className={`mt-1.5 w-40 ${cellClass}`}
                   />

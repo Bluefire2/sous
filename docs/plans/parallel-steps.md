@@ -38,11 +38,15 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   `normalizeRecipeDraft` cuts it at a word break; dropping it read as "no
   lane field", and the carry then put the stored lane back, so a rename
   silently did not happen. A cut lane never takes another lane's name ("… 2"
-  instead). Every other path still drops a malformed lane, and a lane is
-  kept on one line (whitespace runs become one space).
-- **A step that states its lane still claims the stored step at its
-  position** in `carryStepLanes` (from review), so a later step with the
-  same text cannot take that step's old lane.
+  instead). Other compaction paths drop a malformed lane, MCP rejects one
+  (including a line break, tab or double space), and a stored lane is kept on
+  one line (whitespace runs become one space).
+- **Repeated step text** (from two reviews). `carryStepLanes` matches a
+  proposed step to a stored one first by text and stated lane (the same
+  step, wherever Ask moved it), then by text at the same position, then by
+  the first unmatched step with that text, so a moved step with a stated
+  lane does not lend that lane to its twin. A cut Ask lane also avoids the
+  stored recipe's lane names, which the carry may put back.
 
 ## Context
 

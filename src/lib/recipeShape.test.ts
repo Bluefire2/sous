@@ -105,6 +105,23 @@ describe('normalizeRecipeDraft', () => {
     expect(draft?.steps[0].lane).toBe(`x${'🍝'.repeat(11)}`);
   });
 
+  it('cuts a long lane to a name the stored recipe does not already use', () => {
+    const draft = normalizeRecipeDraft(
+      {
+        ...wellFormedProposal,
+        steps: [
+          { text: 'Make the sauce.' },
+          { text: 'Fry meatballs.', lane: 'Sauce for the pasta and the meatballs' },
+        ],
+      },
+      { steps: [{ text: 'Make the sauce.', lane: 'Sauce for the pasta and' }] },
+    );
+    const lane = draft?.steps[1].lane;
+    expect(lane).not.toBe('Sauce for the pasta and');
+    expect(lane?.length).toBeLessThanOrEqual(24);
+    expect(draft?.steps[0]).toEqual({ text: 'Make the sauce.' });
+  });
+
   it('keeps two long lanes apart when they cut to the same text', () => {
     const draft = normalizeRecipeDraft({
       ...wellFormedProposal,

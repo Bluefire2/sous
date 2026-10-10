@@ -212,9 +212,11 @@ export function tapStep(
  *   text: the one at the same position if it matches, otherwise the first
  *   such step not already matched. So inserting or moving a step keeps the
  *   others' lanes; a reworded step without a lane field loses its lane.
- * A step that states its lane still claims the stored step with the same
- * text at its own position, so a later repeat of that text cannot take that
- * step's old lane.
+ * To tell repeated text apart ("Stir" in two lanes), proposed steps are
+ * matched to stored ones first by text and stated lane (that is the same
+ * step, wherever Ask moved it), then by text at the same position, then by
+ * the first unmatched step with that text. A stored step matched once is not
+ * matched again.
  */
 export function carryStepLanes(
   stored: readonly RecipeStep[],
@@ -222,18 +224,24 @@ export function carryStepLanes(
 ): RecipeStep[] {
   const matched = new Map<number, number>();
   const used = new Set<number>();
+  const claim = (i: number, j: number) => {
+    matched.set(i, j);
+    used.add(j);
+  };
+  const free = (j: number, text: string) => !used.has(j) && stored[j]?.text === text;
   proposed.forEach((step, i) => {
-    if (stored[i]?.text !== step.text) return;
-    used.add(i);
-    if (step.lane === undefined) matched.set(i, i);
+    if (!step.lane) return;
+    const sameStep = (j: number) => free(j, step.text) && stored[j].lane === step.lane;
+    const j = sameStep(i) ? i : stored.findIndex((_, k) => sameStep(k));
+    if (j >= 0) claim(i, j);
+  });
+  proposed.forEach((step, i) => {
+    if (!matched.has(i) && free(i, step.text)) claim(i, i);
   });
   proposed.forEach((step, i) => {
     if (step.lane !== undefined || matched.has(i)) return;
-    const j = stored.findIndex((candidate, k) => !used.has(k) && candidate.text === step.text);
-    if (j >= 0) {
-      matched.set(i, j);
-      used.add(j);
-    }
+    const j = stored.findIndex((_, k) => free(k, step.text));
+    if (j >= 0) claim(i, j);
   });
   return proposed.map((step, i) => {
     if (step.lane === '') return { text: step.text };

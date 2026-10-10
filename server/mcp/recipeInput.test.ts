@@ -127,6 +127,11 @@ describe('validateNewRecipe', () => {
       'steps[0].lane',
     ]);
     expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', lane: 3 }] }))).toEqual(['steps[0].lane']);
+    for (const lane of ['Sauce\nprep', 'Sauce\tprep', 'Sauce  prep']) {
+      expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', lane }] }))).toEqual([
+        'steps[0].lane',
+      ]);
+    }
     expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', foo: 1 }] }))).toEqual(['steps[0].foo']);
   });
 

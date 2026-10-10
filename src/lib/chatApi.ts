@@ -185,6 +185,7 @@ export async function streamChatReply(params: {
     try {
       proposedRecipe = normalizeRecipeDraft(
         withUnchangedFields(JSON.parse(parts[1]), params.recipe),
+        params.recipe,
       );
     } catch {
       // Truncated/malformed proposal — keep the text reply.

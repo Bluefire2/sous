@@ -259,14 +259,42 @@ describe('carryStepLanes', () => {
     ]);
   });
 
-  it('lets a step that states its lane claim the stored step at its position', () => {
+  it('treats a step with the same text and stated lane as that stored step', () => {
     const stored = [
       { text: 'Stir', lane: 'Sauce' },
       { text: 'Stir', lane: 'Pasta' },
     ];
+    // The stated Pasta stir is stored[1] moved up; the other is the Sauce one.
     expect(
       carryStepLanes(stored, [{ text: 'Stir', lane: 'Pasta' }, { text: 'Chop' }, { text: 'Stir' }]),
-    ).toEqual([{ text: 'Stir', lane: 'Pasta' }, { text: 'Chop' }, { text: 'Stir', lane: 'Pasta' }]);
+    ).toEqual([{ text: 'Stir', lane: 'Pasta' }, { text: 'Chop' }, { text: 'Stir', lane: 'Sauce' }]);
+  });
+
+  it('keeps a moved step with a stated lane from lending that lane to its twin', () => {
+    const stored = [
+      { text: 'Boil', lane: 'Pasta' },
+      { text: 'Stir', lane: 'Sauce' },
+      { text: 'Stir', lane: 'Pasta' },
+      { text: 'Serve' },
+    ];
+    const proposed = [{ text: 'Stir', lane: 'Sauce' }, { text: 'Stir' }, { text: 'Boil' }, { text: 'Serve' }];
+    expect(carryStepLanes(stored, proposed)).toEqual([
+      { text: 'Stir', lane: 'Sauce' },
+      { text: 'Stir', lane: 'Pasta' },
+      { text: 'Boil', lane: 'Pasta' },
+      { text: 'Serve' },
+    ]);
+  });
+
+  it('lets a step that states a new lane keep the stored step at its position', () => {
+    const stored = [
+      { text: 'Stir', lane: 'Sauce' },
+      { text: 'Stir', lane: 'Pasta' },
+    ];
+    expect(carryStepLanes(stored, [{ text: 'Stir', lane: 'Garnish' }, { text: 'Stir' }])).toEqual([
+      { text: 'Stir', lane: 'Garnish' },
+      { text: 'Stir', lane: 'Pasta' },
+    ]);
   });
 
   it('removes every lane when the proposal sets them to empty', () => {

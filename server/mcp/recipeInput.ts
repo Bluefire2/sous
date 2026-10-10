@@ -271,11 +271,17 @@ function validateSteps(raw: unknown, path: string, errors: FieldError[]): Recipe
     }
     unknownKeys(step, STEP_FIELDS, stepPath, errors);
     const text = requiredText(step.text, `${stepPath}.text`, RECIPE_LIMITS.step, errors);
-    // A blank lane means none; a long or non-string one is an error.
-    const lane =
+    // A blank lane means none; a long or non-string one is an error, and so
+    // is one that compactLane would change (a line break, tab, or double
+    // space), since this input is never repaired.
+    let lane =
       step.lane === undefined
         ? undefined
         : optionalText(step.lane, `${stepPath}.lane`, RECIPE_LIMITS.lane, errors);
+    if (lane !== undefined && /\s{2,}|[^\S ]/.test(lane)) {
+      errors.push({ path: `${stepPath}.lane`, message: 'must be one line with single spaces' });
+      lane = undefined;
+    }
     if (text !== undefined) steps.push(lane === undefined ? { text } : { text, lane });
   });
   return errors.length === before ? steps : undefined;

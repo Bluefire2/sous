@@ -715,8 +715,9 @@ export const recipeStore = {
    * spread would blank them. `lang` is carried from the existing recipe,
    * like `sourceUrl`, and so is the import check, which `save` reconciles. On a shared recipe the draft never supplies photos.
    * The draft is an edit of the stored recipe, including while a translation
-   * is on screen. A draft without any step lane keeps the stored lanes where
-   * a step's text is unchanged (`carryStepLanes`).
+   * is on screen. Lanes go through `carryStepLanes`, step by step: a stated
+   * lane is kept, an empty one removes it, and a step with no lane field
+   * keeps the lane of a stored step with the same text.
    */
   async applyDraft(id: string, draft: RecipeDraft): Promise<void> {
     const existing = getRecipe(id);
