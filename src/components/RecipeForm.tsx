@@ -762,7 +762,8 @@ export default function RecipeForm({
                         />
                       </div>
                     )}
-                    <div className="mt-1.5 flex items-center gap-1.5">
+                    {/* The note keeps room for its hint: on a narrow screen the controls wrap below it. */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <input
                         type="text"
                         aria-label={t('form.ingredientNote')}
@@ -771,58 +772,60 @@ export default function RecipeForm({
                           patchItem(si, ii, { note: e.target.value })
                         }
                         placeholder={t('form.notePlaceholder')}
-                        className={`flex-1 text-sm ${cellClass}`}
+                        className={`min-w-0 grow basis-60 text-sm ${cellClass}`}
                       />
-                      <button
-                        type="button"
-                        aria-pressed={item.optional}
-                        onClick={() =>
-                          patchItem(si, ii, { optional: !item.optional })
-                        }
-                        className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${inputFocus} ${
-                          item.optional
-                            ? 'border-amber-600/70 bg-accent-soft text-ink'
-                            : 'border-line text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
-                        }`}
-                      >
-                        {t('form.optionalIngredient')}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t('form.moveIngredientUp')}
-                        disabled={ii === 0}
-                        onClick={() => moveItem(si, ii, ii - 1)}
-                        className={iconBtn}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t('form.moveIngredientDown')}
-                        disabled={ii === section.items.length - 1}
-                        onClick={() => moveItem(si, ii, ii + 1)}
-                        className={iconBtn}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t('form.removeIngredient')}
-                        onClick={() => {
-                          patchSection(si, (s) => ({
-                            ...s,
-                            items: s.items.filter((_, i) => i !== ii),
-                          }));
-                          remapCustomUnits((s, i) => {
-                            if (s !== si || i < ii) return [s, i];
-                            if (i === ii) return null;
-                            return [s, i - 1];
-                          });
-                        }}
-                        className={iconBtn}
-                      >
-                        ✕
-                      </button>
+                      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          aria-pressed={item.optional}
+                          onClick={() =>
+                            patchItem(si, ii, { optional: !item.optional })
+                          }
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${inputFocus} ${
+                            item.optional
+                              ? 'border-amber-600/70 bg-accent-soft text-ink'
+                              : 'border-line text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
+                          }`}
+                        >
+                          {t('form.optionalIngredient')}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t('form.moveIngredientUp')}
+                          disabled={ii === 0}
+                          onClick={() => moveItem(si, ii, ii - 1)}
+                          className={iconBtn}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t('form.moveIngredientDown')}
+                          disabled={ii === section.items.length - 1}
+                          onClick={() => moveItem(si, ii, ii + 1)}
+                          className={iconBtn}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t('form.removeIngredient')}
+                          onClick={() => {
+                            patchSection(si, (s) => ({
+                              ...s,
+                              items: s.items.filter((_, i) => i !== ii),
+                            }));
+                            remapCustomUnits((s, i) => {
+                              if (s !== si || i < ii) return [s, i];
+                              if (i === ii) return null;
+                              return [s, i - 1];
+                            });
+                          }}
+                          className={iconBtn}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );

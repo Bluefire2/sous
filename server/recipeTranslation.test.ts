@@ -169,6 +169,26 @@ describe('compactTranslatableRecipe', () => {
     expect(compacted).toEqual(RECIPE);
   });
 
+  it('keeps an ingredient optional flag only when it is true', () => {
+    const compacted = compactTranslatableRecipe({
+      ...minimalRecipe(),
+      ingredientSections: [
+        {
+          items: [
+            { item: 'chili', optional: true },
+            { item: 'salt', optional: false },
+            { item: 'pepper', optional: 'yes' },
+          ],
+        },
+      ],
+    });
+    expect(compacted?.ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+      { item: 'pepper' },
+    ]);
+  });
+
   it('rejects a recipe that is not translatable structure', () => {
     expect(compactTranslatableRecipe({ title: '  ', servings: 1, ingredientSections: [], steps: [], tags: [] })).toBeNull();
     expect(compactTranslatableRecipe({ ...minimalRecipe(), ingredientSections: [{ items: [{ item: 1 }] }] })).toBeNull();
