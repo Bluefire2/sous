@@ -473,12 +473,14 @@ describe('architecture lock', () => {
   // once, inside withMembership, only to key the member's daily spend. The
   // kitchen profile (server/kitchenProfile.ts) reads it in its GET and POST
   // handlers and in the chat wrapper, all behind withMembership, only to name
-  // whose profile to read or write.
-  it('assertion 6: authorizedSub in exactly seven files with fixed counts', () => {
+  // whose profile to read or write. Account preferences
+  // (server/accountPreferences.ts) read it the same way in their GET and POST.
+  it('assertion 6: authorizedSub in exactly eight files with fixed counts', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const expectedCounts: Record<string, number> = {
       'api/chat.ts': 5,
+      'server/accountPreferences.ts': 2,
       'server/featureRequest.ts': 1,
       'server/importFeedback.ts': 1,
       'server/kitchenProfile.ts': 3,

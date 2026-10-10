@@ -138,6 +138,18 @@
     "needsData": true
   },
   {
+    "id": "settings-measurements",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Measurements (after Kitchen profile, before Connected apps): a heading, a muted line saying pounds, ounces and °F are shown in grams and °C, cups and spoons stay as written, and the choice is saved to the account, then two buttons, As written and Metric, with Metric selected for the member. Do not press either button against real Firestore; it saves to the account.",
+    "needsData": false
+  },
+  {
+    "id": "settings-measurements-save-error",
+    "route": "/settings",
+    "setup": "Settings while signed in, Measurements after choosing As written when the save failed: Metric is selected again and a red line under the buttons says the choice could not be saved. Reaching it needs a save request that fails (for example the API dev server stopped after the page loaded). If the state cannot be reached, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "admin",
     "route": "/admin",
     "setup": "The admin page as an owner sees it: pending, approved, declined, and invites. Do not approve, decline, mint, copy in a way that creates an invite, or revoke. If this session is not an owner, capture the error line the page already shows; do not change membership.",
@@ -393,6 +405,12 @@
     "id": "recipe-view-cook",
     "route": "/recipe/:id",
     "setup": "Cook mode is the same /recipe/:id screen when stored cook progress is already visible (a checked ingredient, a current step other than the first, or the done line). There is no separate cook-mode toggle. Use whatever progress the recipe already has. Do not toggle checkmarks, steps, or servings; cook state syncs. Do not tap the translate chip. If no owned recipe already has that progress, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-metric",
+    "route": "/recipe/:id",
+    "setup": "A recipe written in US units (pounds and °F) opened by an account set to Measurements: Metric. Weight ingredient lines show the gram amount first with the original in brackets, for example 800 g (1¾ lb) waxy potatoes, and a step that names an oven temperature shows 200°C (400°F). Cups and spoons stay as written. Do not toggle checkmarks, steps, or servings; cook state syncs. Do not tap the translate chip. If no recipe in US units is available or the account is not set to Metric, mark skipped: needs data.",
     "needsData": true
   },
   {

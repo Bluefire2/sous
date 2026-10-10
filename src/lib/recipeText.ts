@@ -1,7 +1,8 @@
-import type { Locale, MessageKey, TranslateParams } from '../i18n';
+import { formatNumber, type Locale, type MessageKey, type TranslateParams } from '../i18n';
 import { unitLabel } from '../i18n/unitLabel';
 import { formatQuantity } from './quantity';
 import type { Ingredient, Recipe } from './types';
+import { convertTemperaturesInText, niceWeight, toGrams, type UnitSystem } from './unitConversion';
 
 /** `t()` for one UI language, as `useT()` returns it. */
 export type Translate = (key: MessageKey, params?: TranslateParams) => string;
@@ -27,14 +28,50 @@ export function sourceLink(url: string | undefined): URL | undefined {
  * `scale`. Known unit tokens get their label in the UI language; a custom unit
  * is recipe text and stays as typed.
  */
-export function ingredientLine(ing: Ingredient, scale: number, locale: Locale, t: Translate): string {
-  const parts = [
-    ing.quantity !== undefined ? formatQuantity(ing.quantity * scale, locale) : null,
+export function ingredientLine(
+  ing: Ingredient,
+  scale: number,
+  locale: Locale,
+  t: Translate,
+  conversion?: IngredientConversion,
+): string {
+  const quantity = ing.quantity !== undefined ? ing.quantity * scale : undefined;
+  let amount = [
+    quantity !== undefined ? formatQuantity(quantity, locale) : null,
     ing.unit ? unitLabel(ing.unit, t) : null,
-    ing.item,
-  ].filter(Boolean);
-  const base = parts.join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
+  if (conversion?.units === 'metric' && quantity !== undefined) {
+    const grams = toGrams(quantity, conversion.storedUnit);
+    if (grams !== null) {
+      const weight = niceWeight(grams);
+      amount = t('recipe.convertedQuantity', {
+        converted: `${formatNumber(weight.value, locale)} ${unitLabel(weight.unit, t)}`,
+        original: amount,
+      });
+    }
+  }
+  const base = [amount, ing.item].filter(Boolean).join(' ');
   return ing.note ? `${base} (${ing.note})` : base;
+}
+
+/**
+ * Metric display for `ingredientLine`. The weight test reads the stored unit,
+ * not the line's: a translated line can carry "фунтов" where the recipe says
+ * "lbs".
+ */
+export interface IngredientConversion {
+  units: UnitSystem;
+  storedUnit: string | undefined;
+}
+
+/** `text` with Fahrenheit temperatures shown in Celsius when `units` is metric. */
+export function displayTemperatures(text: string, units: UnitSystem, t: Translate): string {
+  if (units !== 'metric') return text;
+  return convertTemperaturesInText(text, (converted, original) =>
+    t('recipe.convertedQuantity', { converted, original }),
+  );
 }
 
 /**

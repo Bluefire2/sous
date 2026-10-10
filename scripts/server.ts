@@ -49,6 +49,7 @@ import {
   collectionLinksPost,
   collectionLinksRevokePost,
 } from '../server/collectionLinksHttp.ts';
+import { accountPreferencesGet, accountPreferencesPost } from '../server/accountPreferences.ts';
 import { extensionImport, extensionImportOptions } from '../server/extensionImport.ts';
 import { inviteLandingGet } from '../server/invites.ts';
 import { kitchenProfileGet, kitchenProfilePost, withKitchenProfile } from '../server/kitchenProfile.ts';
@@ -122,6 +123,8 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/mcp/grants/revoke', handler: mcpGrantsRevokePost },
   { method: 'GET', path: '/api/settings/kitchen', handler: withMembership(kitchenProfileGet) },
   { method: 'POST', path: '/api/settings/kitchen', handler: withMembership(kitchenProfilePost) },
+  { method: 'GET', path: '/api/settings/preferences', handler: withMembership(accountPreferencesGet) },
+  { method: 'POST', path: '/api/settings/preferences', handler: withMembership(accountPreferencesPost) },
 ];
 
 const PUBLIC_HTML: Record<string, string> = {

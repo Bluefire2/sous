@@ -21,6 +21,7 @@ import {
   StepsSection,
 } from '../components/RecipeBody';
 import ShareRecipeButton from '../components/ShareRecipeButton';
+import { useUnitSystem } from '../lib/accountPreferences';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
@@ -154,6 +155,7 @@ export function PublicRecipeBody({
   const t = useT();
   const locale = useLocale();
   const textSize = useRecipeTextSize();
+  const units = useUnitSystem();
   const [servings, setServings] = useState(recipe.servings);
   const [currentStep, setCurrentStep] = useState(0);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -216,6 +218,7 @@ export function PublicRecipeBody({
           checkedKeys={checkedKeys}
           onToggle={toggleChecked}
           textSize={textSize}
+          units={units}
         />
       </div>
 
@@ -225,9 +228,10 @@ export function PublicRecipeBody({
         currentStep={currentStep}
         onStep={setCurrentStep}
         textSize={textSize}
+        units={units}
       />
 
-      {recipe.notes && <NotesSection notes={recipe.notes} />}
+      {recipe.notes && <NotesSection notes={recipe.notes} units={units} />}
 
       {recipe.galleryPhotoIds && recipe.galleryPhotoIds.length > 0 && (
         <GallerySection>
