@@ -527,6 +527,7 @@ export const en = {
   'form.step': 'Step {n}',
   'form.stepPlaceholder': 'What to do',
   'form.lanesHint': "Give each cook's steps a lane, like Sauce and Pasta, when two people cook at once.",
+  'form.tooManyLanes': 'A recipe can have up to 3 lanes. Put the extra lane’s steps in another lane, or pick No lane.',
   'form.stepLane': 'Lane for step {n}',
   'form.noLane': 'No lane',
   'form.newLane': 'New lane…',

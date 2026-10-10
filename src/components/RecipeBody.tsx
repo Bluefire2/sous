@@ -2,7 +2,7 @@ import { useId, useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { displayTemperatures, ingredientLine } from '../lib/recipeText';
 import type { RecipeTextSize } from '../lib/settings';
-import { activeSteps, isStepDone, stepBlocks, waitsForLanes } from '../lib/stepLanes';
+import { activeSteps, isStepDone, stepBlocks, stepsWaitingForLanes } from '../lib/stepLanes';
 import type { Recipe } from '../lib/types';
 import type { UnitSystem } from '../lib/unitConversion';
 
@@ -224,7 +224,7 @@ function StepButton({
   isCurrent: boolean;
   isDone: boolean;
   dimmed: boolean;
-  /** A shared step that waits for lanes not finished yet (`waitsForLanes`). */
+  /** A shared step that waits for lanes not finished yet (`stepsWaitingForLanes`). */
   afterLanes: boolean;
   /** The device's large recipe text (Settings → Cooking). */
   large: boolean;
@@ -372,6 +372,7 @@ export function StepsSection({
   const large = textSize === 'large';
   const progress = { currentStep, doneSteps };
   const active = activeSteps(recipe.steps, progress);
+  const waiting = stepsWaitingForLanes(recipe.steps, progress);
   const row = (index: number, dimmed: boolean) => (
     <StepButton
       index={index}
@@ -383,7 +384,7 @@ export function StepsSection({
       isCurrent={active.has(index)}
       isDone={isStepDone(progress, index)}
       dimmed={dimmed}
-      afterLanes={waitsForLanes(recipe.steps, progress, index)}
+      afterLanes={waiting.has(index)}
       large={large}
       onTap={onTap}
     />

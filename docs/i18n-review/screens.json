@@ -410,7 +410,7 @@
   {
     "id": "recipe-view-lanes",
     "route": "/recipe/:id",
-    "setup": "An owned recipe whose steps have lanes (docs/plans/parallel-steps.md): under the Steps heading a chip row labelled \"I'm on\" with \"Everyone\" and one chip per lane, then a boxed group headed \"At the same time\" with each lane's name over its steps. Stored cook progress already shows a current step in each lane and a ticked step. Lane names are recipe text and stay as written. Do not tap steps or chips; cook state syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "setup": "An owned recipe whose steps have lanes (docs/plans/parallel-steps.md): under the Steps heading a chip row labelled \"I'm on\" with \"Everyone\" and one chip per lane, then a boxed group headed \"At the same time\" with each lane's name over its steps. Stored cook progress already shows a current step in each lane and a ticked step, and the shared step after the group has a muted line saying it comes after every lane is done. Lane names are recipe text and stay as written. Do not tap steps or chips; cook state syncs. If no owned recipe has lanes, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -453,6 +453,12 @@
     "id": "recipe-edit-lanes",
     "route": "/recipe/:id/edit",
     "setup": "The edit form for an owned recipe whose steps have lanes. A hint under the Steps heading explains lanes, and each step card has a lane menu (No lane, the recipe's lanes, New lane…). Choose New lane… on one step so its lane name field shows. Do not save. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-edit-too-many-lanes",
+    "route": "/recipe/:id/edit",
+    "setup": "The edit form for an owned recipe with two lanes, after choosing New lane… on two more steps and naming them, so the form has four lanes. A red message under the Steps hint says a recipe can have up to 3 lanes and how to fix it (it names the No lane option), and Save is disabled. Do not save. If no owned recipe has lanes, mark skipped: needs data.",
     "needsData": true
   },
   {

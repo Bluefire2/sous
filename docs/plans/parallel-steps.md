@@ -47,25 +47,42 @@ Status: built on `claude/parallel-recipe-steps-857b23`, not deployed.
   the first unmatched step with that text, so a moved step with a stated
   lane does not lend that lane to its twin. A cut Ask lane also avoids the
   stored recipe's lane names, which the carry may put back.
-- **Taps stay in their lane** (from the UX review). The plan's tap rule
-  ticked everything before a block, so tapping your lane's step in a later
-  block ticked the other cook's earlier steps. Now an undone lane step ticks
-  itself and every earlier step that is shared or in the same lane, and a
-  done one un-ticks itself and every later step that is shared or in the
-  same lane. A tap never changes another lane. To match, `activeSteps` reads
-  the lanes as a graph: a step is current when the steps it waits for are
-  done (a lane step waits for the previous step in its lane, or the sync step
-  before its block; a sync step waits for every lane's last step). A sync
-  step that is current is ticked; any other is jumped to, as before.
+- **Taps stay in their lane** (from the UX review and the review after it).
+  This replaces the tap and active-set rules under Semantics. The plan's
+  rule ticked everything before a block, so tapping your lane's step in a
+  later block ticked the other cook's earlier steps. Now `tapStep` and
+  `activeSteps` read the lanes as a graph (`waitsFor`: a lane step waits for
+  the previous step in its lane, or the sync step before its block; a sync
+  step waits for every lane's last step), and a step is *finished* when it
+  and everything it waits for, through the chain, are done:
+  - an undone lane step ticks itself and the earlier steps in its lane, plus
+    each earlier shared step whose wait is then finished, in order. A shared
+    step where lanes meet is never ticked ahead of a lane, so a cook can run
+    ahead in their own lane (those steps show done) while the join waits;
+  - a done lane step un-ticks itself and every later step that is shared or
+    in the same lane;
+  - a sync step: current (its wait finished) is ticked; done is un-ticked
+    with everything after it, as without lanes; otherwise the tap is a jump
+    that ticks every earlier step and keeps later progress;
+  - current steps are the undone steps whose wait is finished, so each lane
+    shows at most one current step and the last step is only ticked when
+    every step is done.
+  A lane tap never changes another lane. A tap on a shared step can (a jump
+  ticks everything before it, and un-ticking one clears what follows), which
+  "After every lane is done" warns about. Taps on different lanes still
+  merge by union.
 - **"After every lane is done"** (from the UX review). A shared step after
-  a block shows that muted line while a lane in the block is unfinished,
-  since tapping it early finishes every lane (`waitsForLanes`).
+  a block of two or more lanes shows that muted line while a lane in the
+  block is unfinished, since tapping it early finishes every lane
+  (`stepsWaitingForLanes`).
 - **At most three lanes** (`MAX_LANES`, owner decision after the UX review:
   five lanes squeezed into one-word columns). Compaction makes a step in a
   fourth lane shared, MCP rejects one, Ask's schema and prompt state the cap,
-  `normalizeRecipeDraft` makes a fourth lane's steps shared, and the form
-  disables "New lane…" at three (renaming a lane only one step uses still
-  works).
+  `normalizeRecipeDraft` makes a fourth lane's steps shared, `carryStepLanes`
+  keeps the proposal's stated lanes over a carried-back one so the diff and
+  the save agree, and the form disables "New lane…" at three (renaming a
+  lane only one step uses still works) and, since typing names can still
+  reach four, blocks Save with a message (`form.tooManyLanes`).
 - **A one-lane block** is named by its lane, without "At the same time".
 - **Form**: a lane being typed shows its name in the menu once it has one,
   and the menu and the name field are wider.
@@ -92,6 +109,9 @@ Reading: a recipe without lanes renders exactly as today. A block renders as one
 
 ## Semantics (pure, in `src/lib/stepLanes.ts`)
 
+The tap and active-set rules below are the plan as written; the build
+replaced them (Where the build departs: Taps stay in their lane).
+
 - **Lane value**: trimmed string, 1–24 chars (`MAX_LANE_CHARS`). Malformed is dropped, not rejected, on every compact path (the `variantOf` / `importCheck` policy). MCP input is the one strict path. Lane names are recipe text: not translated in v1, never passed through `t()`.
 - **Blocks**: a maximal run of consecutive steps that have a lane is a block; its lanes are the distinct names in first-appearance order, each an ordered sub-list of global indexes; a run with one lane name is still a block (author mid-way through tagging). An unlaned step is a sync point. A lane name may recur in a later block. Blocks come from the **stored** recipe's steps, never the display translation.
 - **Progress**: `currentStep` keeps its meaning (done prefix). `doneSteps` holds only indexes `>= currentStep` done out of order. `normalizeStepProgress` drops non-integers, negatives, `>= steps.length`, duplicates; sorts; folds the prefix into `currentStep`; caps at 200. The key is omitted when empty, so a row with no block progress is byte-for-byte what today's client writes. A client from before this change does not read `doneSteps`, and its writes drop it (and its recipe saves drop lanes) until it updates.
@@ -108,7 +128,7 @@ Multi-device coop (two phones seeing each other's progress live) is not in this 
 
 - **Progress is a set, never a pointer.** The only progress type the UI and the tap logic see is `StepProgress { currentStep, doneSteps }`, which denotes the done set `[0, currentStep) ∪ doneSteps`. `currentStep` is a compaction of the prefix, not extra information. Two devices' progress can be combined by union of done sets and refolded, and partitioned by lane through `stepBlocks`. `stepLanes.test.ts` includes a test that proves the union property with the existing functions (no merge code ships now).
 - **The cook row is one adapter, not the model.** `useCookState` turns the per-user cook row into a `StepProgress` and an `onTap`; `StepsSection` and `LaneChips` take only props. A future coop session store (a new top-level entity keyed by recipe, the cook-log precedent, never a `Recipe` or `CookStateRow` field) plugs in at `RecipeView` by supplying a different `StepProgress` and `onTap`, with no change to `RecipeBody` or `stepLanes`.
-- **Tap logic is pure and lane-local.** `tapStep(steps, progress, index)` touches only the tapped lane and what follows the block, so taps from people on different lanes commute. Keep it free of store or device knowledge.
+- **Tap logic is pure and lane-local.** A lane tap in `tapStep(steps, progress, index)` changes only the tapped lane and the shared steps whose wait it finishes, so ticks from people on different lanes merge by union. Taps on shared steps are everyone's and can change every lane. Keep it free of store or device knowledge.
 - **Lanes are the unit of assignment.** A lane name recurring across blocks means the same person; a future "who is on which lane" is a map from lane name to participant inside the session, bound to a recipe revision the way `recipeUpdatedAt` already binds progress. No step ids are needed for that; do not add them.
 - **The lane pick stays out of the cook row.** It is per device now and becomes a session assignment later; persisting it in `CookStateRow` would be the wrong home and is not done.
 - **What coop will still need, deliberately deferred:** a shared progress entity, a per-lane merge rule finer than whole-row LWW, and a bounded live-update channel while a session is active. The last one amends the do-not-touch list (no polling, listeners or WebSockets) and is a sync-architecture decision of its own.

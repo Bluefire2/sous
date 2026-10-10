@@ -510,7 +510,11 @@ export default function RecipeForm({
   const showSectionChrome =
     form.sections.length > 1 || form.sections.some((s) => s.name.trim() !== '');
 
-  const canSubmit = form.title.trim() !== '' && !busy && submitLocked !== true;
+  // Typing names can still reach a fourth lane; saving would quietly make
+  // its steps shared (compactSteps), so the form says so and waits instead.
+  const tooManyLanes = lanesInForm.length > MAX_LANES;
+  const canSubmit =
+    form.title.trim() !== '' && !busy && submitLocked !== true && !tooManyLanes;
   useLayoutEffect(() => {
     onCanSubmitChange?.(canSubmit);
   }, [canSubmit, onCanSubmitChange]);
@@ -907,6 +911,11 @@ export default function RecipeForm({
       <section className="mt-6">
         <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
         <p className="mt-1 text-sm text-ink-muted">{t('form.lanesHint')}</p>
+        {tooManyLanes && (
+          <p role="alert" className="mt-2 rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger">
+            {t('form.tooManyLanes')}
+          </p>
+        )}
         <ol className="mt-2 flex flex-col gap-2">
           {form.steps.map((step, i) => {
             const typing = typingLanes.has(step.key);

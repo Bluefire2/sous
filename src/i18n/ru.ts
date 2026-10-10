@@ -536,6 +536,7 @@ export const ru: Messages = {
   'form.step': 'Шаг {n}',
   'form.stepPlaceholder': 'Что сделать',
   'form.lanesHint': 'Когда готовят двое, отметьте шаги каждого частью, например Соус и Паста.',
+  'form.tooManyLanes': 'В рецепте может быть до 3 частей. Перенесите шаги лишней части в другую или выберите «Без части».',
   'form.stepLane': 'Часть для шага {n}',
   'form.noLane': 'Без части',
   'form.newLane': 'Новая часть…',

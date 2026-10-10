@@ -1,4 +1,4 @@
-import { MAX_DONE_STEPS } from './recipeSteps';
+import { MAX_DONE_STEPS, MAX_LANES } from './recipeSteps';
 import type { RecipeStep } from './types';
 
 /**
@@ -121,12 +121,6 @@ function fromDoneSet(done: ReadonlySet<number>, stepCount: number): {
   return normalizeStepProgress({ currentStep: 0, doneSteps: [...done] }, stepCount);
 }
 
-function firstUndone(done: ReadonlySet<number>, stepCount: number): number {
-  let index = 0;
-  while (index < stepCount && done.has(index)) index += 1;
-  return index;
-}
-
 function blockAt(blocks: readonly StepBlock[], index: number): StepBlock | undefined {
   return blocks.find((block) =>
     block.kind === 'sync' ? block.index === index : index >= block.start && index < block.end,
@@ -155,9 +149,25 @@ function waitsFor(blocks: readonly StepBlock[], index: number): number[] {
 }
 
 /**
+ * The done steps whose whole chain is done: the step and, through
+ * `waitsFor`, everything it waits for. A lane step done ahead (its cook
+ * skipped on) is done but not finished, so what follows it still waits.
+ */
+function finishedSteps(blocks: readonly StepBlock[], done: ReadonlySet<number>, stepCount: number): Set<number> {
+  const finished = new Set<number>();
+  for (let index = 0; index < stepCount; index += 1) {
+    if (done.has(index) && waitsFor(blocks, index).every((j) => finished.has(j))) {
+      finished.add(index);
+    }
+  }
+  return finished;
+}
+
+/**
  * The steps that read as "now": every undone step whose steps it waits for
- * (`waitsFor`) are done. Without lanes that is the first undone step; in a
- * block it is each lane's next step. Empty when every step is done.
+ * are finished (`finishedSteps`). Without lanes that is the first undone
+ * step; in a block it is each lane's next step. Empty when every step is
+ * done.
  */
 export function activeSteps(
   steps: readonly RecipeStep[],
@@ -165,9 +175,10 @@ export function activeSteps(
 ): ReadonlySet<number> {
   const done = doneSet(progress, steps.length);
   const blocks = stepBlocks(steps);
+  const finished = finishedSteps(blocks, done, steps.length);
   const active = new Set<number>();
   for (let index = 0; index < steps.length; index += 1) {
-    if (!done.has(index) && waitsFor(blocks, index).every((j) => done.has(j))) {
+    if (!done.has(index) && waitsFor(blocks, index).every((j) => finished.has(j))) {
       active.add(index);
     }
   }
@@ -175,32 +186,44 @@ export function activeSteps(
 }
 
 /**
- * True for an undone sync step that follows a block in which some lane is
- * not finished yet: it comes after every lane, so the screen says so.
+ * The undone sync steps that follow a block of two or more lanes in which
+ * some lane is not finished yet: each comes after every lane, so the screen
+ * says so. (After a one-lane block the order already says it.)
  */
-export function waitsForLanes(
+export function stepsWaitingForLanes(
   steps: readonly RecipeStep[],
   progress: StepProgress,
-  index: number,
-): boolean {
-  if (steps[index] === undefined || steps[index].lane !== undefined) return false;
-  if (index === 0 || steps[index - 1].lane === undefined) return false;
+): ReadonlySet<number> {
   const done = doneSet(progress, steps.length);
-  if (done.has(index)) return false;
-  return waitsFor(stepBlocks(steps), index).some((j) => !done.has(j));
+  const blocks = stepBlocks(steps);
+  const finished = finishedSteps(blocks, done, steps.length);
+  const waiting = new Set<number>();
+  for (const block of blocks) {
+    if (block.kind !== 'parallel' || block.lanes.length < 2) continue;
+    const join = block.end;
+    if (join >= steps.length || done.has(join)) continue;
+    if (waitsFor(blocks, join).some((j) => !finished.has(j))) waiting.add(join);
+  }
+  return waiting;
 }
 
 /**
  * Progress after tapping step `index`. Without lanes this is the recipe
  * screen's old rule: tapping the current step ticks it, tapping any other
- * step jumps there. A lane step changes only its own lane and the shared
- * steps, never another lane's progress, so two cooks' taps never clash:
- * - an undone lane step ticks itself and every earlier step that is shared
- *   or in the same lane (in any block);
+ * step jumps there. A lane tap never changes another lane's steps, and a
+ * shared step is only ever ticked by a lane tap once everything it waits for
+ * is finished (`finishedSteps`), so no lane races past a step where the
+ * lanes meet:
+ * - an undone lane step ticks itself and the earlier steps in its lane, plus
+ *   each earlier shared step whose wait is then finished, in order;
  * - a done lane step un-ticks itself and every later step that is shared or
  *   in the same lane.
- * A sync step that is current (or the first undone step) is ticked; any
- * other sync step is jumped to, as without lanes.
+ * A sync step:
+ * - current (everything it waits for is finished): ticked;
+ * - done: un-ticked with every step after it, as without lanes ("we are back
+ *   here"); nothing earlier changes;
+ * - otherwise: a jump there, which ticks every earlier step and keeps later
+ *   progress.
  */
 export function tapStep(
   steps: readonly RecipeStep[],
@@ -212,26 +235,32 @@ export function tapStep(
   const blocks = stepBlocks(steps);
   const block = blockAt(blocks, index);
   if (!block) return normalizeStepProgress(progress, stepCount);
+  const shared = (j: number) => steps[j].lane === undefined;
 
   if (block.kind === 'sync') {
-    const current =
-      !done.has(index) && waitsFor(blocks, index).every((j) => done.has(j));
-    if (current || index === firstUndone(done, stepCount)) {
+    const finished = finishedSteps(blocks, done, stepCount);
+    if (done.has(index)) {
+      for (let j = index; j < stepCount; j += 1) done.delete(j);
+    } else if (waitsFor(blocks, index).every((j) => finished.has(j))) {
       done.add(index);
-      return fromDoneSet(done, stepCount);
+    } else {
+      for (let j = 0; j < index; j += 1) done.add(j);
     }
-    return { currentStep: index, doneSteps: [] };
+    return fromDoneSet(done, stepCount);
   }
 
   const lane = steps[index].lane;
-  const ownOrShared = (j: number) => steps[j].lane === undefined || steps[j].lane === lane;
   if (done.has(index)) {
     for (let j = index; j < stepCount; j += 1) {
-      if (ownOrShared(j)) done.delete(j);
+      if (shared(j) || steps[j].lane === lane) done.delete(j);
     }
   } else {
+    // In step order, so a shared step sees the ticks made before it.
+    const finished = new Set<number>();
     for (let j = 0; j <= index; j += 1) {
-      if (ownOrShared(j)) done.add(j);
+      const waitsFinished = waitsFor(blocks, j).every((k) => finished.has(k));
+      if (steps[j].lane === lane || (shared(j) && waitsFinished)) done.add(j);
+      if (done.has(j) && waitsFinished) finished.add(j);
     }
   }
   return fromDoneSet(done, stepCount);
@@ -278,11 +307,24 @@ export function carryStepLanes(
     const j = stored.findIndex((_, k) => free(k, step.text));
     if (j >= 0) claim(i, j);
   });
+  // At most MAX_LANES lanes in the result, so the diff shows what saving
+  // keeps (compactSteps keeps the first MAX_LANES). Lanes the proposal states
+  // come first; a carried lane that would be one too many is left off and
+  // its steps are shared.
+  const lanes = new Set<string>();
+  for (const step of proposed) {
+    if (step.lane && lanes.size < MAX_LANES) lanes.add(step.lane);
+  }
   return proposed.map((step, i) => {
     if (step.lane === '') return { text: step.text };
     if (step.lane !== undefined) return step;
     const j = matched.get(i);
     const lane = j === undefined ? undefined : stored[j].lane;
-    return lane === undefined ? step : { ...step, lane };
+    if (lane === undefined) return step;
+    if (!lanes.has(lane)) {
+      if (lanes.size >= MAX_LANES) return { text: step.text };
+      lanes.add(lane);
+    }
+    return { ...step, lane };
   });
 }

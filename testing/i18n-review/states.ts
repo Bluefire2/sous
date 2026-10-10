@@ -678,6 +678,22 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByLabel(ctx.t('form.laneName', { n: 6 }), { exact: true }).waitFor();
     },
   },
+  'recipe-edit-too-many-lanes': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.pestoPasta}/edit`,
+    reach: async (page, ctx) => {
+      // Two blank new lanes first (a blank name adds no lane yet), then name
+      // both: four lanes, so the form shows its limit and blocks Save.
+      for (const n of [1, 6]) {
+        await page
+          .getByLabel(ctx.t('form.stepLane', { n }), { exact: true })
+          .selectOption({ label: ctx.t('form.newLane') });
+      }
+      await page.getByLabel(ctx.t('form.laneName', { n: 1 }), { exact: true }).fill('Garnish');
+      await page.getByLabel(ctx.t('form.laneName', { n: 6 }), { exact: true }).fill('Plating');
+      await page.getByText(ctx.t('form.tooManyLanes'), { exact: true }).waitFor();
+    },
+  },
   'recipe-edit-lang-hint': {
     persona: 'member',
     path: labelledRecipe,

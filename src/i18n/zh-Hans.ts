@@ -488,6 +488,7 @@ export const zhHans: Messages = {
   'form.step': '第 {n} 步',
   'form.stepPlaceholder': '怎么做',
   'form.lanesHint': '两人一起做饭时，给每个人的步骤设一个分工，比如“酱汁”和“意面”。',
+  'form.tooManyLanes': '一个食谱最多 3 个分工。请把多出的分工里的步骤移到其他分工，或选择“不分工”。',
   'form.stepLane': '第 {n} 步的分工',
   'form.noLane': '不分工',
   'form.newLane': '新建分工…',
