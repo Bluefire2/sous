@@ -153,3 +153,41 @@ describe('convertTemperaturesInText', () => {
     }
   });
 });
+
+describe('convertTemperaturesInText, second review', () => {
+  const convert = (text: string) => convertTemperaturesInText(text, (celsius, original) => `${celsius} (${original})`);
+
+  it('converts only the temperature when the first number is not one', () => {
+    expect(convert('Gas mark 4 or 350°F.')).toBe('Gas mark 4 or 177°C (350°F).');
+    expect(convert('Simmer between 10 and 350°F?')).toBe('Simmer between 10 and 177°C (350°F)?');
+    expect(convert('Bake at 350 or 325°F.')).toBe('Bake at 180–160°C (350 or 325°F).');
+  });
+
+  it('converts a temperature when the Celsius near it belongs to another one', () => {
+    expect(convert('Roast at 425°F (220°C), then reduce to 350°F.')).toBe(
+      'Roast at 425°F (220°C), then reduce to 180°C (350°F).',
+    );
+    expect(convert('Bake at 350°F. Stir in 1C sugar.')).toBe('Bake at 180°C (350°F). Stir in 1C sugar.');
+  });
+
+  it('recognises Celsius written in Cyrillic or Chinese', () => {
+    for (const text of ['Розігрійте духовку до 350°F (180 °С).', 'Разогрейте духовку до 350°F (175°С).', '烤箱预热至350°F（175摄氏度）。']) {
+      expect(convert(text)).toBe(text);
+    }
+  });
+
+  it('keeps frying and liver at the exact degree, and rounds uk and ru bake verbs', () => {
+    expect(convert('Heat oil in a Dutch oven to 350°F.')).toBe('Heat oil in a Dutch oven to 177°C (350°F).');
+    expect(convert('Preheat the oil to 350°F.')).toBe('Preheat the oil to 177°C (350°F).');
+    expect(convert('Обсмажте печінку при 350°F.')).toBe('Обсмажте печінку при 177°C (350°F).');
+    expect(convert('Запекайте при 350°F.')).toBe('Запекайте при 180°C (350°F).');
+    expect(convert('Випікайте при 375°F.')).toBe('Випікайте при 190°C (375°F).');
+  });
+
+  it('accepts a space or a lowercase letter after three digits', () => {
+    expect(convert('Preheat oven to 350 F.')).toBe('Preheat oven to 180°C (350 F).');
+    expect(convert('Bake at 350f.')).toBe('Bake at 180°C (350f).');
+    expect(convert('Bake for 12 F minutes')).toBe('Bake for 12 F minutes');
+    expect(convert('Bake 350 for 10 minutes')).toBe('Bake 350 for 10 minutes');
+  });
+});

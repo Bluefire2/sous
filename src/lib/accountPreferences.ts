@@ -147,7 +147,9 @@ export function subscribeUnitSystem(listener: () => void): () => void {
     loadIfNeeded();
     listener();
   });
-  if (typeof window !== 'undefined') {
+  // One pair of retry listeners for all subscribers: the browser keeps one
+  // registration per function, so only the last unsubscribe removes it.
+  if (listeners.size === 1 && typeof window !== 'undefined') {
     window.addEventListener('online', retryWhenVisible);
     document.addEventListener('visibilitychange', retryWhenVisible);
   }
@@ -155,7 +157,7 @@ export function subscribeUnitSystem(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
     unsubscribeSession();
-    if (typeof window !== 'undefined') {
+    if (listeners.size === 0 && typeof window !== 'undefined') {
       window.removeEventListener('online', retryWhenVisible);
       document.removeEventListener('visibilitychange', retryWhenVisible);
     }

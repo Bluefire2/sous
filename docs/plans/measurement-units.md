@@ -50,9 +50,13 @@ Weight (`niceWeight` in `src/lib/unitConversion.ts`):
 | 5 lb | 2.25 kg |
 
 Temperature (`fahrenheitToCelsius`):
-- An oven setting rounds to the nearest 10 °C, so 350 °F in "Bake at 350°F" reads 180 °C. A setting is a multiple of 25 °F from 250 to 550 with an oven word near it: oven, preheat, bake, roast or broil within 60 characters before or 12 after, or духов, піч/печ or 烤 in a translated step.
+- An oven setting rounds to the nearest 10 °C, so 350 °F in "Bake at 350°F" reads 180 °C.
+  - A setting is a multiple of 25 °F from 250 to 550, with an oven word within 60 characters before it or 12 after.
+  - The oven words are oven (not "Dutch oven"), preheat, bake, roast and broil.
+  - In translated text they are духов, піч or печ (but not печінка or печень, liver), запек/випік, and 烤.
+  - A frying word nearby (oil, fry, олі, масл, 油) keeps the exact degree.
 - Everything else rounds to the degree, so oil and sugar keep their precision:
-  - "Heat the oil to 350°F" reads 177 °C;
+  - "Heat oil in a Dutch oven to 350°F" reads 177 °C;
   - 275 °F syrup reads 135 °C;
   - 165 °F reads 74 °C;
   - −10 °F reads −23 °C.
@@ -60,11 +64,15 @@ Temperature (`fahrenheitToCelsius`):
 `convertTemperaturesInText` rewrites these forms in step and note text:
 - `350°F`, `350 ºf`, `350˚ F`, `350℉`;
 - `350 degrees F`, `350 deg. F` and `350 degrees Fahrenheit`;
-- `350F` (three digits; a bare F after a shorter number, like "a 12F probe", is left alone);
-- ranges joined by a dash, a slash, "to", "and" or "or" (`325–350°F`, `325 to 350 degrees F`, `between 350 and 375°F`), and negatives.
+- `350F` and `350 F`. This needs three digits, so a bare F after a shorter number ("a 12F probe") is left alone.
+- Ranges joined by a dash, a slash, "to", "and" or "or" (`325–350°F`, `325 to 350 degrees F`, `between 350 and 375°F`), and negatives.
+  - Two numbers count as a range only when they are at most 100 °F apart.
+  - Otherwise only the second number is converted, as in "Gas mark 4 or 177°C (350°F)" or "between 10 and 177°C (350°F)".
 
 It leaves two cases alone:
-- a temperature with a Celsius one within 25 characters on either side, as in `425°F / 220°C`, `180°C/350°F`, `300°F (150°C)` and `350°F — about 180 degrees C`;
+- a temperature whose own value, within 6 °C, is already written in Celsius within 25 characters on either side. Examples are `425°F / 220°C`, `180°C/350°F`, `300°F (150°C)`, `350°F (180 °С)` with a Cyrillic С, and `350°F（175摄氏度）`.
+  - A Celsius value for a different temperature does not block a conversion: "Roast at 425°F (220°C), then reduce to 350°F" converts the 350.
+  - "1C sugar" (a cup) is not Celsius.
 - a bare `350°` or `350 degrees`, which could be Celsius.
 
 Saves from Settings go to the server one at a time, so two quick taps leave the account on the last choice. After a failed save the store re-reads the account, and a failed read is tried again when the tab comes back into view or the device reconnects.

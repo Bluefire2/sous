@@ -248,6 +248,24 @@ describe('the units store', () => {
     unsubscribe();
   });
 
+  it('retries a failed read when the device reconnects, while any screen still listens', async () => {
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', doc);
+    server([new Error('offline'), ok('metric')]);
+    signIn('a');
+    const first = subscribeUnitSystem(() => {});
+    const second = subscribeUnitSystem(() => {});
+    await settle();
+    expect(getUnitSystem()).toBe('asWritten');
+    first();
+    win.dispatchEvent(new Event('online'));
+    await settle();
+    expect(getUnitSystem()).toBe('metric');
+    second();
+  });
+
   it('forgets the value and the cache on session reset', async () => {
     server([ok('metric')]);
     signIn('a');

@@ -83,34 +83,50 @@ const F = String.raw`(?:[Ff]|[Ff]ahrenheit)\b`;
 const DEGREES_WORD = String.raw`\s(?:[Dd]egrees?|[Dd]eg\.?)\s`;
 /**
  * A Fahrenheit temperature or range: "350°F", "350 ºf", "350℉", "350 degrees F",
- * "350 deg. Fahrenheit", "350F", "325–350°F", "325 to 350°F", "between 350 and
- * 375°F", "-10°F". A bare "350°" is not one (it could be Celsius), and neither
- * is a one- or two-digit number with a bare F ("a 12F probe").
+ * "350 deg. Fahrenheit", "350F", "350 F", "325–350°F", "325 to 350°F", "between
+ * 350 and 375°F", "-10°F". A bare "350°" is not one (it could be Celsius), and
+ * neither is a one- or two-digit number with a bare F ("a 12F probe").
  */
 const FAHRENHEIT = new RegExp(
   String.raw`(?<![\w.,])(${NUMBER})(?:${RANGE}(${NUMBER}))?` +
-    String.raw`(?:${SPACE}${DEGREE}${SPACE}${F}|${SPACE}℉|${DEGREES_WORD}${F}|(?<=\d{3})F\b)`,
+    String.raw`(?:${SPACE}${DEGREE}${SPACE}${F}|${SPACE}℉|${DEGREES_WORD}${F}|(?<=\d{3})${SPACE}[Ff]\b)`,
   'g',
 );
-/** A Celsius temperature already written near the match, as in "425°F / 220°C" or "180C/350F". */
-const CELSIUS_NEARBY = new RegExp(
-  String.raw`\d(?:${SPACE}${DEGREE}${SPACE}[Cc]\b|${SPACE}℃|C\b|${DEGREES_WORD}(?:[Cc]|[Cc]elsius)\b)`,
+/** A Celsius letter: Latin C, or the Cyrillic С that uk and ru text uses, not followed by a letter. */
+const C = String.raw`[CcС](?![A-Za-zА-Яа-яІіЇїЄєҐґ])`;
+/**
+ * A Celsius temperature, capturing its number: "220°C", "180 °С", "180℃",
+ * "180C" (two or three digits, so "1C sugar" is a cup), "175 degrees C",
+ * "175摄氏度".
+ */
+const CELSIUS = new RegExp(
+  String.raw`(-?\d{1,3})(?:${SPACE}${DEGREE}${SPACE}${C}|${SPACE}℃|(?<=\d{2})${C}|${DEGREES_WORD}(?:${C}|[Cc]elsius)|${SPACE}摄氏)`,
+  'g',
 );
 const CELSIUS_NEARBY_CHARS = 25;
+/** How far a written Celsius value may be from ours and still count as the same temperature. */
+const SAME_TEMPERATURE_C = 6;
 /**
  * Words that make a temperature an oven setting, before it ("Bake at …") or
  * just after ("a 375°F oven"), in English and in the UI languages a recipe
- * may be translated into (духовка, піч/печь, 烤箱).
+ * may be translated into (духовка, піч/печь, запекайте/випікайте, 烤箱).
+ * A Dutch oven is a pot, and печінка/печень is liver.
  */
-const OVEN_WORDS = /\b(?:oven|preheat|pre-heat|bake[sd]?|baking|roast(?:s|ed|ing)?|broil)|духов|піч|печ|烤/i;
+const OVEN_WORDS =
+  /(?<!dutch )\boven\b|\b(?:preheat|pre-heat|bake[sd]?|baking|roast(?:s|ed|ing)?|broil)|духов|піч|печ(?!інк|ен[ьиіюе])|пек|випік|запік|烤/i;
+/** Oil means frying, which keeps the exact degree even in a pot called an oven. */
+const FRYING_WORDS = /\b(?:oil|fry|fries|frying|fried|deep-fry|lard|shortening)\b|олі|олія|масл|фритюр|油/i;
 const OVEN_BEFORE_CHARS = 60;
 const OVEN_AFTER_CHARS = 12;
+/** The widest span read as one range; "between 10 and 350°F" is a count and a temperature. */
+const MAX_RANGE_SPAN_F = 100;
 
 /**
  * `text` with each Fahrenheit temperature replaced by `format(celsius,
  * original)`, where `celsius` is like "180°C" or "160–180°C" and `original`
- * is the text matched. A temperature that already has a Celsius one near it
- * is left alone. Oven rounding applies only when an oven word is near.
+ * is the text matched. A temperature with the same one already written in
+ * Celsius near it is left alone. Oven rounding applies only when an oven
+ * word, and no frying word, is near.
  */
 export function convertTemperaturesInText(
   text: string,
@@ -120,10 +136,24 @@ export function convertTemperaturesInText(
     const end = offset + match.length;
     const near = (before: number, after: number) =>
       `${text.slice(Math.max(0, offset - before), offset)} ${text.slice(end, end + after)}`;
-    if (CELSIUS_NEARBY.test(near(CELSIUS_NEARBY_CHARS, CELSIUS_NEARBY_CHARS))) return match;
-    const oven = OVEN_WORDS.test(near(OVEN_BEFORE_CHARS, OVEN_AFTER_CHARS));
-    const low = fahrenheitToCelsius(Number(from), oven);
-    const celsius = to === undefined ? `${low}°C` : `${low}–${fahrenheitToCelsius(Number(to), oven)}°C`;
-    return format(celsius, match);
+    const ovenWindow = near(OVEN_BEFORE_CHARS, OVEN_AFTER_CHARS);
+    const oven = OVEN_WORDS.test(ovenWindow) && !FRYING_WORDS.test(ovenWindow);
+    const written = [...near(CELSIUS_NEARBY_CHARS, CELSIUS_NEARBY_CHARS).matchAll(CELSIUS)].map((m) => Number(m[1]));
+    const alreadyWritten = (values: number[]) =>
+      values.some((value) => written.some((c) => Math.abs(c - value) <= SAME_TEMPERATURE_C));
+
+    const low = Number(from);
+    const high = to === undefined ? undefined : Number(to);
+    if (high !== undefined && (high === low || Math.abs(high - low) > MAX_RANGE_SPAN_F)) {
+      // Not a range: only the second number is a temperature.
+      const at = match.indexOf(to!, from.length);
+      const celsius = fahrenheitToCelsius(high, oven);
+      if (alreadyWritten([celsius])) return match;
+      return match.slice(0, at) + format(`${celsius}°C`, match.slice(at));
+    }
+    const lowC = fahrenheitToCelsius(low, oven);
+    const highC = high === undefined ? undefined : fahrenheitToCelsius(high, oven);
+    if (alreadyWritten(highC === undefined ? [lowC] : [lowC, highC])) return match;
+    return format(highC === undefined ? `${lowC}°C` : `${lowC}–${highC}°C`, match);
   });
 }
