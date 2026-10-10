@@ -97,7 +97,9 @@ async function main(): Promise<void> {
     baking: await grantSubs(member, FIXTURE_IDS.member.baking),
     empty: await pullSnapshot(emptyCookie),
     memberKitchen: JSON.stringify((await request('GET', '/api/settings/kitchen', member)).body),
+    memberPreferences: JSON.stringify((await request('GET', '/api/settings/preferences', member)).body),
   };
+  check('the member starts with metric', before.memberPreferences.includes('"metric"'), before.memberPreferences);
   check('the member starts with a kitchen profile', before.memberKitchen.includes('"eggs"'), before.memberKitchen);
   check('the viewer starts with grants on Weeknights and on Owner’s picks', before.weeknights.includes(viewer.sub) && before.picks.includes(viewer.sub));
 
@@ -150,6 +152,10 @@ async function main(): Promise<void> {
   check(
     "the member's kitchen profile is untouched",
     JSON.stringify((await request('GET', '/api/settings/kitchen', member)).body) === before.memberKitchen,
+  );
+  check(
+    "the member's preferences are untouched",
+    JSON.stringify((await request('GET', '/api/settings/preferences', member)).body) === before.memberPreferences,
   );
   check("the empty persona's library is untouched", (await pullSnapshot(emptyCookie)) === before.empty);
   check('Baking’s grants are untouched', JSON.stringify(await grantSubs(member, FIXTURE_IDS.member.baking)) === JSON.stringify(before.baking));

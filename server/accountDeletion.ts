@@ -100,7 +100,7 @@ export const FIRESTORE_COLLECTIONS = {
   translations: { scope: 'nested', parent: 'users/{sub}', holds: 'Cached recipe translations.' },
   mcpGrants: { scope: 'nested', parent: 'users/{sub}', holds: 'Connected MCP apps, with the consenting email.' },
   llmUsage: { scope: 'nested', parent: 'users/{sub}', holds: 'Daily AI spend counters (cost and call count).' },
-  settings: { scope: 'nested', parent: 'users/{sub}', holds: 'Personal settings: the kitchen profile.' },
+  settings: { scope: 'nested', parent: 'users/{sub}', holds: 'Personal settings: the kitchen profile and account preferences (measurement units).' },
   grants: {
     scope: 'nested',
     parent: 'users/{ownerSub}/collections/{id}',

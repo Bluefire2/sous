@@ -25,6 +25,7 @@ import {
 } from './seededMcp.ts';
 import {
   FIXTURE_IDS,
+  ACCOUNT_PREFERENCES,
   KITCHEN_PROFILES,
   memberLibrary,
   ownerLibrary,
@@ -248,6 +249,8 @@ export async function seed(baseUrl: string): Promise<number> {
   await request(baseUrl, '/api/admin/invites', { cookie: cookies.owner });
   await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.member, json: KITCHEN_PROFILES.member });
   await request(baseUrl, '/api/settings/kitchen', { cookie: cookies.viewer, json: KITCHEN_PROFILES.viewer });
+  await request(baseUrl, '/api/settings/preferences', { cookie: cookies.member, json: ACCOUNT_PREFERENCES.member });
+  await request(baseUrl, '/api/settings/preferences', { cookie: cookies.viewer, json: ACCOUNT_PREFERENCES.viewer });
 
   await connectApp(baseUrl, now);
   // Today in UTC: after midnight a kept seed (`--keep`) is no longer capped.

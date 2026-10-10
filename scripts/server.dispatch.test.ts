@@ -62,6 +62,8 @@ const ANONYMOUS_STATUS: Record<string, number> = {
   'POST /api/mcp/grants/revoke': 401,
   'GET /api/settings/kitchen': 401,
   'POST /api/settings/kitchen': 401,
+  'GET /api/settings/preferences': 401,
+  'POST /api/settings/preferences': 401,
 };
 
 const UUID = '0b7c9a52-3d7e-4a43-9a43-2f4c5f6f7a10';
@@ -362,6 +364,22 @@ describe('static files', () => {
       expect(res.headers.get('x-robots-tag'), path).toBe('noindex');
     }
     expect((await send(staticBase, 'GET', '/settings')).headers.get('referrer-policy')).toBeNull();
+  });
+
+  // A well-formed token reads Firestore for preview tags (server/publicPreview.ts);
+  // test mode covers that. These shapes never reach the store.
+  it('never lets a public page shell be cached, and gives a bad token no tags', async () => {
+    for (const path of ['/p', '/p/sometoken', '/p/sometoken/r/abc']) {
+      for (const method of ['GET', 'HEAD']) {
+        const res = await send(staticBase, method, path);
+        expect(res.status, `${method} ${path}`).toBe(200);
+        expect(res.headers.get('cache-control'), `${method} ${path}`).toBe('no-store');
+        expect(res.headers.get('content-type'), `${method} ${path}`).toContain('text/html');
+        expect(await res.text(), `${method} ${path}`).toBe(
+          method === 'GET' ? '<!doctype html><title>Sous</title>' : '',
+        );
+      }
+    }
   });
 
   it('answers HEAD with the headers and no body', async () => {

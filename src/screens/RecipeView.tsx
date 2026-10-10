@@ -20,6 +20,7 @@ import {
   StepsSection,
   translateChipClass,
 } from '../components/RecipeBody';
+import { useUnitSystem } from '../lib/accountPreferences';
 import { libraryHref, libraryPathFromState } from '../lib/collectionHref';
 import { useCookLogs } from '../lib/cookLogStore';
 import { SpinnerIcon, TranslateIcon } from '../lib/icons';
@@ -95,6 +96,7 @@ export default function RecipeView() {
   const libraryBack = libraryPathFromState(location.state) ?? libraryHref(collectionId);
   useWakeLock();
   const textSize = useRecipeTextSize();
+  const units = useUnitSystem();
 
   const {
     servings,
@@ -338,6 +340,7 @@ export default function RecipeView() {
         checkedKeys={checkedKeys}
         onToggle={toggleChecked}
         textSize={textSize}
+        units={units}
       />
 
       <StepsSection
@@ -346,6 +349,7 @@ export default function RecipeView() {
         currentStep={currentStep}
         onStep={setCurrentStep}
         textSize={textSize}
+        units={units}
         afterDone={
           !shared && (
             <Link
@@ -358,7 +362,7 @@ export default function RecipeView() {
         }
       />
 
-      {displayRecipe.notes && <NotesSection notes={displayRecipe.notes} />}
+      {displayRecipe.notes && <NotesSection notes={displayRecipe.notes} units={units} />}
 
       {recipe.galleryPhotoIds && recipe.galleryPhotoIds.length > 0 && (
         <GallerySection>

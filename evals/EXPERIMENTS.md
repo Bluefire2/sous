@@ -50,6 +50,57 @@ summary, approach A.
   test:import`) were not run.
 - Run by: agent, model default (`gemini-3.8-flash`).
 
+## 2026-10-09 — Metric rule: every temperature, and search notes
+
+- Change: two changes to the metric rule in `generatePrompt`, both from
+  PR #182's review. Branch `claude/measurement-units-prompts`.
+  - It asks for every temperature in °C (oven, oil, sugar and meat), not
+    only oven temperatures.
+  - With search notes, it adds one more rule: convert the notes' cups,
+    ounces, pounds and °F to metric rather than copy them.
+- Reason (not fixture-specific): the metric rule otherwise left frying and
+  sugar temperatures in °F. Search notes usually come from US pages, and
+  the prompt tells the model to prefer them.
+- Command: `npx vitest run --config vitest.eval.config.ts evals/recipeGenerate.eval.ts -t "search notes taken from US"`.
+  This is one new case: "classic American buttermilk pancakes" with
+  `search: true, units: 'metric'`. It must use no cup, oz, lb or stick
+  unit, and its steps must never name °F.
+- Before (`server/recipeImport.ts` at `e3694d5`, with no notes rule): 3
+  runs, 3/3.
+- After: 3 runs, 3/3. Then one run of the whole file, 8/8. Default model,
+  then named `gemini-3.7-flash` and already served as 3.8 (see the
+  import-default entry below).
+- Decision: kept as a guard. The new case does not show the risk the
+  review named, because the model already converted the notes without the
+  extra rule, so this measurement neither supports nor argues against it.
+  It costs one sentence and only applies to searched briefs from metric
+  members.
+- Run by: agent.
+
+## 2026-10-09 — Metric rule in generatePrompt
+
+- Change: when the member set Settings → Measurements to Metric,
+  `generatePrompt` appends one rule. It asks for weights in g or kg,
+  liquids in ml or l (with spoons allowed for small amounts), oven
+  temperatures in °C and sizes in cm, unless the request asks for other
+  units. As written leaves the prompt byte for byte as it was. The research
+  call is unchanged. Branch `claude/measurement-units-prompts`, phase 2 of
+  `docs/plans/measurement-units.md`.
+- Reason (not fixture-specific): a member who cooks in metric should not
+  get a Generated recipe in cups and °F.
+- Command: `npx vitest run --config vitest.eval.config.ts evals/recipeGenerate.eval.ts -t "writes in metric"`.
+  This is one new case: "chocolate chip cookies" with `units: 'metric'`
+  must use no cup, oz, lb or stick unit, must use at least one g or kg
+  unit, and its steps must name °C and never °F.
+- Before (`server/recipeImport.ts` from `3138c87`, which has no units
+  option): 3 runs, 0/3. Every run wrote cups.
+- After: 3 runs, 3/3. Then one run of the whole file, 7/7. Default model,
+  then named `gemini-3.7-flash` (`.env.local` sets no `CHAT_MODEL`); per
+  the import-default entry below, the API was already serving those
+  requests with 3.8.
+- Decision: kept.
+- Run by: agent.
+
 ## 2026-10-09 — Import default `gemini-3.7-flash` → `gemini-3.8-flash` (3.7 now redirects)
 
 - Change: `DEFAULT_MODEL` in `server/recipeImport.ts` becomes

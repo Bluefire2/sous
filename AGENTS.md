@@ -144,6 +144,23 @@ sees it, and page, paste, and photo import never read it. No log line holds
 any of it. It is not in backups and not on MCP. `/privacy` and `/terms`
 describe it; change them with it.
 
+Measurement units (`docs/plans/measurement-units.md`,
+`server/accountPreferences.ts`): `users/{sub}/settings/preferences` holds
+`units` (`asWritten` | `metric`), set in Settings (`GET`/`POST
+/api/settings/preferences`, `withMembership`), its own document because the
+kitchen POST replaces the kitchen one. The client converts at display time
+only (`src/lib/unitConversion.ts`): lb and oz to g/kg, °F in step and note
+text to °C, volumes never; the stored recipe, share text, the edit form, and
+Ask's proposal card stay as written. The weight test reads the stored unit,
+never a translated one. `cook.units` caches the value per `sub` and is
+cleared on sign-out. With `metric`, Ask, the assistant, and Generate add a
+metric rule to their prompts: `readPromptContext` in
+`server/kitchenProfile.ts` reads the kitchen and preferences documents in one
+`getAll` for the session `sub` (chat gets `units` through
+`withKitchenProfile`), and a failed read is 503. The research call of a
+searched brief never sees it. For the assistant, `combine_ingredients` converts
+pounds and ounces to grams in code (`dataTools(library, { metric })`).
+
 **Account deletion.** A deletion request is the manual procedure in
 README.md: deny access, then `scripts/delete-account-data.ts <sub>` (dry run,
 then `--apply`), then the GCS photo prefix. `server/accountDeletion.ts`
@@ -485,6 +502,24 @@ being turned off and the sharer's account deletion. Recipe delete revokes the
 recipe's links in `cascadeRecipeDelete`'s transaction. Do not add a grant or a
 live tie between a copy and its original.
 
+**Link previews** (`server/publicPreview.ts`): `GET /p/<token>` and
+`/p/<token>/r/<recipeId>` from `scripts/server.ts` put Open Graph tags in the
+SPA shell's head for a live link, resolved with the visitor chain in the same
+order (collection, then recipe link): a recipe's title, description, and main
+photo URL, or a collection's name only. Never `sharedBy`, an email, a `sub`,
+or `og:url`; the `<title>` stays "Sous". Any failure, or a lookup over
+`PREVIEW_LOOKUP_TIMEOUT_MS` (500), serves the plain shell, and every `/p`
+shell is `no-store`. The service worker never serves `/p`, so every visit
+pays that lookup before its first byte and the page then repeats the reads
+through `/api/public/<token>`; keep the timeout short rather than sniffing
+user agents. Past `MAX_PREVIEW_LOOKUPS_IN_FLIGHT` (20) unsettled lookups per
+instance a page gets the plain shell without one. The preview matches the raw
+request path and refuses any `%` (the SPA keeps an encoded slash inside a
+segment, so `%2F` must not describe another page). Text is read from a
+bounded prefix ending on a grapheme boundary, since nothing caps a stored
+description. Vite (`npm run dev`) serves no tags; check them with `dev:test
+--static`. `/privacy` and `/terms` describe previews; change them with it.
+
 Collection delete tombstones live grants in the same transaction. Forward
 grants carry an internal `active` flag, and the cascade time is
 `grantCascadeAt`, not the client `updatedAt`. Grants written before `active`
@@ -784,6 +819,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/navbar-invite-copy.md` | Merged (#49). Invite control in the library header that mints a link and copies it. |
 | `docs/plans/failed-cook-tap-lww.md` | Merged (#94). A failed cook tap no longer restores over a newer step from a pull. |
 | `docs/plans/import-reliability-spec.md` | Spec (Draft) that `import-reliability.md` plans; kept as written, and the plan records where the build departs from it. |
+| `docs/plans/measurement-units.md` | Merged (#180). Settings → Measurements (as written / metric) on the account; the recipe screen shows lb, oz and °F as g/kg and °C with the original beside it. Volumes stay as written. Phase 2 merged (#182): with metric, Generate, Ask, and the assistant write new amounts in metric. |
 | `docs/plans/kitchen-profile.md` | Merged (#172). Allergies, diets, avoid/dislikes, equipment and notes in Settings, added to the Ask, assistant, and Generate prompts on the server. |
 | `docs/plans/test-coverage.md` | Merged (#151, #152, #154, and #157, the coverage report). Unit tests for sign-in, the dispatcher, the session-gate parity, and the AGENTS.md rules; write, deletion-script, and log-sweep checks in the `test-mode` job. |
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
@@ -941,7 +977,8 @@ the `.cursor/skills/i18n-visual-review` skill.
 and `/terms` describe Firestore + GCS and that there is no on-device recipe
 database. Theme preference, the UI language (`cook.locale`), the
 cooking-screen settings (`cook.wakeLock`, `cook.recipeTextSize`; device-local,
-never synced, `docs/plans/cooking-screen-settings.md`), and
+never synced, `docs/plans/cooking-screen-settings.md`), a per-`sub` cache of
+the account's measurement units (`cook.units`), and
 `cook.session` stay in localStorage. Do not
 describe IndexedDB, offline edits, or a local library. The Chrome extension
 sends rendered page HTML, possibly from a page behind a login, to the server

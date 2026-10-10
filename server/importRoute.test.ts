@@ -72,8 +72,11 @@ interface PostOptions {
   kitchenStore?: KitchenProfileStore;
 }
 
-/** A kitchen profile store holding `docs` by sub. */
-function kitchenStore(docs: Record<string, unknown> = {}): KitchenProfileStore & { reads: string[] } {
+/** A kitchen profile store holding `docs` (and preferences) by sub. */
+function kitchenStore(
+  docs: Record<string, unknown> = {},
+  preferences: Record<string, unknown> = {},
+): KitchenProfileStore & { reads: string[] } {
   const reads: string[] = [];
   return {
     reads,
@@ -82,6 +85,10 @@ function kitchenStore(docs: Record<string, unknown> = {}): KitchenProfileStore &
       return docs[sub];
     },
     write: async () => {},
+    readPromptDocs: async (sub) => {
+      reads.push(sub);
+      return { kitchen: docs[sub], preferences: preferences[sub] };
+    },
   };
 }
 
@@ -954,12 +961,36 @@ describe('POST /api/import with a brief', () => {
     it('writes the prompt as before when no profile is saved', async () => {
       const { calls } = await post({ brief: BRIEF });
       expect(String(calls[0].contents)).not.toContain('kitchen');
+      expect(String(calls[0].contents)).not.toContain('metric');
+    });
+
+    it('asks the structured call, never the search, for metric when the member reads in metric', async () => {
+      const grounded = groundedDeps();
+      const store = kitchenStore({}, { 'sub-1': { units: 'metric', updatedAt: 1 } });
+      const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps, kitchenStore: store });
+      expect(status).toBe(200);
+      expect(store.reads).toEqual(['sub-1']);
+      expect(String(grounded.calls[0].contents)).not.toContain('metric');
+      const structured = String(grounded.calls[1].contents);
+      expect(structured).toContain('The user cooks in metric');
+      expect(structured).not.toContain('kitchen_profile');
+      expect(structured).toContain('Convert any cups, ounces, pounds, or °F in the notes');
+      expect(structured.indexOf('The user cooks in metric')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('only mentions search notes in the metric rule when there are notes', async () => {
+      const store = kitchenStore({}, { 'sub-1': { units: 'metric', updatedAt: 1 } });
+      const { calls } = await post({ brief: BRIEF }, undefined, { kitchenStore: store });
+      const prompt = String(calls[0].contents);
+      expect(prompt).toContain('every temperature');
+      expect(prompt).not.toContain('in the notes');
     });
 
     it('answers 503 without calling the model or taking a search slot when the profile cannot be read', async () => {
       const failing: KitchenProfileStore = {
         read: () => Promise.reject(new Error('firestore down')),
         write: async () => {},
+        readPromptDocs: () => Promise.reject(new Error('firestore down')),
       };
       const { status, body, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
       expect(status).toBe(503);

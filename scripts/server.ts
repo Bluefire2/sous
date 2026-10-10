@@ -15,7 +15,7 @@
  * Requires Node 22.18+ for native TypeScript type stripping.
  */
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { basename, extname, isAbsolute, relative, resolve } from 'node:path';
 import { Readable, type Writable } from 'node:stream';
@@ -31,7 +31,7 @@ import {
   authSignout,
   authStart,
 } from '../server/auth.ts';
-import { redirectUri } from '../server/env.ts';
+import { publicOrigin, redirectUri } from '../server/env.ts';
 import {
   adminDecisionPost,
   adminInviteRevokePost,
@@ -49,6 +49,7 @@ import {
   collectionLinksPost,
   collectionLinksRevokePost,
 } from '../server/collectionLinksHttp.ts';
+import { accountPreferencesGet, accountPreferencesPost } from '../server/accountPreferences.ts';
 import { extensionImport, extensionImportOptions } from '../server/extensionImport.ts';
 import { inviteLandingGet } from '../server/invites.ts';
 import { kitchenProfileGet, kitchenProfilePost, withKitchenProfile } from '../server/kitchenProfile.ts';
@@ -59,9 +60,11 @@ import {
   collectionPublicLinkGet,
   collectionPublicLinkPost,
   collectionPublicLinkRevokePost,
+  liveVisitorDependencies,
   publicGet,
   publicJoinPost,
 } from '../server/publicLinksHttp.ts';
+import { previewHtml } from '../server/publicPreview.ts';
 import { recipeLinkSavePost } from '../server/recipeLinkSave.ts';
 import {
   recipePublicLinkGet,
@@ -122,6 +125,8 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/mcp/grants/revoke', handler: mcpGrantsRevokePost },
   { method: 'GET', path: '/api/settings/kitchen', handler: withMembership(kitchenProfileGet) },
   { method: 'POST', path: '/api/settings/kitchen', handler: withMembership(kitchenProfilePost) },
+  { method: 'GET', path: '/api/settings/preferences', handler: withMembership(accountPreferencesGet) },
+  { method: 'POST', path: '/api/settings/preferences', handler: withMembership(accountPreferencesPost) },
 ];
 
 const PUBLIC_HTML: Record<string, string> = {
@@ -244,7 +249,8 @@ async function handleRequest(
       return;
     }
 
-    if (decodedPath === '/p' || decodedPath.startsWith('/p/')) {
+    const publicPage = decodedPath === '/p' || decodedPath.startsWith('/p/');
+    if (publicPage) {
       // Public collection pages carry their token in the path: keep it out of
       // every Referer (images, the source link, the Google sign-in hop) and
       // out of search results. The SPA renders them from index.html.
@@ -255,6 +261,26 @@ async function handleRequest(
     if (method !== 'GET' && method !== 'HEAD') {
       sendText(nodeReq, nodeRes, 405, 'Method not allowed');
       return;
+    }
+
+    if (publicPage && method === 'GET') {
+      // Link-preview tags for a live link (server/publicPreview.ts); null
+      // serves the plain shell below. HEAD skips the lookup and describes the
+      // plain shell; crawlers fetch with GET. The raw path, because the SPA
+      // keeps an encoded slash inside a segment: `%2F` must not change which
+      // page is described.
+      const html = await previewHtml(rawPath, {
+        readIndex: () => readIndexHtml(resolve(staticRoot, 'index.html')),
+        origin: publicOrigin,
+        deps: liveVisitorDependencies,
+      });
+      if (html !== null) {
+        nodeRes.statusCode = 200;
+        nodeRes.setHeader('Content-Type', 'text/html; charset=utf-8');
+        nodeRes.setHeader('Cache-Control', 'no-store');
+        nodeRes.end(html);
+        return;
+      }
     }
 
     const publicRelative = PUBLIC_HTML[decodedPath];
@@ -281,7 +307,9 @@ async function handleRequest(
     if (!lastSegment.includes('.')) {
       const indexPath = resolve(staticRoot, 'index.html');
       if (resolveContained(staticRoot, '/index.html') && (await fileExists(indexPath))) {
-        await sendFile(nodeRes, indexPath, '/index.html', method, 200);
+        // A public page's shell may carry a link's preview: turning the link
+        // off must win on the next fetch, with or without tags.
+        await sendFile(nodeRes, indexPath, '/index.html', method, 200, publicPage ? 'no-store' : undefined);
         return;
       }
     }
@@ -694,18 +722,36 @@ async function serveIfFile(
   return true;
 }
 
+const indexHtmlCache = new Map<string, { mtimeMs: number; html: string }>();
+
+/**
+ * `index.html` for link previews, read again only when the file changes (a
+ * rebuild under `dev:test --static`); the image's copy never does.
+ */
+async function readIndexHtml(path: string): Promise<string> {
+  const { mtimeMs } = await stat(path);
+  const cached = indexHtmlCache.get(path);
+  if (cached !== undefined && cached.mtimeMs === mtimeMs) {
+    return cached.html;
+  }
+  const html = await readFile(path, 'utf8');
+  indexHtmlCache.set(path, { mtimeMs, html });
+  return html;
+}
+
 async function sendFile(
   nodeRes: ServerResponse,
   filePath: string,
   urlPath: string,
   method: string,
   status: number,
+  cache?: string,
 ): Promise<void> {
   const ext = extname(filePath).toLowerCase();
   const type = MIME_BY_EXT[ext] ?? 'application/octet-stream';
   nodeRes.statusCode = status;
   nodeRes.setHeader('Content-Type', type);
-  nodeRes.setHeader('Cache-Control', cacheControl(urlPath, basename(filePath)));
+  nodeRes.setHeader('Cache-Control', cache ?? cacheControl(urlPath, basename(filePath)));
 
   if (method === 'HEAD') {
     nodeRes.end();

@@ -109,7 +109,7 @@ export type PublicVisitorDependencies = PublicReadDependencies &
     photoResponse: (ownerSub: string, photoId: string, method: string) => Promise<Response>;
   };
 
-const liveVisitorDependencies: PublicVisitorDependencies = {
+export const liveVisitorDependencies: PublicVisitorDependencies = {
   readLink: readPublicLink,
   ownerAdmitted: sharingOwnerAdmitted,
   readCollection: (ownerSub, collectionId) => readDocData(ownerSub, 'collections', collectionId),

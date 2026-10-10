@@ -40,6 +40,7 @@ export async function checkWrites(baseUrl: string, cookies: ReadonlyMap<string, 
     ['recipe link save', () => recipeLinkSave(http, cookieOf, check)],
     ['admin approve and revoke', () => adminFlow(http, cookieOf, check)],
     ['kitchen profile', () => kitchenProfile(http, cookieOf, check)],
+    ['account preferences', () => accountPreferences(http, cookieOf, check)],
   ];
   for (const [name, run] of phases) {
     try {
@@ -393,11 +394,30 @@ async function publicJoin(http: Http, cookieOf: (name: string) => string, check:
   const off = await http.post(`/api/collections/${weeknights}/public/revoke`, memberCookie);
   check('the owner turns the public link off', off.status === 200, `status ${off.status}`);
   check('the old link reads 404', (await http.get(`/api/public/${token}`)).status === 404);
+  await checkNoPreview(http, check, token, 'the old link page has no preview');
   check('and joins 404', (await result(empty)) === 'status 404');
   const on = await http.post(`/api/collections/${weeknights}/public`, memberCookie);
   const fresh = tokenOf((on.body as { url?: unknown }).url);
   check('turning it on again mints a new link', on.status === 200 && fresh !== undefined && fresh !== token);
   check('the new link reads', fresh !== undefined && (await http.get(`/api/public/${fresh}`)).status === 200);
+}
+
+/**
+ * A turned-off link's page is the plain shell, with no preview tags
+ * (server/publicPreview.ts). Needs the server started with `--static`;
+ * skipped without it locally, failed in CI.
+ */
+async function checkNoPreview(http: Http, check: Check, token: string, name: string): Promise<void> {
+  if ((await http.get('/p')).status === 404) {
+    if (process.env.CI !== undefined) check(`${name} (needs --static)`, false);
+    return;
+  }
+  const page = await http.get(`/p/${token}`);
+  check(
+    name,
+    page.status === 200 && typeof page.body === 'string' && page.body.includes('<title>Sous</title>') && !page.body.includes('og:title'),
+    `status ${page.status}`,
+  );
 }
 
 async function recipeLinkSave(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
@@ -441,6 +461,7 @@ async function recipeLinkSave(http: Http, cookieOf: (name: string) => string, ch
   const off = await http.post(`/api/recipes/${oats}/public/revoke`, memberCookie);
   check('the owner turns the recipe link off', off.status === 200, `status ${off.status}`);
   check('the old recipe link reads 404', (await http.get(`/api/public/${token}`)).status === 404);
+  await checkNoPreview(http, check, token, 'the old recipe link page has no preview');
   check('and saves 404', (await save(empty)).result === 'status 404');
   check('the saved copy stays', !isTombstone(byId((await http.pull(empty)).recipes, first.recipeId)));
   const on = await http.post(`/api/recipes/${oats}/public`, memberCookie);
@@ -522,4 +543,28 @@ async function kitchenProfile(http: Http, cookieOf: (name: string) => string, ch
   check('and changes nothing', JSON.stringify(unchanged.profile?.allergens) === '["sesame"]', JSON.stringify(unchanged));
 
   check('signed out is 401', (await http.get('/api/settings/kitchen')).status === 401);
+}
+
+async function accountPreferences(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
+  const empty = cookieOf('empty');
+  const units = async (cookie: string) => ((await http.get('/api/settings/preferences', cookie)).body as { preferences?: { units?: string } }).preferences?.units;
+  check('an account with no preferences reads as written', (await units(empty)) === 'asWritten');
+
+  const saved = await http.post('/api/settings/preferences', empty, { units: 'metric', sub: persona('member').sub });
+  check('metric saves', saved.status === 200, `status ${saved.status}`);
+  check('it reads back as metric', (await units(empty)) === 'metric');
+  check('the member’s own preference is unchanged', (await units(cookieOf('member'))) === 'metric');
+
+  const bad = await http.post('/api/settings/preferences', empty, { units: 'imperial' });
+  check('an unknown unit system is 400', bad.status === 400, `status ${bad.status}`);
+  const back = await http.post('/api/settings/preferences', empty, { units: 'asWritten' });
+  check('as written saves', back.status === 200 && (await units(empty)) === 'asWritten', `status ${back.status}`);
+
+  check('signed out is 401', (await http.get('/api/settings/preferences')).status === 401);
+
+  // Chat reads the kitchen profile and these preferences (one Firestore getAll)
+  // before it parses the body, so an empty body answers 400 only when that read
+  // worked; a failed read is 503 "Store unavailable". No model call is made.
+  const chat = await http.post('/api/chat', cookieOf('member'), {});
+  check('chat reads the prompt context from the store before refusing an empty body', chat.status === 400, `status ${chat.status} ${JSON.stringify(chat.body)}`);
 }

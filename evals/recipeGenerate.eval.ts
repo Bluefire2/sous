@@ -91,6 +91,40 @@ describe('write a recipe from a brief (live Gemini)', () => {
     ).toBe(false);
   }, 60_000);
 
+  it('writes in metric for a member who reads in metric, even for an American dish', async () => {
+    const outcome = await generateFromBrief('chocolate chip cookies', recipeImportDepsFromEnv(), {
+      search: false,
+      units: 'metric',
+    });
+    expect(outcome.kind, JSON.stringify(outcome)).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    const units = outcome.recipe.ingredientSections.flatMap((s) => s.items.map((i) => (i.unit ?? '').toLowerCase()));
+    expect(
+      units.filter((unit) => /^(cups?|c\.?|oz|ounces?|lbs?|pounds?|sticks?|fl oz)$/.test(unit)),
+      JSON.stringify(units),
+    ).toEqual([]);
+    expect(units.some((unit) => unit === 'g' || unit === 'kg'), JSON.stringify(units)).toBe(true);
+    const steps = outcome.recipe.steps.map((step) => step.text).join('\n');
+    expect(/°\s?F|℉|degrees F/i.test(steps), steps).toBe(false);
+    expect(/°\s?C|℃/.test(steps), steps).toBe(true);
+  }, 60_000);
+
+  it('writes in metric from search notes taken from US pages', async () => {
+    const outcome = await generateFromBrief('classic American buttermilk pancakes', recipeImportDepsFromEnv(), {
+      search: true,
+      units: 'metric',
+    });
+    expect(outcome.kind, JSON.stringify(outcome)).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    const units = outcome.recipe.ingredientSections.flatMap((s) => s.items.map((i) => (i.unit ?? '').toLowerCase()));
+    expect(
+      units.filter((unit) => /^(cups?|c\.?|oz|ounces?|lbs?|pounds?|sticks?|fl oz)$/.test(unit)),
+      JSON.stringify(units),
+    ).toEqual([]);
+    const steps = outcome.recipe.steps.map((step) => step.text).join('\n');
+    expect(/°\s?F|℉|degrees F/i.test(steps), steps).toBe(false);
+  }, 120_000);
+
   it('grounds on web pages when search is on', async () => {
     const outcome = await generateFromBrief(GUMBO, recipeImportDepsFromEnv(), { search: true });
     expect(outcome.kind, JSON.stringify(outcome)).toBe('ok');

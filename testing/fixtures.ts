@@ -78,11 +78,12 @@ export function memberLibrary(now: number): PersonaLibrary {
     cookMinutes: 75,
     lang: 'en',
     tags: ['dinner', 'weekend'],
+    // In US units, so Measurements: Metric has something to convert (docs/plans/measurement-units.md).
     ingredientSections: [
       {
         items: [
-          { quantity: 1, item: 'whole chicken', note: 'about 1.6 kg' },
-          { quantity: 800, unit: 'g', item: 'waxy potatoes', note: 'halved' },
+          { quantity: 1, item: 'whole chicken', note: 'about 3½ lb' },
+          { quantity: 1.75, unit: 'lb', item: 'waxy potatoes', note: 'halved' },
           { quantity: 1, item: 'lemon' },
           { quantity: 6, item: 'garlic cloves', note: 'unpeeled' },
           { quantity: 2, unit: 'tbsp', item: 'olive oil' },
@@ -91,7 +92,7 @@ export function memberLibrary(now: number): PersonaLibrary {
       },
     ],
     steps: [
-      { text: 'Heat the oven to 200 °C. Pat the chicken dry and season it well inside and out.' },
+      { text: 'Heat the oven to 400°F. Pat the chicken dry and season it well inside and out.' },
       { text: 'Toss the potatoes and garlic with the oil and spread them in a roasting tin.' },
       { text: 'Halve the lemon, squeeze it over the chicken, and put the halves inside the bird.' },
       { text: 'Roast the chicken on the potatoes for 70 to 80 minutes, until the juices run clear.' },
@@ -480,6 +481,16 @@ export function viewerSharedChat(now: number): ChatMessage[] {
  * contain, so Ask has something to flag. `viewer` has one so the deletion
  * check removes a settings document.
  */
+/**
+ * Account preferences (`docs/plans/measurement-units.md`), saved through the
+ * real route. `member` reads recipes in metric, so the roast chicken shows
+ * grams and °C; `viewer` has a document so the deletion check removes it.
+ */
+export const ACCOUNT_PREFERENCES = {
+  member: { units: 'metric' },
+  viewer: { units: 'metric' },
+} as const;
+
 export const KITCHEN_PROFILES = {
   member: {
     allergens: ['eggs'],

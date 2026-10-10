@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
-import { ingredientLine } from '../lib/recipeText';
+import { displayTemperatures, ingredientLine } from '../lib/recipeText';
 import type { RecipeTextSize } from '../lib/settings';
 import type { Recipe } from '../lib/types';
+import type { UnitSystem } from '../lib/unitConversion';
 
 /**
  * The parts of a recipe page that only display: shared by `RecipeView` (your
@@ -100,6 +101,7 @@ export function IngredientsSection({
   checkedKeys,
   onToggle,
   textSize = 'normal',
+  units = 'asWritten',
 }: {
   recipe: Recipe;
   /** The text shown, possibly translated; quantities always come from `recipe`. */
@@ -110,6 +112,8 @@ export function IngredientsSection({
   onToggle: (key: string) => void;
   /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
   textSize?: RecipeTextSize;
+  /** The member's measurement units, read by the screen (`useUnitSystem`). */
+  units?: UnitSystem;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -189,6 +193,7 @@ export function IngredientsSection({
                             scale,
                             locale,
                             t,
+                            { units, storedUnit: ing.unit },
                           )}
                         </span>
                         {ing.optional === true && (
@@ -216,6 +221,7 @@ export function StepsSection({
   onStep,
   afterDone,
   textSize = 'normal',
+  units = 'asWritten',
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
@@ -225,6 +231,8 @@ export function StepsSection({
   afterDone?: ReactNode;
   /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
   textSize?: RecipeTextSize;
+  /** Fahrenheit in the shown text reads in Celsius when metric. */
+  units?: UnitSystem;
 }) {
   const t = useT();
   const large = textSize === 'large';
@@ -237,7 +245,7 @@ export function StepsSection({
         {recipe.steps.map((step, i) => {
           const isCurrent = i === currentStep;
           const isDone = i < currentStep;
-          const text = displayRecipe.steps[i]?.text ?? step.text;
+          const text = displayTemperatures(displayRecipe.steps[i]?.text ?? step.text, units, t);
           return (
             <li key={i}>
               <button
@@ -284,13 +292,13 @@ export function StepsSection({
   );
 }
 
-export function NotesSection({ notes }: { notes: string }) {
+export function NotesSection({ notes, units = 'asWritten' }: { notes: string; units?: UnitSystem }) {
   const t = useT();
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.notes')}</h2>
       <p className="mt-2 rounded-lg bg-surface px-3 py-3 whitespace-pre-line text-ink-muted shadow-sm print:p-0">
-        {notes}
+        {displayTemperatures(notes, units, t)}
       </p>
     </section>
   );
