@@ -34,7 +34,8 @@ export function stripRecipeForAgent(recipe: AgentRecipe): Record<string, unknown
   };
 }
 
-export function dataTools(_library: AgentLibrary): ToolSpec<AgentLibrary>[] {
+/** `metric`: the member reads in metric, so combined pounds and ounces come back in grams. */
+export function dataTools(_library: AgentLibrary, options: { metric?: boolean } = {}): ToolSpec<AgentLibrary>[] {
   return [
     {
       name: 'search_recipes',
@@ -201,7 +202,7 @@ export function dataTools(_library: AgentLibrary): ToolSpec<AgentLibrary>[] {
             refs.push({ id });
           }
         }
-        const result = combineIngredients(ctx, refs);
+        const result = combineIngredients(ctx, refs, { metric: options.metric === true });
         return { output: wrapLibraryData(result) };
       },
     },

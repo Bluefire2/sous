@@ -435,9 +435,24 @@ const KITCHEN_PROFILE_RULES = [
   'servings or anything else the user did not ask about because of them.',
 ];
 
-function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string): string {
+/**
+ * For a member who chose Metric in Settings (`docs/plans/measurement-units.md`).
+ * The app already shows the recipe's pounds, ounces and °F in metric, so Ask
+ * writes new amounts in metric and leaves the stored ones alone.
+ */
+const METRIC_RULES = [
+  'The user cooks in metric. For an ingredient or temperature you add, in',
+  'your reply or in update_recipe, use g, kg, ml, l and °C; teaspoons and',
+  'tablespoons are fine for small amounts. When you change an existing amount',
+  '(for example when scaling), keep its unit, and do not convert the',
+  "recipe's units unless the user asks: the app already shows its pounds,",
+  'ounces and °F in metric.',
+];
+
+function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string, units?: 'metric'): string {
   const profile =
     kitchenProfile !== undefined && kitchenProfile !== '' ? ['', kitchenProfile, '', ...KITCHEN_PROFILE_RULES] : [];
+  const metric = units === 'metric' ? ['', ...METRIC_RULES] : [];
   return [
     'You are a cooking assistant embedded in a personal recipe app. The user',
     'is viewing (and possibly mid-way through cooking) the recipe below, so',
@@ -455,6 +470,7 @@ function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: s
     'The app shows the user a diff and lets them apply it, so do not ask for',
     'permission first. For pure questions, answer without the tool.',
     ...profile,
+    ...metric,
     '',
     'Current recipe (JSON):',
     JSON.stringify(recipe),
@@ -481,12 +497,14 @@ function toGeminiContents(messages: ChatRequestMessage[]): Content[] {
  * On Cloud Run, `withChatBudget` (server/llmBudget.ts) passes `onUsage`; it is
  * called once per model call with the stream's last reported usage.
  * `withKitchenProfile` (server/kitchenProfile.ts) passes the member's profile
- * block, built from the store, never from the request body.
+ * block and their measurement units, read from the store, never from the
+ * request body.
  */
 export interface ChatContext {
   authorizedSub?: string;
   onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata | undefined) => void;
   kitchenProfile?: string;
+  units?: 'metric';
 }
 
 export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
@@ -519,7 +537,7 @@ export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const system = systemPrompt(body.recipe, body.cookingState, ctx?.kitchenProfile);
+  const system = systemPrompt(body.recipe, body.cookingState, ctx?.kitchenProfile, ctx?.units);
   const abort = new AbortController();
 
   let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;

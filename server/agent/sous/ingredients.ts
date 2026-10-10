@@ -39,6 +39,9 @@ const IMPERIAL_MASS: UnitDef[] = [
 
 const COUNT_CANONICAL = 'piece';
 
+/** Grams per ounce, for a member who reads in metric (`docs/plans/measurement-units.md`). */
+const GRAMS_PER_OUNCE = 28.349523125;
+
 const ALIASES: Record<string, UnitDef> = {
   tsp: US_VOLUME[0]!,
   teaspoon: US_VOLUME[0]!,
@@ -172,12 +175,28 @@ type Accumulator =
       family: UnitFamily;
       otherCanonical: string;
       baseTotal: number;
+      /** Some of the total was pounds or ounces converted to grams. */
+      converted: boolean;
       sourceRecipeIds: Set<string>;
     };
+
+export interface CombineOptions {
+  /**
+   * The member reads in metric: pounds and ounces become grams and merge with
+   * gram amounts of the same item, so the list never needs the model to convert.
+   */
+  metric?: boolean;
+}
+
+/** A converted gram total, rounded the way a shopper reads it: to 5 g from 10 g up. */
+function shoppingGrams(grams: number): number {
+  return grams >= 10 ? Math.round(grams / 5) * 5 : Math.round(grams);
+}
 
 export function combineIngredients(
   library: AgentLibrary,
   recipes: { id: string; servings?: number }[],
+  options: CombineOptions = {},
 ): { lines: CombinedLine[]; missingIds: string[] } {
   const missingIds: string[] = [];
   const acc = new Map<string, Accumulator>();
@@ -210,7 +229,11 @@ export function combineIngredients(
           continue;
         }
         const qty = ing.quantity! * factor;
-        const unitInfo = resolveUnit(ing.unit, true);
+        const resolved = resolveUnit(ing.unit, true);
+        const converted = options.metric === true && resolved.family === 'imperial_mass';
+        const unitInfo = converted
+          ? { family: 'metric_mass' as const, canonical: 'g', toBase: resolved.toBase * GRAMS_PER_OUNCE }
+          : resolved;
         if (unitInfo.family === 'other') {
           const key = mergeKey(normalized, 'other', unitInfo.canonical);
           let entry = acc.get(key);
@@ -221,6 +244,7 @@ export function combineIngredients(
               family: 'other',
               otherCanonical: unitInfo.canonical,
               baseTotal: 0,
+              converted: false,
               sourceRecipeIds: new Set(),
             };
             acc.set(key, entry);
@@ -239,11 +263,13 @@ export function combineIngredients(
             family: unitInfo.family,
             otherCanonical: '',
             baseTotal: 0,
+            converted: false,
             sourceRecipeIds: new Set(),
           };
           acc.set(key, entry);
         }
         entry.baseTotal += baseAmount;
+        if (converted) entry.converted = true;
         entry.sourceRecipeIds.add(recipe.id);
       }
     }
@@ -262,7 +288,7 @@ export function combineIngredients(
     const { quantity, unit } = baseToDisplayQuantity(
       entry.family,
       entry.otherCanonical,
-      entry.baseTotal,
+      entry.converted ? shoppingGrams(entry.baseTotal) : entry.baseTotal,
     );
     const line: CombinedLine = {
       item: entry.item,
