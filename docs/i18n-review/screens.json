@@ -138,6 +138,18 @@
     "needsData": true
   },
   {
+    "id": "settings-measurements",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Measurements (after Kitchen profile, before Connected apps): a heading, a muted line saying pounds, ounces and °F are shown in grams and °C, cups and spoons stay as written, and the choice is saved to the account, then two buttons, As written and Metric, with Metric selected for the member. Do not press either button against real Firestore; it saves to the account.",
+    "needsData": false
+  },
+  {
+    "id": "settings-measurements-save-error",
+    "route": "/settings",
+    "setup": "Settings while signed in, Measurements after choosing As written when the save failed: Metric is selected again and a red line under the buttons says the choice could not be saved. Reaching it needs a save request that fails (for example the API dev server stopped after the page loaded). If the state cannot be reached, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "admin",
     "route": "/admin",
     "setup": "The admin page as an owner sees it: pending, approved, declined, and invites. Do not approve, decline, mint, copy in a way that creates an invite, or revoke. If this session is not an owner, capture the error line the page already shows; do not change membership.",
@@ -206,7 +218,13 @@
   {
     "id": "import-create-writing",
     "route": "/import",
-    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the button reads Generating… with its spinner, the textarea is read-only, and the status line under the button says the recipe is being generated.",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the page dims and a cooking animation (one of ten, picked at random) plays in the middle, with Generating… and a line under it saying the recipe is being generated. The button underneath reads Generating… and the textarea is read-only.",
+    "needsData": false
+  },
+  {
+    "id": "import-extracting",
+    "route": "/import",
+    "setup": "Import mode, a single recipe link pasted, Extract recipe pressed with the import call mocked to never answer: the page dims and a cooking animation (one of ten, picked at random) plays in the middle, with Extracting… and a line under it saying the recipe is being read. The button underneath reads Extracting… and the textarea is read-only.",
     "needsData": false
   },
   {
@@ -399,6 +417,12 @@
     "id": "recipe-view-lane-picked",
     "route": "/recipe/:id",
     "setup": "The recipe from recipe-view-lanes after tapping one lane chip under \"I'm on\": that chip is pressed and the other lanes' steps are dimmed. Picking a chip changes nothing that syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-metric",
+    "route": "/recipe/:id",
+    "setup": "A recipe written in US units (pounds and °F) opened by an account set to Measurements: Metric. Weight ingredient lines show the gram amount first with the original in brackets, for example 800 g (1¾ lb) waxy potatoes, and a step that names an oven temperature shows 200°C (400°F). Cups and spoons stay as written. Do not toggle checkmarks, steps, or servings; cook state syncs. Do not tap the translate chip. If no recipe in US units is available or the account is not set to Metric, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -656,19 +680,13 @@
   {
     "id": "public-collection",
     "route": "/p/:token",
-    "setup": "Reaching it needs a public link on one of your own named collections. Creating one writes to production, so do it only when the person who starts the run opts in for that run (for example \"include public link\"): open Share on one own named collection with no grantees, press \"Public\", then \"Create public link\", and list the link created in the report. After the run, press \"Turn off\" in the same pane and list that too. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL. Open the link in a private window (signed out). The header shows \"Sous\", a grayed chat-bubble button, a \"Sign in\" link, and the language menu. Hover the gray chat bubble (or focus it with Tab): a dark tooltip says to sign in to use the assistant and translation; capture it. Below the header: the collection name, \"Public collection\", and the recipe cards (or \"No recipes in this collection yet.\"). Do not press Sign in. The recipes are your own, so no redaction is needed.",
-    "needsData": true
-  },
-  {
-    "id": "public-collection-locked-sheet",
-    "route": "/p/:token",
-    "setup": "On the signed-out public collection page (see public-collection; same opt-in), tap the gray chat bubble. A sheet opens with a title about signing in to use the assistant, a paragraph saying asking, translating, and the library assistant are for Sous members and that Sous is invitation-only (sign in with Google, then request access), a \"Sign in with Google\" button, and \"Not now\". Do not press Sign in with Google.",
+    "setup": "Reaching it needs a public link on one of your own named collections. Creating one writes to production, so do it only when the person who starts the run opts in for that run (for example \"include public link\"): open Share on one own named collection with no grantees, press \"Public\", then \"Create public link\", and list the link created in the report. After the run, press \"Turn off\" in the same pane and list that too. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL. Open the link in a private window (signed out). The header shows \"Sous\", a \"Sign in\" link, and the language menu; there is no chat-bubble button for a visitor. Below the header: the collection name, \"Public collection\", and the recipe cards (or \"No recipes in this collection yet.\"). Do not press Sign in. The recipes are your own, so no redaction is needed.",
     "needsData": true
   },
   {
     "id": "public-collection-member",
     "route": "/p/:token",
-    "setup": "The same public link opened while signed in (see public-collection; same opt-in). The header has the gray chat bubble and the language menu but no Sign in link, and under \"Public collection\" there is an \"Add to my library\" button. Hover the chat bubble: the tooltip says to add the collection to your library to use the assistant and translation. Then tap the chat bubble: the sheet title says to add the collection first, a paragraph explains it appears next to your own collections and can be left at any time, with \"Add to my library\" and \"Not now\". Do not press Add to my library.",
+    "setup": "The same public link opened while signed in (see public-collection; same opt-in). The header has only the language menu (no Sign in link and no chat bubble), and under \"Public collection\" there is an \"Add to my library\" button. Do not press Add to my library.",
     "needsData": true
   },
   {

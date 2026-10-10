@@ -22,6 +22,7 @@ import {
   StepsSection,
 } from '../components/RecipeBody';
 import ShareRecipeButton from '../components/ShareRecipeButton';
+import { useUnitSystem } from '../lib/accountPreferences';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
@@ -156,6 +157,7 @@ export function PublicRecipeBody({
   const t = useT();
   const locale = useLocale();
   const textSize = useRecipeTextSize();
+  const units = useUnitSystem();
   const [servings, setServings] = useState(recipe.servings);
   // A visitor has no cook row: progress and the lane pick live here only.
   const [progress, setProgress] = useState<StepProgress>({ currentStep: 0, doneSteps: [] });
@@ -221,6 +223,7 @@ export function PublicRecipeBody({
           checkedKeys={checkedKeys}
           onToggle={toggleChecked}
           textSize={textSize}
+          units={units}
         />
       </div>
 
@@ -232,6 +235,7 @@ export function PublicRecipeBody({
         onTap={(index) => setProgress((current) => tapStep(recipe.steps, current, index))}
         activeLane={activeLane}
         textSize={textSize}
+        units={units}
         lanePicker={
           lanes.length > 0 && (
             <LaneChips lanes={lanes} active={activeLane} onChange={setActiveLane} />
@@ -239,7 +243,7 @@ export function PublicRecipeBody({
         }
       />
 
-      {recipe.notes && <NotesSection notes={recipe.notes} />}
+      {recipe.notes && <NotesSection notes={recipe.notes} units={units} />}
 
       {recipe.galleryPhotoIds && recipe.galleryPhotoIds.length > 0 && (
         <GallerySection>

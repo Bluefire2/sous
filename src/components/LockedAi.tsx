@@ -64,9 +64,6 @@ export function LockedAiButton({
 }
 
 /** Grayed versions of the AI controls' usual looks. */
-export const lockedIconBtn =
-  'inline-flex items-center justify-center rounded-full p-2 text-ink-subtle opacity-60 hover:bg-surface-muted active:bg-surface-muted';
-
 export const lockedAskBtn =
   'flex h-14 items-center gap-2 rounded-full border border-line bg-surface-muted px-5 font-medium text-ink-subtle shadow-lg hover:bg-surface active:bg-surface';
 

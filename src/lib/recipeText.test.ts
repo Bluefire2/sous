@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translate, type Locale } from '../i18n';
-import { ingredientLine, recipeToText, sourceLink, type Translate } from './recipeText';
+import { displayTemperatures, ingredientLine, recipeToText, sourceLink, type Translate } from './recipeText';
 import type { Recipe } from './types';
 
 function tFor(locale: Locale): Translate {
@@ -172,6 +172,52 @@ describe('ingredientLine', () => {
     expect(ingredientLine({ quantity: 1, unit: 'cup', item: 'milk' }, 1, 'ru', tFor('ru'))).toBe(
       `1 ${translate('ru', 'unit.cup')} milk`,
     );
+  });
+
+  it('shows a weight in metric, after scaling, with the original beside it', () => {
+    const beef = { quantity: 1, unit: 'lb', item: 'ground beef', note: 'thawed' };
+    expect(ingredientLine(beef, 1, 'en', tFor('en'), { units: 'metric', storedUnit: 'lb' })).toBe(
+      '450 g (1 lb) ground beef (thawed)',
+    );
+    expect(ingredientLine(beef, 2, 'en', tFor('en'), { units: 'metric', storedUnit: 'lb' })).toBe(
+      '900 g (2 lb) ground beef (thawed)',
+    );
+    expect(ingredientLine({ quantity: 3, unit: 'lb', item: 'pork' }, 1, 'uk', tFor('uk'), { units: 'metric', storedUnit: 'lb' })).toBe(
+      `1,4 ${translate('uk', 'unit.kg')} (3 ${translate('uk', 'unit.lb')}) pork`,
+    );
+    expect(ingredientLine({ quantity: 5, unit: 'lb', item: 'flour' }, 1, 'en', tFor('en'), { units: 'metric', storedUnit: 'lb' })).toBe(
+      '2.25 kg (5 lb) flour',
+    );
+    expect(ingredientLine({ quantity: 14, unit: 'oz', item: 'tomatoes' }, 1, 'zh-Hans', tFor('zh-Hans'), { units: 'metric', storedUnit: 'oz' })).toBe(
+      `400 ${translate('zh-Hans', 'unit.g')}（14 ${translate('zh-Hans', 'unit.oz')}） tomatoes`,
+    );
+  });
+
+  it('decides on the stored unit, not the translated line’s', () => {
+    const translated = { quantity: 2, unit: 'фунти', item: 'яловичина' };
+    expect(ingredientLine(translated, 1, 'uk', tFor('uk'), { units: 'metric', storedUnit: 'lbs' })).toBe(
+      `900 ${translate('uk', 'unit.g')} (2 фунти) яловичина`,
+    );
+  });
+
+  it('leaves volumes, unitless items, and the as-written setting alone', () => {
+    const conversion = { units: 'metric', storedUnit: 'cup' } as const;
+    expect(ingredientLine({ quantity: 1, unit: 'cup', item: 'milk' }, 1, 'en', tFor('en'), conversion)).toBe('1 cup milk');
+    expect(ingredientLine({ quantity: 8, unit: 'fl oz', item: 'milk' }, 1, 'en', tFor('en'), { units: 'metric', storedUnit: 'fl oz' })).toBe(
+      '8 fl oz milk',
+    );
+    expect(ingredientLine({ item: 'salt', unit: 'oz' }, 1, 'en', tFor('en'), { units: 'metric', storedUnit: 'oz' })).toBe('oz salt');
+    expect(ingredientLine({ quantity: 1, unit: 'lb', item: 'beef' }, 1, 'en', tFor('en'), { units: 'asWritten', storedUnit: 'lb' })).toBe(
+      '1 lb beef',
+    );
+  });
+});
+
+describe('displayTemperatures', () => {
+  it('converts only when metric, through the catalog pattern', () => {
+    expect(displayTemperatures('Bake at 350°F.', 'metric', tFor('en'))).toBe('Bake at 180°C (350°F).');
+    expect(displayTemperatures('烤箱预热至350°F。', 'metric', tFor('zh-Hans'))).toBe('烤箱预热至180°C（350°F）。');
+    expect(displayTemperatures('Bake at 350°F.', 'asWritten', tFor('en'))).toBe('Bake at 350°F.');
   });
 });
 

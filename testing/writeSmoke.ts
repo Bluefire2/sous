@@ -40,6 +40,7 @@ export async function checkWrites(baseUrl: string, cookies: ReadonlyMap<string, 
     ['recipe link save', () => recipeLinkSave(http, cookieOf, check)],
     ['admin approve and revoke', () => adminFlow(http, cookieOf, check)],
     ['kitchen profile', () => kitchenProfile(http, cookieOf, check)],
+    ['account preferences', () => accountPreferences(http, cookieOf, check)],
   ];
   for (const [name, run] of phases) {
     try {
@@ -522,4 +523,28 @@ async function kitchenProfile(http: Http, cookieOf: (name: string) => string, ch
   check('and changes nothing', JSON.stringify(unchanged.profile?.allergens) === '["sesame"]', JSON.stringify(unchanged));
 
   check('signed out is 401', (await http.get('/api/settings/kitchen')).status === 401);
+}
+
+async function accountPreferences(http: Http, cookieOf: (name: string) => string, check: Check): Promise<void> {
+  const empty = cookieOf('empty');
+  const units = async (cookie: string) => ((await http.get('/api/settings/preferences', cookie)).body as { preferences?: { units?: string } }).preferences?.units;
+  check('an account with no preferences reads as written', (await units(empty)) === 'asWritten');
+
+  const saved = await http.post('/api/settings/preferences', empty, { units: 'metric', sub: persona('member').sub });
+  check('metric saves', saved.status === 200, `status ${saved.status}`);
+  check('it reads back as metric', (await units(empty)) === 'metric');
+  check('the member’s own preference is unchanged', (await units(cookieOf('member'))) === 'metric');
+
+  const bad = await http.post('/api/settings/preferences', empty, { units: 'imperial' });
+  check('an unknown unit system is 400', bad.status === 400, `status ${bad.status}`);
+  const back = await http.post('/api/settings/preferences', empty, { units: 'asWritten' });
+  check('as written saves', back.status === 200 && (await units(empty)) === 'asWritten', `status ${back.status}`);
+
+  check('signed out is 401', (await http.get('/api/settings/preferences')).status === 401);
+
+  // Chat reads the kitchen profile and these preferences (one Firestore getAll)
+  // before it parses the body, so an empty body answers 400 only when that read
+  // worked; a failed read is 503 "Store unavailable". No model call is made.
+  const chat = await http.post('/api/chat', cookieOf('member'), {});
+  check('chat reads the prompt context from the store before refusing an empty body', chat.status === 400, `status ${chat.status} ${JSON.stringify(chat.body)}`);
 }

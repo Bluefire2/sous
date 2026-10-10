@@ -280,6 +280,23 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.t('settings.kitchenSaveError'), { exact: true }).waitFor();
     },
   },
+  'settings-measurements': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.measurements') }).scrollIntoViewIfNeeded();
+    },
+  },
+  'settings-measurements-save-error': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['preferencesSaveFails'],
+    reach: async (page, ctx) => {
+      await page.getByRole('heading', { name: ctx.t('settings.measurements') }).scrollIntoViewIfNeeded();
+      await clickButton(page, ctx.t('settings.unitsAsWritten'));
+      await page.getByText(ctx.t('settings.measurementsSaveFailed'), { exact: true }).waitFor();
+    },
+  },
   admin: { persona: 'owner', path: '/admin' },
   'library-add-sheet': {
     persona: 'member',
@@ -386,11 +403,20 @@ export const STATES: Record<string, StateEntry> = {
   'import-create-writing': {
     persona: 'member',
     path: '/import',
-    mocks: ['importHangs'],
+    mocks: ['importHangs', 'pinnedRandom'],
     reach: async (page, ctx) => {
       await clickButton(page, ctx.t('import.modeCreate'));
       await writeRecipe(page, ctx, GUMBO_BRIEF);
       await page.getByText(ctx.t('import.generatingHint'), { exact: true }).waitFor();
+    },
+  },
+  'import-extracting': {
+    persona: 'member',
+    path: '/import',
+    mocks: ['importHangs', 'pinnedRandom'],
+    reach: async (page, ctx) => {
+      await extractUrl(page, ctx);
+      await page.getByText(ctx.t('import.readingHint'), { exact: true }).waitFor();
     },
   },
   'import-create-too-long': {
@@ -620,6 +646,8 @@ export const STATES: Record<string, StateEntry> = {
     reach: async (page) => clickButton(page, 'Pasta'),
   },
   'recipe-view-your-cooks': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
+  // The member reads in metric, and the roast chicken is written in pounds and °F.
+  'recipe-view-metric': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   'recipe-view-share-copied': {
     persona: 'member',
     path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}`,
@@ -914,16 +942,6 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'public-collection': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}` },
-  'public-collection-locked-sheet': {
-    persona: 'signedOut',
-    path: (ctx) => `/p/${ctx.publicToken}`,
-    reach: async (page) => {
-      // The locked chat bubble is aria-disabled by design but opens the sheet;
-      // Playwright treats aria-disabled as not clickable, so force the click.
-      await page.locator('button[aria-disabled="true"]').first().click({ force: true });
-      await page.getByRole('dialog').waitFor();
-    },
-  },
   'public-collection-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.borscht}` },
   'public-recipe-lanes': {
