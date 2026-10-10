@@ -1,34 +1,22 @@
 import { Link } from 'react-router-dom';
 import { useT } from '../i18n';
-import { ghostIconBtn } from '../lib/uiClasses';
+import { ChatBubbleIcon } from '../lib/icons';
 
-/** Chat bubble, drawn like the header cog. A word here wrapped the header in uk and ru. */
-function AskIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
-    </svg>
-  );
-}
-
+/**
+ * The library's way into the assistant: a round amber button beside the add
+ * button, amber like the recipe screen's Ask, so the two AI entry points read
+ * as one family. An icon, not a word: "Запитати" and "Спросить" would make a
+ * pill twice as wide at the bottom of a phone screen. The caller positions it.
+ */
 export default function AssistantEntryLink() {
   const tr = useT();
   return (
     <Link
       to="/assistant"
-      className={ghostIconBtn}
       aria-label={tr('assistant.ask')}
+      className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg hover:bg-amber-600 active:bg-amber-600"
     >
-      <AskIcon className="block h-5 w-5" />
+      <ChatBubbleIcon className="block h-6 w-6" />
     </Link>
   );
 }

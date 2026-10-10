@@ -805,7 +805,6 @@ export default function Library() {
       <header className="flex items-center justify-between py-4">
         <h1 className="text-2xl font-bold">Sous</h1>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
-          <AssistantEntryLink />
           {user !== null && (
             <button
               type="button"
@@ -1202,15 +1201,21 @@ export default function Library() {
         </div>
       )}
 
-      {sessionStatus === 'signedIn' && !namedIsShared && !selecting && (
-        <button
-          type="button"
-          aria-label={t('library.addRecipe')}
-          onClick={() => dispatch({ type: 'openAdd' })}
-          className="fixed right-5 bottom-8 flex h-14 w-14 items-center justify-center rounded-full bg-ink text-page shadow-lg hover:opacity-90 active:opacity-90"
-        >
-          <PlusIcon className="block h-8 w-8" />
-        </button>
+      {!selecting && (
+        // The selection bar takes the bottom of the screen while selecting.
+        <div className="fixed right-5 bottom-8 flex items-center gap-3">
+          <AssistantEntryLink />
+          {sessionStatus === 'signedIn' && !namedIsShared && (
+            <button
+              type="button"
+              aria-label={t('library.addRecipe')}
+              onClick={() => dispatch({ type: 'openAdd' })}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-ink text-page shadow-lg hover:opacity-90 active:opacity-90"
+            >
+              <PlusIcon className="block h-8 w-8" />
+            </button>
+          )}
+        </div>
       )}
 
       {sheet.kind === 'roll' && rollPool !== undefined && rollPick !== undefined && (
