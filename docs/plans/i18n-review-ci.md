@@ -108,6 +108,10 @@ reachable from personas.
   until the catalog was fixed in its own change. With it, a sixth run on
   3.8: 12 of 12 planted defects confirmed, no false blocker on the 30
   clean pairs, 57 calls. So the judge moves to 3.8.
+  On 2026-10-09 the API answered a `gemini-3.7-flash` request with
+  `modelVersion: gemini-3.8-flash` (3.7 is deprecated). `calibration.ts`
+  does not record `modelVersion`, so the two 3.7 controls above may also
+  have run on 3.8; their difference from the 3.8 runs may be judge noise.
 - **份量 fixed (2026-10-09).** `zh-Hans` now says 份数 (and 减少份数 /
   增加份数) wherever the English means a number of servings, and
   `KNOWN_REAL` is empty again. Calibration on 3.8 after the fix: 11 of 12
