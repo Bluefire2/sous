@@ -12,7 +12,10 @@ import { isLiveDoc, isUuid } from './store.ts';
  * Link previews for public pages: `/p/<token>` and `/p/<token>/r/<recipeId>`
  * are the SPA shell, which a link-preview crawler sees as just "Sous". The
  * dispatcher (`scripts/server.ts`) asks here for Open Graph tags and puts
- * them in the shell's head; the body and `<title>` are unchanged.
+ * them in the shell's head; the body and the served `<title>` ("Sous") are
+ * unchanged. A browser running the app then retitles the tab "<name> · Sous"
+ * on its own (`docs/plans/screen-titles.md`); a crawler that runs no script
+ * sees only the shell's "Sous" and these tags.
  *
  * The link is resolved with the visitor API's chain, in its order
  * (collection link first, then recipe link), and nothing is cached. Tags hold
