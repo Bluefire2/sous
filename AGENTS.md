@@ -497,7 +497,9 @@ pays that lookup before its first byte and the page then repeats the reads
 through `/api/public/<token>`; keep the timeout short rather than sniffing
 user agents. Past `MAX_PREVIEW_LOOKUPS_IN_FLIGHT` (20) unsettled lookups per
 instance a page gets the plain shell without one. The preview matches the raw
-request path, as the SPA routes do, so an escaped slash is never a preview. Vite (`npm run dev`) serves no tags; check them with `dev:test
+request path and refuses any `%` (the SPA keeps an encoded slash inside a
+segment, so `%2F` must not describe another page). Text is read from a
+bounded prefix, since nothing caps a stored description. Vite (`npm run dev`) serves no tags; check them with `dev:test
 --static`. `/privacy` and `/terms` describe previews; change them with it.
 
 Collection delete tombstones live grants in the same transaction. Forward

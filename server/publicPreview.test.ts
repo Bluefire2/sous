@@ -151,6 +151,23 @@ describe('previewText', () => {
     expect(previewText('🇺🇦🇺🇦🇺🇦', 2)).toBe('🇺🇦…');
   });
 
+  it('reads only a bounded prefix of a huge string, and still says it was cut', () => {
+    const huge = 'soup '.repeat(200_000);
+    const started = performance.now();
+    expect(previewText(huge, 200)).toBe(`${'soup '.repeat(40).trimEnd().slice(0, 199).trimEnd()}…`);
+    expect(performance.now() - started).toBeLessThan(50);
+    // Mostly whitespace: the prefix collapses to fewer than `max` characters,
+    // but the source went on, so the text is marked as cut.
+    expect(previewText(`a${' '.repeat(5_000)}b`, 10)).toBe('a…');
+  });
+
+  it('never ends a clipped prefix on half a surrogate pair', () => {
+    // max 3 reads 24 code units: 22 spaces, 'a', then the high half of 🍝.
+    const cut = previewText(`${' '.repeat(22)}a🍝${' '.repeat(100)}`, 3);
+    expect(cut).toBe('a…');
+    expect(cut).not.toMatch(/[\ud800-\udbff]/);
+  });
+
   it('drops bidi controls', () => {
     expect(previewText('a‮b⁦c⁩‏d؜', 50)).toBe('abcd');
   });
@@ -341,7 +358,8 @@ describe('previewHtml', () => {
 
     for (const release of releases) release();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const fast = { readIndex, origin, deps: deps(world()), maxInFlight: 2 };
+    // A cap of 1 passes only if every slot was given back.
+    const fast = { readIndex, origin, deps: deps(world()), maxInFlight: 1 };
     expect(await previewHtml(`/p/${COLLECTION_TOKEN}`, fast)).toContain('content="Weeknights"');
   });
 

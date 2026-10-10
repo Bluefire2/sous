@@ -33,6 +33,8 @@ export const PREVIEW_LOOKUP_TIMEOUT_MS = 500;
  * Lookups still running on this instance, including ones a request already
  * gave up on. Past the cap a page gets the plain shell without a lookup, so a
  * slow store or a burst of `/p` requests cannot pile up unauthenticated reads.
+ * A lookup that never settled would hold its slot for good; the Firestore
+ * client's per-call deadlines are what end a stuck read.
  */
 export const MAX_PREVIEW_LOOKUPS_IN_FLIGHT = 20;
 const TITLE_MAX = 120;
@@ -46,9 +48,11 @@ export type PreviewDependencies = PublicReadDependencies & RecipeLinkReadDepende
 
 /**
  * `/p/<token>` or `/p/<token>/r/<recipeId>`, with one trailing slash allowed;
- * null for any other shape. Takes the path as sent, not decoded: the SPA routes
- * on the raw path, so `/p/<token>%2Fr%2F<id>` is a token page there, not a
- * recipe page. A token and a recipe id never need escaping, so a `%` is refused.
+ * null for any other shape. Takes the path as sent, not decoded: the SPA
+ * decodes each segment but keeps an encoded slash inside one, so
+ * `/p/<token>%2Fr%2F<id>` is a (dead) token page there, not a recipe page. A
+ * token and a recipe id never need escaping, so any `%` is refused here; a
+ * link that escapes plain characters still opens, just without a preview.
  */
 export function previewPath(pathname: string): PreviewPath | null {
   const parts = (pathname.endsWith('/') ? pathname.slice(0, -1) : pathname).split('/');
@@ -67,23 +71,45 @@ export function previewPath(pathname: string): PreviewPath | null {
 
 const graphemes = new Intl.Segmenter('und', { granularity: 'grapheme' });
 
+/** Code units read per grapheme kept; far more than any real text needs. */
+const SOURCE_UNITS_PER_GRAPHEME = 8;
+
 /**
  * One line of plain text, at most `max` characters as people see them
  * (graphemes, so an emoji sequence or an accented letter is never split),
  * `…` when cut. Bidi controls are dropped so recipe text cannot reorder the
  * preview around it.
+ *
+ * Only a bounded prefix is read: nothing caps a stored description, and this
+ * runs for every signed-out visit to a `/p` page.
  */
 export function previewText(raw: unknown, max: number): string {
   if (typeof raw !== 'string') {
     return '';
   }
-  const flat = raw
+  const limit = max * SOURCE_UNITS_PER_GRAPHEME;
+  let source = raw;
+  const clipped = raw.length > limit;
+  if (clipped) {
+    source = raw.slice(0, limit);
+    // Never end on half a surrogate pair.
+    if (/[\ud800-\udbff]$/.test(source)) {
+      source = source.slice(0, -1);
+    }
+  }
+  const flat = source
     .replace(/[؜‎‏‪-‮⁦-⁩]/g, '')
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const parts = Array.from(graphemes.segment(flat), (part) => part.segment);
-  if (parts.length <= max) {
+  const parts: string[] = [];
+  for (const { segment } of graphemes.segment(flat)) {
+    parts.push(segment);
+    if (parts.length > max) {
+      break;
+    }
+  }
+  if (parts.length <= max && !clipped) {
     return flat;
   }
   return `${parts.slice(0, max - 1).join('').trimEnd()}…`;

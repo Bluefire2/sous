@@ -264,7 +264,8 @@ async function handleRequest(
       // Link-preview tags for a live link (server/publicPreview.ts); null
       // serves the plain shell below. HEAD skips the lookup and describes the
       // plain shell; crawlers fetch with GET. The raw path, because the SPA
-      // routes on it: an encoded slash must not change which page is described.
+      // keeps an encoded slash inside a segment: `%2F` must not change which
+      // page is described.
       const html = await previewHtml(rawPath, {
         readIndex: () => readIndexHtml(resolve(staticRoot, 'index.html')),
         origin: publicOrigin,
