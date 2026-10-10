@@ -16,6 +16,13 @@ export interface IngredientSection {
 
 export interface RecipeStep {
   text: string;
+  /**
+   * Who does this step when two people cook, such as "Sauce". Consecutive
+   * steps with a lane run at the same time; a step without one is done by
+   * everyone, in order. Missing is normal (`docs/plans/parallel-steps.md`).
+   * An Ask proposal may hold '' to mean "no lane"; a saved recipe never does.
+   */
+  lane?: string;
 }
 
 export interface Recipe {
@@ -90,7 +97,14 @@ export interface ChatMessage {
 export interface CookStateRow {
   recipeId: string;
   servings: number;
+  /** Every step before this index is done. */
   currentStep: number;
+  /**
+   * Steps at or after `currentStep` that are done anyway, because two lanes
+   * of a block run at the same time. Sorted, never containing `currentStep`.
+   * Absent on old rows and when empty (`docs/plans/parallel-steps.md`).
+   */
+  doneSteps?: number[];
   checkedKeys: string[];
   /** Recipe revision this progress was recorded against. Not the progress-write clock. */
   recipeUpdatedAt: number;

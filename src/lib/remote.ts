@@ -10,6 +10,7 @@ import {
   type DiscardedPushReason,
 } from './pushReasons';
 import { invalidateSession } from './session';
+import { normalizeStepProgress } from './stepLanes';
 import type { ChatMessage, Collection, CookLog, CookStateRow, Recipe } from './types';
 import { clearLibrary } from './libraryMemory';
 
@@ -330,6 +331,19 @@ export function normalizeCookChange(
     checkedKeys: raw.checkedKeys as string[],
     recipeUpdatedAt: raw.recipeUpdatedAt as number,
   };
+  // Steps done ahead of `currentStep` in a parallel block
+  // (`docs/plans/parallel-steps.md`). Kept only when non-empty, so a row
+  // without them has exactly the old key set.
+  if (Array.isArray(raw.doneSteps) && typeof row.currentStep === 'number') {
+    const progress = normalizeStepProgress({
+      currentStep: row.currentStep,
+      doneSteps: raw.doneSteps,
+    });
+    row.currentStep = progress.currentStep;
+    if (progress.doneSteps.length > 0) {
+      row.doneSteps = progress.doneSteps;
+    }
+  }
   const updatedAt = finiteCookUpdatedAt(raw.updatedAt);
   if (updatedAt !== undefined) {
     row.updatedAt = updatedAt;

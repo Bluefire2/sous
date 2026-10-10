@@ -22,6 +22,8 @@ export const FIXTURE_IDS = {
     bananaBread: uuid(106),
     /** An unfiled variant of Lemon garlic roast chicken (`variantOf`). */
     herbRoastChicken: uuid(107),
+    /** Steps in Sauce and Pasta lanes (docs/plans/parallel-steps.md), in Weeknights. */
+    pestoPasta: uuid(108),
     weeknights: uuid(151),
     baking: uuid(152),
     cookLogRecent: uuid(171),
@@ -152,6 +154,38 @@ export function memberLibrary(now: number): PersonaLibrary {
       { text: 'Toss the drained pasta with the sauce and the basil.' },
     ],
   });
+  const pestoPasta = recipe(ids.pestoPasta, 4, now, {
+    title: 'Pesto pasta for two cooks',
+    description: 'One person makes the pesto while the other cooks the pasta.',
+    servings: 2,
+    prepMinutes: 10,
+    cookMinutes: 15,
+    lang: 'en',
+    tags: ['quick', 'dinner'],
+    ingredientSections: [
+      {
+        items: [
+          { quantity: 200, unit: 'g', item: 'trofie or fusilli' },
+          { quantity: 50, unit: 'g', item: 'basil leaves' },
+          { quantity: 30, unit: 'g', item: 'pine nuts' },
+          { quantity: 40, unit: 'g', item: 'parmesan', note: 'grated' },
+          { quantity: 1, item: 'garlic clove' },
+          { quantity: 80, unit: 'ml', item: 'olive oil' },
+        ],
+      },
+    ],
+    steps: [
+      { text: 'Bring a large pot of water to the boil.' },
+      { text: 'Toast the pine nuts in a dry pan until golden, then let them cool.', lane: 'Sauce' },
+      {
+        text: 'Blend the basil, pine nuts, garlic, and oil until smooth, then stir in the parmesan.',
+        lane: 'Sauce',
+      },
+      { text: 'Salt the water well and cook the pasta until al dente.', lane: 'Pasta' },
+      { text: 'Drain, keeping a cup of the pasta water.', lane: 'Pasta' },
+      { text: 'Toss the pasta with the pesto, loosening it with a little pasta water.' },
+    ],
+  });
   const borscht = recipe(ids.borscht, 9, now, {
     title: 'Борщ',
     description: 'Класичний борщ на яловичому бульйоні.',
@@ -262,9 +296,24 @@ export function memberLibrary(now: number): PersonaLibrary {
   const cookedRecently = now - 3 * DAY;
   const cookedEarlier = now - 17 * DAY;
   return {
-    recipes: [roastChicken, tomatoPasta, borscht, overnightOats, eggTarts, bananaBread, herbRoastChicken],
+    recipes: [
+      roastChicken,
+      tomatoPasta,
+      borscht,
+      overnightOats,
+      eggTarts,
+      bananaBread,
+      herbRoastChicken,
+      pestoPasta,
+    ],
     collections: [
-      collection(ids.weeknights, 'Weeknights', [roastChicken.id, tomatoPasta.id, borscht.id], 8, now),
+      collection(
+        ids.weeknights,
+        'Weeknights',
+        [roastChicken.id, tomatoPasta.id, borscht.id, pestoPasta.id],
+        8,
+        now,
+      ),
       collection(ids.baking, 'Baking', [eggTarts.id, bananaBread.id], 2, now),
     ],
     cookStates: [
@@ -275,6 +324,17 @@ export function memberLibrary(now: number): PersonaLibrary {
         checkedKeys: ['0-0', '0-1'],
         recipeUpdatedAt: roastChicken.updatedAt,
         updatedAt: now - 60 * 60 * 1000,
+      },
+      {
+        // Mid-cook: the water is on, and the Pasta cook is ahead of the Sauce
+        // cook, so two steps read as current.
+        recipeId: pestoPasta.id,
+        servings: 2,
+        currentStep: 1,
+        doneSteps: [3],
+        checkedKeys: [],
+        recipeUpdatedAt: pestoPasta.updatedAt,
+        updatedAt: now - 30 * 60 * 1000,
       },
     ],
     cookLogs: [

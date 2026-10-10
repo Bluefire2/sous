@@ -373,6 +373,90 @@ describe('recipeStore.applyDraft', () => {
   });
 });
 
+describe('step lanes through Ask (docs/plans/parallel-steps.md)', () => {
+  const laned = (): Recipe => ({
+    ...parentRecipe(),
+    steps: [
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook pasta.', lane: 'Pasta' },
+    ],
+  });
+
+  it('Apply keeps stored lanes when the proposal has none', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: [{ text: 'Boil.' }, { text: 'Fry garlic.' }, { text: 'Cook spaghetti.' }],
+    });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook spaghetti.' },
+    ]);
+  });
+
+  it('Apply takes a lane the proposal sets and keeps the ones it leaves out', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: [{ text: 'Boil.', lane: 'Pasta' }, { text: 'Fry garlic.' }],
+    });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.', lane: 'Pasta' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+    ]);
+  });
+
+  it('Apply removes every lane when the proposal empties them', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.applyDraft(PARENT_ID, {
+      ...draft,
+      steps: laned().steps.map(({ text }) => ({ text, lane: '' })),
+    });
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual(laned().steps.map(({ text }) => ({ text })));
+  });
+
+  it('a replacement import keeps lanes where the step text is unchanged', async () => {
+    upsertRecipe(laned());
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await recipeStore.replaceFromImport(
+      PARENT_ID,
+      { ...draft, steps: [{ text: 'Boil.' }, { text: 'Fry garlic.' }, { text: 'Cook spaghetti.' }] },
+      undefined,
+    );
+
+    expect(getRecipe(PARENT_ID)?.steps).toEqual([
+      { text: 'Boil.' },
+      { text: 'Fry garlic.', lane: 'Sauce' },
+      { text: 'Cook spaghetti.' },
+    ]);
+  });
+
+  it('Save as variant carries the parent lanes', async () => {
+    const parent = laned();
+    upsertRecipe(parent);
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    const created = await recipeStore.createFromAsk(parent, {
+      ...draft,
+      steps: parent.steps.map(({ text }) => ({ text })),
+    });
+
+    expect(created.steps).toEqual(parent.steps);
+  });
+});
+
 describe('recipeStore.create', () => {
   it('keeps lang when the draft has one', async () => {
     vi.mocked(pushOps).mockResolvedValue('ok');

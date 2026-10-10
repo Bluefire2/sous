@@ -15,7 +15,7 @@ export type McpRecipe = {
   prepMinutes?: number;
   cookMinutes?: number;
   ingredientSections: AgentRecipe['ingredientSections'];
-  steps: { text: string }[];
+  steps: AgentRecipe['steps'];
   tags: string[];
   notes?: string;
   /** The collection the app files it under, or "Unfiled". Left out where it was not looked up. */

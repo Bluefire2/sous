@@ -637,6 +637,14 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'recipe-view-cook': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
+  // The seed leaves Pesto pasta mid-cook: one step current in each lane.
+  'recipe-view-lanes': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.pestoPasta}` },
+  'recipe-view-lane-picked': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.pestoPasta}`,
+    // A lane name is recipe text, so the chip is found by the fixture's name.
+    reach: async (page) => clickButton(page, 'Pasta'),
+  },
   'recipe-view-your-cooks': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
   // The member reads in metric, and the roast chicken is written in pounds and °F.
   'recipe-view-metric': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.roastChicken}` },
@@ -661,6 +669,31 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'recipe-edit': { persona: 'member', path: (ctx) => `/recipe/${ctx.ids.member.tomatoPasta}/edit` },
+  'recipe-edit-lanes': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.pestoPasta}/edit`,
+    reach: async (page, ctx) => {
+      const select = page.getByLabel(ctx.t('form.stepLane', { n: 6 }), { exact: true });
+      await select.selectOption({ label: ctx.t('form.newLane') });
+      await page.getByLabel(ctx.t('form.laneName', { n: 6 }), { exact: true }).waitFor();
+    },
+  },
+  'recipe-edit-too-many-lanes': {
+    persona: 'member',
+    path: (ctx) => `/recipe/${ctx.ids.member.pestoPasta}/edit`,
+    reach: async (page, ctx) => {
+      // Two blank new lanes first (a blank name adds no lane yet), then name
+      // both: four lanes, so the form shows its limit and blocks Save.
+      for (const n of [1, 6]) {
+        await page
+          .getByLabel(ctx.t('form.stepLane', { n }), { exact: true })
+          .selectOption({ label: ctx.t('form.newLane') });
+      }
+      await page.getByLabel(ctx.t('form.laneName', { n: 1 }), { exact: true }).fill('Garnish');
+      await page.getByLabel(ctx.t('form.laneName', { n: 6 }), { exact: true }).fill('Plating');
+      await page.getByText(ctx.t('form.tooManyLanes'), { exact: true }).waitFor();
+    },
+  },
   'recipe-edit-lang-hint': {
     persona: 'member',
     path: labelledRecipe,
@@ -927,6 +960,10 @@ export const STATES: Record<string, StateEntry> = {
   'public-collection': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-collection-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.borscht}` },
+  'public-recipe-lanes': {
+    persona: 'signedOut',
+    path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.pestoPasta}`,
+  },
   'public-link-missing': { persona: 'signedOut', path: `/p/${'a'.repeat(43)}` },
   'share-recipe-sheet': {
     persona: 'member',

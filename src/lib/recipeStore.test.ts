@@ -93,6 +93,19 @@ describe('compactRecipe', () => {
     expect(compactRecipe({ ...required, importCheck: malformed })).toEqual(required);
   });
 
+  it('keeps a step lane, drops a malformed one, and drops unknown step keys', () => {
+    const steps = [
+      { text: 'Boil.', foo: 1 },
+      { text: 'Fry.', lane: ' Sauce ' },
+      { text: 'Toss.', lane: '' },
+    ] as unknown as Recipe['steps'];
+    expect(compactRecipe({ ...required, steps }).steps).toEqual([
+      { text: 'Boil.' },
+      { text: 'Fry.', lane: 'Sauce' },
+      { text: 'Toss.' },
+    ]);
+  });
+
   it('stores lang only when normalizeLang yields a tag', () => {
     expect(compactRecipe({ ...required, lang: 'it-IT' }).lang).toBe('it');
     expect(compactRecipe({ ...required, lang: 'zh-CN' }).lang).toBe('zh-Hans');

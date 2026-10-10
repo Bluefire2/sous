@@ -12,6 +12,7 @@ import {
   askButtonClass,
   GallerySection,
   IngredientsSection,
+  LaneChips,
   NotesSection,
   recipePageClass,
   RecipeTimes,
@@ -42,6 +43,7 @@ import {
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
 import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
+import { recipeLanes } from '../lib/stepLanes';
 import { useCookState } from '../lib/useCookState';
 import type { Locale } from '../i18n';
 
@@ -101,12 +103,21 @@ export default function RecipeView() {
   const {
     servings,
     currentStep,
+    doneSteps,
     checkedKeys,
     setServings,
-    setCurrentStep,
+    tapStep,
     toggleChecked,
     checkedItemNames,
   } = useCookState(recipe);
+  // The lane this device follows: per recipe, never stored, and dropped when
+  // an edit removes it (`docs/plans/parallel-steps.md`).
+  const lanes = useMemo(() => (recipe ? recipeLanes(recipe.steps) : []), [recipe]);
+  const [lanePick, setLanePick] = useState<{ recipeId: string; lane: string }>();
+  const activeLane =
+    lanePick && lanePick.recipeId === recipe?.id && lanes.includes(lanePick.lane)
+      ? lanePick.lane
+      : undefined;
   const [chatOpen, setChatOpen] = useState(false);
   const [revision, setRevision] = useState(0);
   const [pending, setPending] = useState<{
@@ -347,9 +358,22 @@ export default function RecipeView() {
         recipe={recipe}
         displayRecipe={displayRecipe}
         currentStep={currentStep}
-        onStep={setCurrentStep}
+        doneSteps={doneSteps}
+        onTap={tapStep}
+        activeLane={activeLane}
         textSize={textSize}
         units={units}
+        lanePicker={
+          lanes.length > 0 && (
+            <LaneChips
+              lanes={lanes}
+              active={activeLane}
+              onChange={(lane) =>
+                setLanePick(lane === undefined ? undefined : { recipeId: recipe.id, lane })
+              }
+            />
+          )
+        }
         afterDone={
           !shared && (
             <Link
@@ -416,6 +440,8 @@ export default function RecipeView() {
           cookingState={{
             servings,
             currentStep: currentStep + 1,
+            ...(doneSteps.length > 0 ? { doneSteps: doneSteps.map((i) => i + 1) } : {}),
+            ...(activeLane !== undefined ? { lane: activeLane } : {}),
             checkedIngredients: checkedItemNames(recipe),
           }}
           onClose={() => setChatOpen(false)}

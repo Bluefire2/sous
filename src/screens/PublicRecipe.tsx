@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { languageName, useLocale, useT } from '../i18n';
 import {
@@ -13,6 +13,7 @@ import {
   GalleryFrame,
   GallerySection,
   IngredientsSection,
+  LaneChips,
   NotesSection,
   recipePageClass,
   RecipeTimes,
@@ -25,6 +26,7 @@ import { useUnitSystem } from '../lib/accountPreferences';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
+import { recipeLanes, tapStep, type StepProgress } from '../lib/stepLanes';
 import { translateChipMode } from '../lib/translateChip';
 import type { Recipe } from '../lib/types';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
@@ -157,7 +159,10 @@ export function PublicRecipeBody({
   const textSize = useRecipeTextSize();
   const units = useUnitSystem();
   const [servings, setServings] = useState(recipe.servings);
-  const [currentStep, setCurrentStep] = useState(0);
+  // A visitor has no cook row: progress and the lane pick live here only.
+  const [progress, setProgress] = useState<StepProgress>({ currentStep: 0, doneSteps: [] });
+  const [activeLane, setActiveLane] = useState<string>();
+  const lanes = useMemo(() => recipeLanes(recipe.steps), [recipe.steps]);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const toggleChecked = (key: string) => {
     setCheckedKeys((current) => {
@@ -225,10 +230,17 @@ export function PublicRecipeBody({
       <StepsSection
         recipe={recipe}
         displayRecipe={recipe}
-        currentStep={currentStep}
-        onStep={setCurrentStep}
+        currentStep={progress.currentStep}
+        doneSteps={progress.doneSteps}
+        onTap={(index) => setProgress((current) => tapStep(recipe.steps, current, index))}
+        activeLane={activeLane}
         textSize={textSize}
         units={units}
+        lanePicker={
+          lanes.length > 0 && (
+            <LaneChips lanes={lanes} active={activeLane} onChange={setActiveLane} />
+          )
+        }
       />
 
       {recipe.notes && <NotesSection notes={recipe.notes} units={units} />}

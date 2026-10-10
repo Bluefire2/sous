@@ -306,6 +306,60 @@ fourth (`docs/plans/recipe-links.md`); code must work when it is missing. Only
 the save route sets it; `saveRecipe` forces the stored value, the server pins
 the owner's value on an editor's put, `createFromAsk` drops it, and
 `publicRecipeBody`, shared pull, and `recipeForChat` strip it.
+Optional `RecipeStep.lane` (who does a step when two people cook; consecutive
+laned steps run at the same time) and `CookStateRow.doneSteps` (steps done
+ahead of `currentStep` in such a block) are the fifth
+(`docs/plans/parallel-steps.md`); code must work when either is missing.
+`compactSteps` (`server/recipeSteps.ts`, re-exported by
+`src/lib/recipeSteps.ts`) is the only step compaction on both ends and drops
+a malformed lane and any other step key. A recipe has at most `MAX_LANES`
+(3) lanes, so they fit side by side: compaction makes a step in a fourth
+lane shared, MCP rejects one, Ask is told the cap (and `carryStepLanes`
+keeps a proposal within it), and the form blocks Save with a message. A
+lane tap never changes another lane's steps, and a shared step where lanes
+meet is only ticked by a lane tap once everything it waits for is finished
+(`tapStep`); a tap on a shared step itself never ticks steps nobody did
+unless it is a jump past them. `doneSteps` is normalized by
+`normalizeStepProgress` (`src/lib/stepLanes.ts`) on every write and left out
+when empty. Import never produces lanes; Ask Apply, save-as-variant and a
+replacement import keep stored lanes when the new steps have none
+(`carryStepLanes`, per step: a lane is kept as given, an empty lane removes
+it, and a step with no lane field gets the lane of a stored step with the
+same text, the same position first). Ask is told to state every step's lane
+when a recipe has lanes; the carry is the fallback. An Ask lane over the
+cap is cut to fit (`normalizeRecipeDraft`), never dropped, or the carry
+would undo a rename. Keep progress a
+set of done steps (a prefix plus `doneSteps`), never one pointer: a later
+shared cooking session merges two cooks' progress by union.
+
+**Steps are a list with lanes, not a dependency graph, on purpose.** Lanes
+express one shape: a run of laned steps forks into one chain per lane, and
+the next unlaned step joins them. That covers "two people, one meal" with a
+label per step that survives reordering, Ask, MCP and translation. A graph
+needs stable step ids that every step path must keep, dependency references
+Ask must get right, and a dependency editor; the reviews of
+`docs/plans/parallel-steps.md` found its bugs in keeping even lanes intact
+through Ask. Lanes convert to a graph without loss (each laned step depends
+on the one before it in its lane, a lane's first step on the sync step
+before the block, and the next sync step on every lane's last step), and
+progress is already a done set, so a later move replaces `stepLanes.ts`,
+block rendering and the form's lane menu, not sync or storage.
+Strongly consider moving to a graph, instead of extending lanes, when a
+change needs any of:
+- a dependency between particular steps that the list order cannot express
+  ("step 6 needs step 3 but not step 5");
+- a lane that waits partway for a step in another lane, or keeps going past
+  a step everyone shares;
+- lanes inside a lane, or more than one current step within a lane;
+- per-step timing or scheduling (durations, "start the oven so it is hot by
+  step 7", critical path);
+- a shared cooking session that assigns or hands off individual steps, not
+  whole lanes.
+Each of these is a special case on top of fork-and-join, and several
+together become an ad hoc graph. If one is needed, write a plan for the
+graph model (ids, migration from lanes, authoring, Ask and MCP schemas)
+rather than adding another lane rule.
+
 Collections are a separate store kind. Grants live under
 `collections/{id}/grants/{viewerSub}` plus a reverse
 `incomingShares/{viewerSub}` index; they are REST, not LWW push. Shared
@@ -806,6 +860,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/mcp-collection-writes.md` | Merged (#124). `create_recipe` into a collection and `move_recipes`; collections with a public link are refused. |
 | `docs/plans/mcp-server.md` | Merged (#118). Remote MCP server at `/mcp` with its own OAuth 2.1 authorization server (CIMD clients, no DCR): search, get, list collections, create and edit (with a version check) over the member's own recipes. No delete. TTL policies on `mcpAuthCodes` and `mcpTokens` `expireAt` applied 2026-10-09. |
 | `docs/plans/test-mode.md` | Merged (#123). `testing/test-server.ts` runs the app against a seeded Firestore emulator; `/__test/sign-in?as=<persona>` signs in a fake account with a real session cookie. Not in the image. The emulator runs in CI only in the `test-mode` job (owner-approved exception, Tests and verification). |
+| `docs/plans/parallel-steps.md` | Merged (#164). Optional `RecipeStep.lane` groups steps two people cook at once; per-lane progress in `CookStateRow.doneSteps`; an "I'm on" lane chip; lanes authored in the edit form, Ask, and MCP. Amends cook-log principle 1. |
 | `docs/plans/recipe-generation.md` | Merged (#153). Generate mode on `/import` (`create` in code): `generateFromBrief` writes a recipe from an idea, optional Google Search grounding (sources and Google's chip in the preview, searched calls rate-limited), `via: 'generate'` in the log and in import feedback. |
 | `docs/plans/recipe-variants.md` | Merged (#148). `Recipe.variantOf` groups Ask variants under their original; a Variants row on the recipe screen. MCP `create_recipe` `variantOf` merged (#149). |
 | `docs/plans/random-recipe.md` | Merged (#175). A dice button in the library search row picks a random recipe from the visible list, in a sheet with Roll again; no data, route, or sync change. |

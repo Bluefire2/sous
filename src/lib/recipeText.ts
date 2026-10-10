@@ -1,6 +1,7 @@
 import { formatNumber, type Locale, type MessageKey, type TranslateParams } from '../i18n';
 import { unitLabel } from '../i18n/unitLabel';
 import { formatQuantity } from './quantity';
+import { stepBlocks } from './stepLanes';
 import type { Ingredient, Recipe } from './types';
 import { convertTemperaturesInText, niceWeight, toGrams, type UnitSystem } from './unitConversion';
 
@@ -105,7 +106,20 @@ export function recipeToText(recipe: Recipe, locale: Locale, t: Translate): stri
   }
 
   if (recipe.steps.length > 0) {
-    blocks.push([t('common.steps'), ...recipe.steps.map((step, i) => `${i + 1}. ${step.text}`)]);
+    const lines = [t('common.steps')];
+    for (const block of stepBlocks(recipe.steps)) {
+      if (block.kind === 'sync') {
+        lines.push(`${block.index + 1}. ${recipe.steps[block.index].text}`);
+        continue;
+      }
+      // Steps two cooks do at once: a heading, then each step with its lane.
+      lines.push(t('recipe.atTheSameTime'));
+      for (let i = block.start; i < block.end; i += 1) {
+        const step = recipe.steps[i];
+        lines.push(`${i + 1}. [${step.lane ?? ''}] ${step.text}`);
+      }
+    }
+    blocks.push(lines);
   }
 
   const notes = recipe.notes?.trim();

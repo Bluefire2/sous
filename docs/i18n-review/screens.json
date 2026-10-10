@@ -408,6 +408,18 @@
     "needsData": true
   },
   {
+    "id": "recipe-view-lanes",
+    "route": "/recipe/:id",
+    "setup": "An owned recipe whose steps have lanes (docs/plans/parallel-steps.md): under the Steps heading a chip row labelled \"I'm on\" with \"Everyone\" and one chip per lane, then a boxed group headed \"At the same time\" with each lane's name over its steps. Stored cook progress already shows a current step in each lane and a ticked step, and the shared step after the group has a muted line saying it comes after every lane is done. Lane names are recipe text and stay as written. Do not tap steps or chips; cook state syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-lane-picked",
+    "route": "/recipe/:id",
+    "setup": "The recipe from recipe-view-lanes after tapping one lane chip under \"I'm on\": that chip is pressed and the other lanes' steps are dimmed. Picking a chip changes nothing that syncs. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "recipe-view-metric",
     "route": "/recipe/:id",
     "setup": "A recipe written in US units (pounds and °F) opened by an account set to Measurements: Metric. Weight ingredient lines show the gram amount first with the original in brackets, for example 800 g (1¾ lb) waxy potatoes, and a step that names an oven temperature shows 200°C (400°F). Cups and spoons stay as written. Do not toggle checkmarks, steps, or servings; cook state syncs. Do not tap the translate chip. If no recipe in US units is available or the account is not set to Metric, mark skipped: needs data.",
@@ -435,6 +447,18 @@
     "id": "recipe-edit",
     "route": "/recipe/:id/edit",
     "setup": "The edit form for an owned recipe (heading Edit recipe), including the Recipe language field. Do not change fields and do not save. A viewer share has no Edit link; that route shows Recipe not found. An editor share has an edit form and is a separate entry. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-edit-lanes",
+    "route": "/recipe/:id/edit",
+    "setup": "The edit form for an owned recipe whose steps have lanes. A hint under the Steps heading explains lanes, and each step card has a lane menu (No lane, the recipe's lanes, New lane…). Choose New lane… on one step so its lane name field shows. Do not save. If no owned recipe has lanes, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-edit-too-many-lanes",
+    "route": "/recipe/:id/edit",
+    "setup": "The edit form for an owned recipe with two lanes, after choosing New lane… on two more steps and naming them, so the form has four lanes. A red message under the Steps hint says a recipe can have up to 3 lanes and how to fix it (it names the No lane option), and Save is disabled. Do not save. If no owned recipe has lanes, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -675,6 +699,12 @@
     "id": "public-recipe",
     "route": "/p/:token/r/:recipeId",
     "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe. The top row is a back link with the collection name, then \"Share\" and \"Sign in\". Below: the photo if any, title, times, Ingredients with the servings stepper, Steps, Notes, and at the bottom right a grayed \"Ask\" pill. Prefer a recipe whose language differs from the UI language (or one with no language set) so a grayed translate chip shows under the title; hover it and capture the tooltip, then hover the Ask pill and capture its tooltip (it opens upward). Changing servings, ticking ingredients, or tapping steps is fine here: it stays in the page and writes nothing.",
+    "needsData": true
+  },
+  {
+    "id": "public-recipe-lanes",
+    "route": "/p/:token/r/:recipeId",
+    "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe whose steps have lanes. The steps show the \"I'm on\" chip row and the \"At the same time\" group, with nothing ticked. Tapping steps or chips is fine here: it stays in the page and writes nothing.",
     "needsData": true
   },
   {

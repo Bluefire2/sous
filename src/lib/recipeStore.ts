@@ -50,6 +50,7 @@ import { compactCollection } from './compactCollection';
 import { wouldExceedRecipeIdCap } from './collectionMembership';
 import { recipePhotoIds } from './recipePhotos';
 import { variantGroup } from './variantGroup';
+import { carryStepLanes } from './stepLanes';
 import type { Recipe, RecipeDraft } from './types';
 import type { PushOp } from './pushOps';
 import { isDiscardedPushReason } from './pushReasons';
@@ -696,7 +697,8 @@ export const recipeStore = {
       prepMinutes: draft.prepMinutes,
       cookMinutes: draft.cookMinutes,
       ingredientSections: draft.ingredientSections,
-      steps: draft.steps,
+      // Import never produces lanes; keep the ones added since, by text.
+      steps: carryStepLanes(existing.steps, draft.steps),
       notes: draft.notes,
       lang: draft.lang,
       importCheck,
@@ -713,7 +715,9 @@ export const recipeStore = {
    * spread would blank them. `lang` is carried from the existing recipe,
    * like `sourceUrl`, and so is the import check, which `save` reconciles. On a shared recipe the draft never supplies photos.
    * The draft is an edit of the stored recipe, including while a translation
-   * is on screen.
+   * is on screen. Lanes go through `carryStepLanes`, step by step: a stated
+   * lane is kept, an empty one removes it, and a step with no lane field
+   * keeps the lane of a stored step with the same text.
    */
   async applyDraft(id: string, draft: RecipeDraft): Promise<void> {
     const existing = getRecipe(id);
@@ -733,7 +737,7 @@ export const recipeStore = {
       prepMinutes: draft.prepMinutes,
       cookMinutes: draft.cookMinutes,
       ingredientSections: draft.ingredientSections,
-      steps: draft.steps,
+      steps: carryStepLanes(existing.steps, draft.steps),
       tags: draft.tags,
       notes: draft.notes,
       sourceUrl: draft.sourceUrl ?? existing.sourceUrl,
@@ -749,13 +753,15 @@ export const recipeStore = {
    * new ids. Fields on the draft never supply a photo. `lang` comes from
    * `parent` too: the proposal never carries it, including when `parent` is
    * a shared recipe. The new recipe joins `parent`'s variant group, keyed on
-   * the group's original, so a variant of a variant does not nest.
+   * the group's original, so a variant of a variant does not nest. Step lanes
+   * carry from `parent` as in `applyDraft`.
    */
   async createFromAsk(parent: Recipe, draft: RecipeDraft): Promise<Recipe> {
     const copied = await copyParentPhotos(parent);
     try {
       return await recipeStore.create({
         ...draft,
+        steps: carryStepLanes(parent.steps, draft.steps),
         lang: parent.lang,
         // A recipe from an Ask proposal was not imported.
         importCheck: undefined,

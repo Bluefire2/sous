@@ -52,11 +52,14 @@ feature exists so that a lesson from one cook improves the next one.
 
 ## Principles
 
-### 1. The cook log is its own entity. It never adds fields to `Recipe`, `ChatMessage`, or `CookStateRow`.
+### 1. The cook log is its own entity. Cook-log data never adds fields to `Recipe`, `ChatMessage`, or `CookStateRow`.
 
 **Rule.** Entries live in their own store kind (`users/{uid}/cookLogs/{id}`),
 with a `recipeId` pointing to the recipe. Do not put "last cooked", ratings,
-counts, or lessons on `Recipe`.
+counts, lessons, or any other log data on `Recipe`, `ChatMessage`, or
+`CookStateRow`. Other features extend those types only through the schema-lock
+process in `AGENTS.md` (a plan, an optional field, and the lock tests changed
+on purpose), never to carry log data.
 
 **Why.** `compactRecipe` and `compactRecipeFields` drop unknown keys, and
 `src/lib/recipeStore.test.ts` locks the exact recipe key set. The `Recipe` shape
@@ -268,6 +271,24 @@ A reviewer or verifier who finds a principle broken without an amendment
 should treat it as a failing check.
 
 ## Amendment log
+
+- **Principle 1 (clarified), with parallel steps (`docs/plans/parallel-steps.md`).**
+  What changed: the rule now bans cook-log data on `Recipe`, `ChatMessage`,
+  and `CookStateRow`, instead of every new field. `CookStateRow` gains the
+  optional `doneSteps` (steps done ahead of `currentStep` when two people cook
+  lanes of a recipe at the same time). Why: that is cook progress, not log
+  data, and it has to live in the progress row; a sibling entity would split
+  one row's last-write-wins into two that could disagree. Risk guarded: the
+  original P1 risk, a recipe edit erasing history, and schema growth.
+  How handled: `doneSteps` resets with `recipeUpdatedAt` exactly like
+  `currentStep`, so it is never history; it is normalized on every write and
+  omitted when empty, so a recipe without lanes writes the old row; the
+  `CookStateRow` key-set lock tests were changed on purpose. A client from
+  before this change does not read `doneSteps`, and a cook tap from it
+  rewrites the row without the key, so lane progress done ahead of
+  `currentStep` is lost (the steps before it stay done); its recipe saves
+  drop lanes the same way. The PWA updates itself, so that lasts only until
+  an open tab reloads. No cook-log field was added anywhere.
 
 - **Principle 3 (tightened), with the merge of view-only shared collections.**
   What changed: the parent recipe must be owned by this account. Chat and cook

@@ -23,6 +23,7 @@ import { CameraIcon } from '../lib/icons';
 import DialogShell from './DialogShell';
 import { formatQuantity } from '../lib/quantity';
 import { normalizeRecipeDraft } from '../lib/recipeShape';
+import { carryStepLanes } from '../lib/stepLanes';
 import type { ChatMessage, Ingredient, Recipe, RecipeDraft } from '../lib/types';
 import {
   addBtnDanger,
@@ -58,7 +59,7 @@ function recipeLines(
     ingredients: r.ingredientSections.flatMap((s) =>
       s.items.map((item) => ingredientLine(item, locale, labelUnit)),
     ),
-    steps: r.steps.map((s) => s.text),
+    steps: r.steps.map((s) => (s.lane === undefined ? s.text : `[${s.lane}] ${s.text}`)),
   };
 }
 
@@ -118,7 +119,12 @@ function ProposalCard({
 
   const labelUnit = (token: string) => unitLabel(token, t);
   const before = recipeLines(recipe, locale, labelUnit);
-  const after = recipeLines(proposal, locale, labelUnit);
+  // Apply keeps lanes a lane-less proposal forgot; diff what Apply will save.
+  const after = recipeLines(
+    { ...proposal, steps: carryStepLanes(recipe.steps, proposal.steps) },
+    locale,
+    labelUnit,
+  );
   const removedIngredients = before.ingredients.filter(
     (l) => !after.ingredients.includes(l),
   );

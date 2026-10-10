@@ -13,7 +13,15 @@ export interface OutgoingMessage {
 
 export interface CookingState {
   servings: number;
+  /** 1-based: the first step not yet done. */
   currentStep: number;
+  /**
+   * 1-based steps done ahead of `currentStep` in a parallel block. Left out
+   * when empty (`docs/plans/parallel-steps.md`).
+   */
+  doneSteps?: number[];
+  /** The lane this person said they are on. Left out when they follow every lane. */
+  lane?: string;
   checkedIngredients: string[];
 }
 
@@ -177,6 +185,7 @@ export async function streamChatReply(params: {
     try {
       proposedRecipe = normalizeRecipeDraft(
         withUnchangedFields(JSON.parse(parts[1]), params.recipe),
+        params.recipe,
       );
     } catch {
       // Truncated/malformed proposal — keep the text reply.
