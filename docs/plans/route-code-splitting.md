@@ -10,11 +10,12 @@ Settings and the cook journal, and ran none of them. Load each screen when its
 route first opens, recover from a chunk that a deploy removed, and keep the
 installed PWA working.
 
-Constitutions applied: `docs/constitutions/client-state.md` (no store, hook,
-or snapshot changes; screens still read state the same way once loaded) and
-`docs/constitutions/i18n.md` (no new text: the fallback reuses
-`common.loading`, and the chunk-failure error reuses the existing
-ErrorBoundary copy).
+Constitutions applied: `docs/constitutions/client-state.md` (no library
+store, hook or snapshot changes; the one new module-level store, screen loads
+in flight, follows principle 3: `useSyncExternalStore`, a subscribe function,
+and a getter that returns a boolean) and `docs/constitutions/i18n.md` (no new
+text: the fallback and the pending bar's label reuse `common.loading`, and
+the chunk-failure error reuses the existing ErrorBoundary copy).
 
 ## Decisions
 
@@ -23,18 +24,18 @@ ErrorBoundary copy).
 Measured with `npx vite build --manifest`: a route's first load is the entry
 chunk, the route's chunk, and everything they import statically (Vite
 preloads those in parallel with the chunk), gzip level 9. CSS is separate:
-the main stylesheet went from 77.3 KB (14.5 KB gzip) to 65.7 KB (12.1 KB), and
+the main stylesheet went from 77.3 KB (14.5 KB gzip) to 65.9 KB (12.1 KB), and
 Import's cooking animations (11.8 KB, 2.6 KB gzip) load with Import.
 
 | First load (JS, gzip) | Before | Library and RecipeView eager | Shipped (all lazy) |
 | --- | --- | --- | --- |
-| `/` | 240.7 KB | 209.9 KB | 200.9 KB |
-| `/recipe/:id` | 240.7 KB | 209.9 KB | 191.4 KB |
-| `/p/:token` (also loads PublicRecipe's shared parts) | 240.7 KB | 214.5 KB | 175.0 KB |
-| `/p/:token/r/:id` | 240.7 KB | 209.9 KB | 172.0 KB |
-| `/` then a recipe (both loaded) | 240.7 KB | 209.9 KB | 218.0 KB |
+| `/` | 240.7 KB | 209.9 KB | 201.3 KB |
+| `/recipe/:id` | 240.7 KB | 209.9 KB | 191.8 KB |
+| `/p/:token` (also loads PublicRecipe's shared parts) | 240.7 KB | 214.5 KB | 175.5 KB |
+| `/p/:token/r/:id` | 240.7 KB | 209.9 KB | 172.4 KB |
+| `/` then a recipe (both loaded) | 240.7 KB | 209.9 KB | 218.5 KB |
 
-The entry chunk alone is now 152.6 KB gzip (519 KB raw), down from 240.7 KB.
+The entry chunk alone is now 153.0 KB gzip (521 KB raw), down from 240.7 KB.
 The build no longer warns about a chunk over 500 KB.
 
 ### What is split
@@ -45,10 +46,16 @@ The build no longer warns about a chunk over 500 KB.
   them eager. Eager, they were most of what `/p` downloaded and never ran
   (39.5 KB gzip of the 214.5 KB). Lazy, `/` and `/recipe/:id` also get
   smaller, since each loads only its own screen. The cost is one extra round
-  trip on a cold first visit to a member page (entry, then the screen chunk).
-  For an installed PWA the chunks come from the service worker's precache, so
-  that round trip is local; a first-time public visitor, who has no cache, is
-  the one who gains most.
+  trip on a cold first visit to a member page (entry, then the screen chunk),
+  made shorter by the preload below. For an installed PWA the chunks come
+  from the service worker's precache, so that round trip is local; a
+  first-time public visitor, who has no cache, is the one who gains most.
+- **The first screen's chunk starts before render.** `App.tsx` matches
+  `window.location.pathname` (`entryScreenFor` in `src/lib/entryScreen.ts`)
+  and calls `preload()` on Library, RecipeView, PublicLink or PublicRecipe
+  while the module is evaluated, before `main.tsx` renders. `lazyScreen`
+  memoises its load, so `React.lazy` reuses the promise already started.
+  Other routes are rarer first screens and load on render as before.
 - **The assistant** stays behind its public entry point:
   `src/agent/index.ts` now exports `AssistantScreen` as a lazy component, so
   the wiring in `App.tsx` is still the one route line and
@@ -64,12 +71,19 @@ The build no longer warns about a chunk over 500 KB.
 ### Loading UI
 
 - One `Suspense` around `Routes`, with `RouteFallback`: the muted
-  `common.loading` line screens already use, faded in after 0.4 s
-  (`animate-route-fallback` in `src/index.css`) so a fast load shows nothing
-  before the screen's own loading line.
-- Navigation needs no fallback: React Router runs location updates in
-  `startTransition`, so the current screen stays up until the next one's
-  chunk arrives. Only the first load of a URL shows the fallback.
+  `common.loading` line screens already use. It mounts after 0.4 s
+  (`useDelayedFlag`, a timer, not an opacity fade), so a fast load shows and
+  announces nothing before the screen's own loading line. Only the first
+  render of a page shows it.
+- Navigation does not show the fallback: React Router runs location updates
+  in `startTransition`, so the current screen stays up until the next one's
+  chunk arrives. Without a cue, a tap on a slow network looks ignored, so
+  `ScreenLoadBar` (`src/components/ScreenLoadBar.tsx`) shows a 2 px bar
+  sweeping along the top while any screen chunk is loading, after 200 ms. It
+  reads a count of loads in flight that `lazyScreen` keeps
+  (`useScreenLoadPending`), not the router: BrowserRouter exposes no pending
+  state. It is a `progressbar` labelled `common.loading`; with reduced motion
+  it is a still full-width bar.
 
 ### Chunk-load failure after a deploy
 
@@ -86,6 +100,16 @@ names the new build no longer has (the server answers 404 for a missing
   Back to library. A screen that loads clears the mark, so a later deploy in
   the same tab can reload again. If storage is unavailable or the write
   fails, it does not reload, since nothing would stop a loop.
+- Offline (`navigator.onLine === false`) it never reloads: a visitor who lost
+  the network before the service worker cached the chunks would be reloaded
+  onto the browser's offline page. The ErrorBoundary shows instead, and
+  nothing is recorded, so the first failure back online still reloads.
+- Firefox and Safari word a module that downloads but throws while it is
+  evaluated the same way as one that fails to download, so a bug in a screen's
+  top-level code can cost one wasted reload before the ErrorBoundary.
+- Accepted: the guard can be re-armed by the user. A screen that loads clears
+  the mark, so a user who keeps opening a missing screen after visiting a
+  working one gets one reload per attempt, never a loop on its own.
 - No `vite:preloadError` listener: Vite's preload helper rethrows that error
   into the same `import()` unless a listener cancels it, so `lazyScreen`
   already sees it. A global listener would also reload for preloads outside a
@@ -105,11 +129,14 @@ names the new build no longer has (the server answers 404 for a missing
 ## Steps
 
 1. [core] `src/lib/chunkReload.ts` (`isChunkLoadError`,
-   `shouldReloadForChunkError`, `loadWithChunkReload`, `lazyScreen`) and
-   `src/lib/chunkReload.test.ts`. Done.
-2. [ui] `src/App.tsx`: lazy screens, one `Suspense`, `RouteFallback`;
-   `src/index.css`: `animate-route-fallback`. Done.
-3. [ui] `src/agent/index.ts`: `AssistantScreen` lazy behind the module's
+   `shouldReloadForChunkError`, `loadWithChunkReload`, the screen-load store,
+   `lazyScreen` with `preload`) and `src/lib/chunkReload.test.ts`. Done.
+2. [core] `src/lib/entryScreen.ts` and its test. Done.
+3. [ui] `src/App.tsx`: lazy screens, the entry preload, one `Suspense`,
+   `RouteFallback`; `src/lib/useDelayedFlag.ts`;
+   `src/components/ScreenLoadBar.tsx`; `src/index.css`:
+   `animate-screen-load`. Done.
+4. [ui] `src/agent/index.ts`: `AssistantScreen` lazy behind the module's
    entry point. Done.
 
 ## Verification
@@ -117,8 +144,20 @@ names the new build no longer has (the server answers 404 for a missing
 - `npm run build` and `npm test` pass; `scripts/invariants.test.ts` is
   unchanged (public screens import the same modules; dynamic `import()` in
   `App.tsx` is outside them).
-- Coverage for `src/lib/chunkReload.ts`: every branch; the uncovered lines are
-  the browser `window` environment, checked in the browser.
+- Coverage: `src/lib/entryScreen.ts` fully; `src/lib/chunkReload.ts` all
+  logic, leaving the browser `window` environment and the one-line
+  `useScreenLoadPending` hook; `useDelayedFlag` is a React hook. Those are
+  checked in the browser.
+- Review fixes, in test mode through a local proxy that delays four screen
+  chunks by 1.5 s: on a cold `/`, the Library chunk was requested 25 ms after
+  the entry chunk arrived, before first paint. Opening Settings kept Library
+  up, showed the bar from about 220 ms until Settings rendered at 1.5 s, and
+  never showed the fallback. A cold `/admin` had no `role="status"` element
+  for the first 400 ms, then "Loading…" until Admin rendered. With
+  `navigator.onLine` stubbed false and the Suggest chunk deleted, opening
+  Suggest showed the ErrorBoundary with no reload and no mark. Online, with
+  the Collections chunk deleted, it reloaded once, then showed the
+  ErrorBoundary and stayed there.
 - Test mode on the built output (`testing/test-server.ts --static`, emulator):
   as `member`, Library, a recipe, edit, Import, Settings, the assistant, the
   cook journal, Collections, Suggest and Log a cook each fetched only their

@@ -1,4 +1,4 @@
-import { lazy, type ComponentType } from 'react';
+import { lazy, useSyncExternalStore, type ComponentType, type LazyExoticComponent } from 'react';
 
 /**
  * Route screens load as separate chunks (docs/plans/route-code-splitting.md).
@@ -8,6 +8,8 @@ import { lazy, type ComponentType } from 'react';
  * reload is kept in this tab's sessionStorage: while it is recent, a second
  * failure is not reloaded again but thrown to the ErrorBoundary, so a chunk
  * that stays missing can never reload-loop. A screen that loads clears it.
+ * Offline, it never reloads: that would swap the app for the browser's
+ * offline page.
  */
 
 export const CHUNK_RELOAD_KEY = 'sous.chunkReloadAt';
@@ -22,6 +24,8 @@ export type ChunkReloadEnv = {
   storage: () => ChunkReloadStorage | null;
   reload: () => void;
   now: () => number;
+  /** False when the browser knows it is offline. */
+  online: () => boolean;
 };
 
 // Chrome, Firefox and Safari word a failed dynamic import differently. Vite's
@@ -85,14 +89,15 @@ function clearReloadMark(env: ChunkReloadEnv): void {
 /**
  * Runs `load`. On a chunk-load failure that may reload, reloads and returns a
  * promise that never settles, so Suspense keeps its fallback until the page
- * goes. Any other failure, or one the guard blocks, rejects as before.
+ * goes. Any other failure, one while offline, or one the guard blocks,
+ * rejects as before.
  */
 export async function loadWithChunkReload<T>(load: () => Promise<T>, env: ChunkReloadEnv): Promise<T> {
   let loaded: T;
   try {
     loaded = await load();
   } catch (err) {
-    if (isChunkLoadError(err) && claimReload(env)) {
+    if (isChunkLoadError(err) && env.online() && claimReload(env)) {
       env.reload();
       return new Promise<T>(() => {});
     }
@@ -112,9 +117,65 @@ const browserEnv: ChunkReloadEnv = {
   },
   reload: () => window.location.reload(),
   now: () => Date.now(),
+  online: () => typeof navigator === 'undefined' || navigator.onLine !== false,
 };
 
-/** `React.lazy` for a route screen (no props), with the one-time reload above. */
-export function lazyScreen(load: () => Promise<{ default: ComponentType }>) {
-  return lazy(() => loadWithChunkReload(load, browserEnv));
+// Screen loads in flight, for the pending cue (ScreenLoadBar). React Router
+// navigates in a transition, so the old screen stays up while a chunk loads;
+// this is the only sign that a tap was taken. Readers get a boolean, so the
+// getter is stable (docs/constitutions/client-state.md, principle 3).
+let pendingScreenLoads = 0;
+const screenLoadListeners = new Set<() => void>();
+
+function changePendingScreenLoads(delta: 1 | -1): void {
+  const wasPending = pendingScreenLoads > 0;
+  pendingScreenLoads += delta;
+  if ((pendingScreenLoads > 0) !== wasPending) {
+    for (const listener of screenLoadListeners) listener();
+  }
+}
+
+export function subscribeScreenLoads(listener: () => void): () => void {
+  screenLoadListeners.add(listener);
+  return () => {
+    screenLoadListeners.delete(listener);
+  };
+}
+
+/** True while any screen chunk is loading. */
+export function isScreenLoadPending(): boolean {
+  return pendingScreenLoads > 0;
+}
+
+export function useScreenLoadPending(): boolean {
+  return useSyncExternalStore(subscribeScreenLoads, isScreenLoadPending, () => false);
+}
+
+/** Counts `promise` as a screen load until it settles. */
+export function trackScreenLoad<T>(promise: Promise<T>): Promise<T> {
+  changePendingScreenLoads(1);
+  const done = () => changePendingScreenLoads(-1);
+  promise.then(done, done);
+  return promise;
+}
+
+export type LazyScreen = LazyExoticComponent<ComponentType> & {
+  /** Starts the load now; rendering the screen reuses it. */
+  preload: () => void;
+};
+
+/**
+ * `React.lazy` for a route screen (no props), with the one-time reload above.
+ * The load starts once, from `preload` or the first render, whichever comes
+ * first, and React reuses that promise.
+ */
+export function lazyScreen(load: () => Promise<{ default: ComponentType }>, env: ChunkReloadEnv = browserEnv): LazyScreen {
+  let started: Promise<{ default: ComponentType }> | undefined;
+  const start = () => (started ??= trackScreenLoad(loadWithChunkReload(load, env)));
+  const screen = lazy(start) as LazyScreen;
+  screen.preload = () => {
+    // A failure reaches the ErrorBoundary when the screen renders.
+    start().catch(() => {});
+  };
+  return screen;
 }

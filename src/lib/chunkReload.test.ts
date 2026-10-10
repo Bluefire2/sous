@@ -3,9 +3,12 @@ import {
   CHUNK_RELOAD_GUARD_MS,
   CHUNK_RELOAD_KEY,
   isChunkLoadError,
+  isScreenLoadPending,
   lazyScreen,
   loadWithChunkReload,
   shouldReloadForChunkError,
+  subscribeScreenLoads,
+  trackScreenLoad,
   type ChunkReloadEnv,
 } from './chunkReload';
 
@@ -29,7 +32,7 @@ function env(storage: ReturnType<typeof memoryStorage> | null, overrides: Partia
   const reload = vi.fn();
   return {
     reload,
-    env: { storage: () => storage, reload, now: () => NOW, ...overrides } satisfies ChunkReloadEnv,
+    env: { storage: () => storage, reload, now: () => NOW, online: () => true, ...overrides } satisfies ChunkReloadEnv,
   };
 }
 
@@ -150,6 +153,56 @@ describe('loadWithChunkReload', () => {
     });
     await expect(loadWithChunkReload(() => Promise.resolve(1), throwing.env)).resolves.toBe(1);
   });
+
+  it('does not reload while the browser is offline: the error reaches the boundary', async () => {
+    const storage = memoryStorage();
+    const { env: e, reload } = env(storage, { online: () => false });
+    await expect(loadWithChunkReload(() => Promise.reject(chromeError), e)).rejects.toBe(chromeError);
+    expect(reload).not.toHaveBeenCalled();
+    // Nothing recorded, so the first failure once back online still reloads.
+    expect(storage.data.size).toBe(0);
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (err: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('screen load tracking', () => {
+  it('is pending until every tracked load settles, and notifies only on a change', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeScreenLoads(listener);
+    expect(isScreenLoadPending()).toBe(false);
+
+    const first = deferred<number>();
+    const second = deferred<number>();
+    void trackScreenLoad(first.promise);
+    void trackScreenLoad(second.promise).catch(() => {});
+    expect(isScreenLoadPending()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    first.resolve(1);
+    await first.promise;
+    expect(isScreenLoadPending()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    second.reject(new Error('gone'));
+    await second.promise.catch(() => {});
+    await Promise.resolve();
+    expect(isScreenLoadPending()).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    void trackScreenLoad(Promise.resolve(1));
+    expect(listener).toHaveBeenCalledTimes(2);
+    await Promise.resolve();
+  });
 });
 
 describe('lazyScreen', () => {
@@ -158,5 +211,25 @@ describe('lazyScreen', () => {
     const Screen = lazyScreen(load);
     expect((Screen as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for('react.lazy'));
     expect(load).not.toHaveBeenCalled();
+  });
+
+  it('preload starts the load once, counts it as pending, and swallows a failure', async () => {
+    const pending = deferred<{ default: () => null }>();
+    const load = vi.fn(() => pending.promise);
+    const { env: e } = env(memoryStorage());
+    const Screen = lazyScreen(load, e);
+    Screen.preload();
+    Screen.preload();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(isScreenLoadPending()).toBe(true);
+    pending.resolve({ default: () => null });
+    await pending.promise;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(isScreenLoadPending()).toBe(false);
+
+    const failing = lazyScreen(() => Promise.reject(new Error('render bug')), e);
+    failing.preload();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(isScreenLoadPending()).toBe(false);
   });
 });

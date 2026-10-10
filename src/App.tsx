@@ -1,10 +1,13 @@
 import { Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import ScreenLoadBar from './components/ScreenLoadBar';
 import SyncToast from './components/SyncToast';
 import { useT } from './i18n';
 import { lazyScreen } from './lib/chunkReload';
+import { entryScreenFor } from './lib/entryScreen';
 import { routePaths } from './lib/routePaths';
+import { useDelayedFlag } from './lib/useDelayedFlag';
 import PublicReturn from './screens/PublicReturn';
 import { AssistantScreen } from './agent/index';
 
@@ -12,7 +15,7 @@ import { AssistantScreen } from './agent/index';
 // opened, Library and RecipeView too: in the entry chunk they were most of
 // what a signed-out visitor on /p downloaded and never ran. Navigation runs
 // in a transition, so the current screen stays up while the next one loads
-// (docs/plans/route-code-splitting.md).
+// and ScreenLoadBar shows the wait (docs/plans/route-code-splitting.md).
 const Library = lazyScreen(() => import('./screens/Library'));
 const RecipeView = lazyScreen(() => import('./screens/RecipeView'));
 const CollectionsIndex = lazyScreen(() => import('./screens/CollectionsIndex'));
@@ -26,15 +29,22 @@ const Admin = lazyScreen(() => import('./screens/Admin'));
 const PublicLink = lazyScreen(() => import('./screens/PublicLink'));
 const PublicRecipe = lazyScreen(() => import('./screens/PublicRecipe'));
 
+// Start the first screen's chunk now, while React starts, rather than after
+// the first render asks for it. App.tsx is evaluated before main.tsx renders.
+const ENTRY_SCREENS = { library: Library, recipe: RecipeView, publicLink: PublicLink, publicRecipe: PublicRecipe };
+const entryScreen = entryScreenFor(window.location.pathname);
+if (entryScreen !== null) ENTRY_SCREENS[entryScreen].preload();
+
 /**
- * Shown while a screen's chunk loads (first load, or a reload after a
- * deploy): the muted line screens use, faded in late so a fast load shows
- * nothing before the screen's own loading line.
+ * Shown while a screen's chunk loads on a page's first render (or a reload
+ * after a deploy): the muted line screens use. It mounts after 400 ms, so a
+ * fast load shows and announces nothing before the screen's own loading line.
  */
 function RouteFallback() {
   const t = useT();
+  if (!useDelayedFlag(true, 400)) return null;
   return (
-    <p role="status" className="animate-route-fallback py-12 text-center text-ink-muted">
+    <p role="status" className="py-12 text-center text-ink-muted">
       {t('common.loading')}
     </p>
   );
@@ -79,6 +89,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
+      <ScreenLoadBar />
       <SyncToast />
       <AppRoutes />
     </ErrorBoundary>
