@@ -925,16 +925,6 @@ export const STATES: Record<string, StateEntry> = {
     },
   },
   'public-collection': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}` },
-  'public-collection-locked-sheet': {
-    persona: 'signedOut',
-    path: (ctx) => `/p/${ctx.publicToken}`,
-    reach: async (page) => {
-      // The locked chat bubble is aria-disabled by design but opens the sheet;
-      // Playwright treats aria-disabled as not clickable, so force the click.
-      await page.locator('button[aria-disabled="true"]').first().click({ force: true });
-      await page.getByRole('dialog').waitFor();
-    },
-  },
   'public-collection-member': { persona: 'empty', path: (ctx) => `/p/${ctx.publicToken}` },
   'public-recipe': { persona: 'signedOut', path: (ctx) => `/p/${ctx.publicToken}/r/${ctx.ids.member.borscht}` },
   'public-link-missing': { persona: 'signedOut', path: `/p/${'a'.repeat(43)}` },

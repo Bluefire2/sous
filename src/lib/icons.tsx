@@ -153,7 +153,7 @@ export function InviteIcon({ className }: { className?: string }) {
   );
 }
 
-/** Chat bubble, the same mark as the assistant's header link (`src/agent/AssistantEntryLink.tsx`). */
+/** Chat bubble: the assistant's entry button (`src/agent/AssistantEntryLink.tsx`). */
 export function ChatBubbleIcon({ className }: { className?: string }) {
   return (
     <svg
