@@ -79,7 +79,8 @@ Why each write rule exists:
   - servings: 1–1000
   - minutes: 0–10000
   - at most 50 sections, each with 1–200 items
-  - item: 1–300 characters; unit ≤ 32; note ≤ 300; quantity finite and > 0
+  - item: 1–300 characters; unit ≤ 32; note ≤ 300; quantity finite and > 0;
+    optional a boolean, stored only when true
   - at most 200 steps, each 1–5000 characters
   - at most 30 tags, each ≤ 40, trimmed and deduplicated
   - description and notes ≤ 10000

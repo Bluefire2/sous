@@ -240,6 +240,7 @@ export const en = {
   'recipe.alreadyInLanguage': 'This recipe is already in English.',
   'recipe.textCopied': 'Recipe copied',
   'recipe.textCopyFailed': "Couldn't copy the recipe",
+  'recipe.optionalIngredient': 'optional',
 
   'chat.assistant': 'Assistant',
   'chat.clearAll': 'Clear all?',
@@ -511,6 +512,7 @@ export const en = {
   'form.unitPlaceholder': 'unit',
   'form.ingredientNote': 'Ingredient note',
   'form.notePlaceholder': 'note, e.g. finely chopped',
+  'form.optionalIngredient': 'Optional',
   'form.moveIngredientUp': 'Move ingredient up',
   'form.moveIngredientDown': 'Move ingredient down',
   'form.removeIngredient': 'Remove ingredient',

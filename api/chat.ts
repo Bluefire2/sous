@@ -163,6 +163,11 @@ const RECIPE_SCHEMA: Schema = {
                 },
                 item: { type: Type.STRING, description: 'The ingredient itself' },
                 note: { type: Type.STRING, description: 'e.g. "thinly sliced"' },
+                optional: {
+                  type: Type.BOOLEAN,
+                  description:
+                    'true only when the recipe marks this ingredient as optional; then leave "optional" out of the note. Omit otherwise.',
+                },
               },
               required: ['item'],
             },

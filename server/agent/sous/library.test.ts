@@ -53,6 +53,27 @@ describe('narrowAgentRecipe', () => {
     expect(r?.title).toBe('Soup');
     expect(r?.tags).toEqual(['easy']);
   });
+
+  it('keeps an ingredient optional flag only when it is true', () => {
+    const r = narrowAgentRecipe({
+      id: 'a',
+      title: 'Soup',
+      ingredientSections: [
+        {
+          items: [
+            { item: 'chili', optional: true },
+            { item: 'salt', optional: false },
+            { item: 'pepper', optional: 'yes' },
+          ],
+        },
+      ],
+    });
+    expect(r?.ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+      { item: 'pepper' },
+    ]);
+  });
 });
 
 describe('narrowAgentCollection', () => {

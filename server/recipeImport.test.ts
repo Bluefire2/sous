@@ -401,6 +401,26 @@ describe('normalizeImportedRecipe', () => {
     });
   });
 
+  it('keeps an ingredient optional flag only when the model returns true', () => {
+    const recipe = normalizeImportedRecipe({
+      ...MINIMAL,
+      ingredientSections: [
+        {
+          items: [
+            { item: 'chili flakes', optional: true },
+            { item: 'salt', optional: false },
+            { item: 'parsley', optional: 'true' },
+          ],
+        },
+      ],
+    });
+    expect(recipe?.ingredientSections[0].items).toEqual([
+      { item: 'chili flakes', optional: true },
+      { item: 'salt' },
+      { item: 'parsley' },
+    ]);
+  });
+
   it('drops sections that end up empty, and malformed steps and tags', () => {
     expect(
       normalizeImportedRecipe({

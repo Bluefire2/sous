@@ -235,6 +235,7 @@ export const ru: Messages = {
   'recipe.alreadyInLanguage': 'Этот рецепт уже на русском.',
   'recipe.textCopied': 'Рецепт скопирован',
   'recipe.textCopyFailed': 'Не удалось скопировать рецепт',
+  'recipe.optionalIngredient': 'по желанию',
 
   'chat.assistant': 'Помощник',
   'chat.clearAll': 'Очистить всё?',
@@ -520,6 +521,7 @@ export const ru: Messages = {
   'form.unitPlaceholder': 'единица',
   'form.ingredientNote': 'Примечание к ингредиенту',
   'form.notePlaceholder': 'примечание, например мелко нарезать',
+  'form.optionalIngredient': 'По желанию',
   'form.moveIngredientUp': 'Переместить ингредиент вверх',
   'form.moveIngredientDown': 'Переместить ингредиент вниз',
   'form.removeIngredient': 'Убрать ингредиент',

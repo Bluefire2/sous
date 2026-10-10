@@ -135,6 +135,27 @@ describe('normalizeRecipeDraft', () => {
       ['ingredientSections', 'servings', 'steps', 'tags', 'title'].sort(),
     );
   });
+
+  it('keeps an ingredient optional flag only when it is true', () => {
+    const draft = normalizeRecipeDraft({
+      title: 'Draft',
+      servings: 1,
+      ingredientSections: [
+        {
+          items: [
+            { item: 'chili', optional: true },
+            { item: 'salt', optional: false },
+            { item: 'pepper', optional: 'yes' },
+          ],
+        },
+      ],
+    });
+    expect(draft?.ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+      { item: 'pepper' },
+    ]);
+  });
 });
 
 describe('isUsableRecipe', () => {
@@ -173,6 +194,34 @@ describe('isUsableRecipe', () => {
         ingredientSections: [{ items: [{ item: 'salt', quantity: '1' }] }],
       }),
     ).toBe(false);
+  });
+
+  it('accepts any ingredient optional flag and leaves all but true to compact', () => {
+    const withOptional = (optional: unknown) => ({
+      ...required,
+      ingredientSections: [{ items: [{ item: 'chili', optional }, { item: 'salt' }] }],
+    });
+    for (const optional of [true, false, 'yes', null]) {
+      expect(isUsableRecipe(withOptional(optional))).toBe(true);
+    }
+    expect(compactRecipe(withOptional(true) as Recipe).ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+    ]);
+    for (const optional of [false, 'yes', null]) {
+      expect(compactRecipe(withOptional(optional) as Recipe).ingredientSections[0].items).toEqual([
+        { item: 'chili' },
+        { item: 'salt' },
+      ]);
+    }
+  });
+
+  it('keeps the ingredient sections array when there is nothing to drop', () => {
+    const clean = {
+      ...required,
+      ingredientSections: [{ items: [{ item: 'chili', optional: true }] }],
+    } as Recipe;
+    expect(compactRecipe(clean).ingredientSections).toBe(clean.ingredientSections);
   });
 
   it('returns false when galleryPhotoIds is not a string array', () => {

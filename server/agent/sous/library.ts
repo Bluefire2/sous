@@ -2,7 +2,7 @@ import { listLiveDocs } from '../../store.ts';
 
 export type IngredientSection = {
   name?: string;
-  items: { quantity?: number; unit?: string; item: string; note?: string }[];
+  items: { quantity?: number; unit?: string; item: string; note?: string; optional?: boolean }[];
 };
 
 export type AgentRecipe = {
@@ -92,6 +92,9 @@ function parseIngredientSections(raw: unknown): IngredientSection[] {
         }
         if (typeof ir.note === 'string' && ir.note !== '') {
           ing.note = ir.note;
+        }
+        if (ir.optional === true) {
+          ing.optional = true;
         }
         items.push(ing);
       }

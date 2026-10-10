@@ -126,6 +126,33 @@ describe('recipeSegments and applyTranslation', () => {
     ]);
     expect(applied.ingredientSections[0].items[0].unit).toBe('g');
   });
+
+  it('copies the optional flag without making it a segment', () => {
+    const recipe: TranslatableRecipe = {
+      ...RECIPE,
+      ingredientSections: [
+        { items: [{ item: 'chili', optional: true }, { item: 'salt' }] },
+      ],
+    };
+    const segments = recipeSegments(recipe);
+    expect(segments.map((segment) => segment.id)).toEqual([
+      'title',
+      'description',
+      'notes',
+      'section.0.item.0.item',
+      'section.0.item.1.item',
+      'step.0',
+      'step.1',
+    ]);
+    const applied = applyTranslation(
+      recipe,
+      segments.map((segment) => ({ id: segment.id, text: `T:${segment.text}` })),
+    );
+    expect(applied.ingredientSections[0].items).toEqual([
+      { item: 'T:chili', optional: true },
+      { item: 'T:salt' },
+    ]);
+  });
 });
 
 describe('compactTranslatableRecipe', () => {
@@ -140,6 +167,26 @@ describe('compactTranslatableRecipe', () => {
       sourceUrl: 'https://example.com/carbonara',
     });
     expect(compacted).toEqual(RECIPE);
+  });
+
+  it('keeps an ingredient optional flag only when it is true', () => {
+    const compacted = compactTranslatableRecipe({
+      ...minimalRecipe(),
+      ingredientSections: [
+        {
+          items: [
+            { item: 'chili', optional: true },
+            { item: 'salt', optional: false },
+            { item: 'pepper', optional: 'yes' },
+          ],
+        },
+      ],
+    });
+    expect(compacted?.ingredientSections[0].items).toEqual([
+      { item: 'chili', optional: true },
+      { item: 'salt' },
+      { item: 'pepper' },
+    ]);
   });
 
   it('rejects a recipe that is not translatable structure', () => {

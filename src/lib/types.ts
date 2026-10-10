@@ -6,6 +6,12 @@ export interface Ingredient {
   unit?: string;
   item: string;
   note?: string;
+  /**
+   * The recipe works without this ingredient. Stored only as `true`; a
+   * missing key means required, so recipes saved before the flag need no
+   * migration.
+   */
+  optional?: boolean;
 }
 
 export interface IngredientSection {
