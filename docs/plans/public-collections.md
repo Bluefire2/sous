@@ -132,7 +132,8 @@ Client routes: `/p/:token` (`PublicCollection`), `/p/:token/r/:recipeId`
   cases, and two invariants).
 - In the browser, with `dev` and `dev:api`: as the owner, turn a test collection
   public, copy the link, open it in a private window (signed out): recipes and
-  photos load; the assistant, Ask, and translate controls are gray, show the hint
+  photos load; there is no assistant control on the collection page (#184 removed
+  it for visitors); the recipe's Ask and translate controls are gray, show the hint
   on hover, and open the sign-in sheet on tap; the network panel shows no request to
   `/api/sync`, `/api/chat`, `/api/translate`, `/api/stt`, or `/api/agent`. Turn the
   link off and reload: the generic "link doesn't work" page. As a second member,

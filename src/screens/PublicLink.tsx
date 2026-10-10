@@ -55,10 +55,11 @@ function PublicCollection({
     <header className="flex items-center justify-between py-4">
       <span className="text-2xl font-bold">Sous</span>
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
-        {isCollection && (
+        {/* A visitor gets no assistant control at all: Sign in is the way in. */}
+        {isCollection && member && (
           <LockedAiButton
             label={t('assistant.ask')}
-            hint={member ? t('public.aiLockedMember') : t('public.aiLocked')}
+            hint={t('public.aiLockedMember')}
             onOpen={() => setLockedOpen(true)}
             className={lockedIconBtn}
             placement="below-end"
@@ -172,7 +173,7 @@ function PublicCollection({
     <div className="mx-auto max-w-xl px-4 pb-24">
       {header}
       {body}
-      {lockedOpen && isCollection && (
+      {lockedOpen && isCollection && member && (
         <AiLockedSheet
           token={token}
           member={member}
