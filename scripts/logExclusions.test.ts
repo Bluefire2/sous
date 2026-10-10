@@ -13,13 +13,17 @@ const token = 'aB3_dE6-gH9iJ2kL5mN8pQ1rS4tU7vW0xY3zA6bC9d';
 describe('LINK_TOKEN_URL', () => {
   const pattern = new RegExp(LINK_TOKEN_URL);
 
-  it('matches URLs that carry an invite or collection link token', () => {
+  it('matches URLs that carry an invite, collection, or public link token', () => {
     expect(isInviteTokenShape(token)).toBe(true);
     for (const url of [
       `https://sous.kyrylo.lol/invite/${token}`,
       `https://sous.kyrylo.lol/c/${token}`,
       `https://sous.kyrylo.lol/c/${token}?x=1`,
       `http://localhost:5173/invite/${token.slice(0, 20)}`,
+      `https://sous.kyrylo.lol/p/${token}`,
+      `https://sous.kyrylo.lol/p/${token}/r/0b6f3f5e-2a7c-4f1e-9a51-3c8d2b7e4f10`,
+      `https://sous.kyrylo.lol/api/public/${token}`,
+      `https://sous.kyrylo.lol/api/public/${token}/recipes/x/photos/y`,
     ]) {
       expect(pattern.test(url), url).toBe(true);
     }
@@ -34,6 +38,10 @@ describe('LINK_TOKEN_URL', () => {
       `https://sous.kyrylo.lol/collections/${token}`,
       `https://sous.kyrylo.lol/recipe/${token}`,
       `https://sous.kyrylo.lol/api/import?next=/c/${token}`,
+      'https://sous.kyrylo.lol/api/public/join',
+      'https://sous.kyrylo.lol/p',
+      `https://sous.kyrylo.lol/pantry/${token}`,
+      `https://sous.kyrylo.lol/api/publicity/${token}`,
     ]) {
       expect(pattern.test(url), url).toBe(false);
     }

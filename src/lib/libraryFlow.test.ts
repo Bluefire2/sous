@@ -5,6 +5,7 @@ import {
   libraryFlowReducer,
   runCreate,
   sheetError,
+  submitCollectionCreate,
   type LibraryFlow,
   type LibraryFlowAction,
 } from './libraryFlow';
@@ -185,6 +186,14 @@ describe('libraryFlowReducer', () => {
     const other = run({ type: 'openAdd' });
     expect(libraryFlowReducer(other, { type: 'closeInviteConfirm' })).toBe(other);
   });
+
+  it('rerolls within the open roll sheet and ignores a reroll after close', () => {
+    const opened = run({ type: 'openRoll', poolIds: ['a', 'b'], pickId: 'a' });
+    const rerolled = libraryFlowReducer(opened, { type: 'reroll', poolIds: ['a', 'b'], pickId: 'b' });
+    expect(rerolled).toEqual({ token: opened.token, sheet: { kind: 'roll', poolIds: ['a', 'b'], pickId: 'b' } });
+    const closed = libraryFlowReducer(rerolled, { type: 'close' });
+    expect(libraryFlowReducer(closed, { type: 'reroll', poolIds: ['a'], pickId: 'a' })).toBe(closed);
+  });
 });
 
 describe('runCreate', () => {
@@ -359,5 +368,101 @@ describe('runCreate', () => {
     expect(result).toEqual({ kind: 'done', id: 'c1' });
     expect(fx.calls).toEqual([`move:${ids.join(',')}:c1`]);
     expect(fx.recorded).toEqual([]);
+  });
+});
+
+describe('submitCollectionCreate', () => {
+  function input(
+    over: Partial<Parameters<typeof submitCollectionCreate>[0]> = {},
+  ): Parameters<typeof submitCollectionCreate>[0] {
+    return {
+      name: 'Soups',
+      created: undefined,
+      moveRecipeIds: undefined,
+      saving: false,
+      token: 1,
+      isCurrent: () => true,
+      dispatch: () => {},
+      failureMessage: 'failed',
+      create: async () => ({ id: 'c-new' }),
+      rename: async () => {},
+      move: async () => {},
+      onSuccess: () => {},
+      ...over,
+    };
+  }
+
+  it('calls onSuccess with the new id when the create is still current', async () => {
+    const actions: LibraryFlowAction[] = [];
+    let success: string | undefined;
+    await submitCollectionCreate(
+      input({
+        dispatch: (action) => actions.push(action),
+        onSuccess: (id) => {
+          success = id;
+        },
+      }),
+    );
+    expect(success).toBe('c-new');
+    expect(actions[0]).toEqual({ type: 'submitting', token: 1 });
+    expect(actions).toContainEqual({
+      type: 'created',
+      token: 1,
+      created: { id: 'c-new', name: 'Soups' },
+    });
+  });
+
+  it('returns without creating when the sheet is already saving', async () => {
+    let created = false;
+    const actions: LibraryFlowAction[] = [];
+    await submitCollectionCreate(
+      input({
+        saving: true,
+        dispatch: (action) => actions.push(action),
+        create: async () => {
+          created = true;
+          return { id: 'c-new' };
+        },
+      }),
+    );
+    expect(created).toBe(false);
+    expect(actions).toEqual([]);
+  });
+
+  it('does not call onSuccess when the token is stale', async () => {
+    let success = false;
+    await submitCollectionCreate(
+      input({
+        isCurrent: () => false,
+        onSuccess: () => {
+          success = true;
+        },
+      }),
+    );
+    expect(success).toBe(false);
+  });
+
+  it('dispatches the thrown message, or the fallback when the throw is not an Error', async () => {
+    const errors: LibraryFlowAction[] = [];
+    await submitCollectionCreate(
+      input({
+        dispatch: (action) => errors.push(action),
+        create: async () => {
+          throw new Error('nope');
+        },
+      }),
+    );
+    expect(errors.at(-1)).toEqual({ type: 'failed', token: 1, error: 'nope' });
+
+    const fallback: LibraryFlowAction[] = [];
+    await submitCollectionCreate(
+      input({
+        dispatch: (action) => fallback.push(action),
+        create: async () => {
+          throw 'x';
+        },
+      }),
+    );
+    expect(fallback.at(-1)).toEqual({ type: 'failed', token: 1, error: 'failed' });
   });
 });

@@ -6,7 +6,7 @@ scope:
   - src/lib/libraryMemory.ts (snapshot shape, writes and their copy/publish helpers, captureSnapshot/restoreSnapshot)
   - src/lib/useLibrary.ts
   - src/lib/librarySelectors.ts
-  - src/lib/recipeStore.ts (useRecipes, useRecipe, useRecipeAccess, useRecipeSharedBy)
+  - src/lib/recipeStore.ts (useRecipes, useRecipe, useRecipeAccess, useRecipeSharedBy, useRecipeCollectionId, useRecipeVariants)
   - src/lib/collectionStore.ts (useCollections, useFullPull)
   - src/lib/chatStore.ts (useChatMessages)
   - src/lib/cookLogStore.ts (useCookLogs, useCookLog)
@@ -17,9 +17,10 @@ scope:
   - src/agent/store.ts (subscribe, getAgentSnapshot, dispatch)
   - src/lib/libraryFlow.ts
   - src/screens/Library.tsx (dialog state, in-flight delete/leave, missing-collection reset)
-  - src/screens/RecipeView.tsx (access and shared-by reads)
+  - src/screens/RecipeView.tsx (access, shared-by, and filed-collection reads)
   - src/screens/RecipeEdit.tsx (access read)
   - src/screens/CookLogEdit.tsx (access read)
+  - src/components/VariantLinks.tsx (useRecipeVariants read)
   - scripts/invariants.test.ts (client state checks)
 ---
 
@@ -127,7 +128,7 @@ counter re-renders without telling React what changed.
 
 A hook that returns one item selects that item: `useRecipe`, `useCookLog`,
 `useCookState`'s row, `usePhotoUrl`'s blob, `useRecipeAccess`,
-`useRecipeSharedBy`. Its selector is a named export of
+`useRecipeSharedBy`, `useRecipeCollectionId`. Its selector is a named export of
 `src/lib/librarySelectors.ts`, never an inline function.
 `librarySelectors.test.ts` checks every export there returns the identical
 value on repeated reads, and `scripts/invariants.test.ts` rejects an inline
@@ -157,7 +158,7 @@ component already calls depends on the same map. For this reason
 `useRecipes` also depends on `recipeOrigins`, and `useCollections` on
 `collectionOrigins`. A single-item screen uses a selector hook instead:
 RecipeView, RecipeEdit and CookLogEdit read `useRecipeAccess`, and RecipeView
-also reads `useRecipeSharedBy`.
+also reads `useRecipeSharedBy` and `useRecipeCollectionId`.
 
 Event handlers may read stores directly, since they run at the moment they
 need the value.

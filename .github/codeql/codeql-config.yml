@@ -1,0 +1,5 @@
+# Cached recipe pages used as import eval fixtures. Scripts in the
+# HTML are page content, not application code.
+paths-ignore:
+  - 'evals/import-sites/**/*.html'
+  - 'evals/import/**/page.html'

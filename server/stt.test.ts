@@ -1,6 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
 import { SESSION_COOKIE_NAME, signSession } from './session.ts';
 import { SUPPORTED_LOCALES, type Locale } from './lang.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 import {
   MAX_STT_BYTES,
   clipRecipeTitle,
@@ -204,6 +211,52 @@ describe('sttPost error codes', () => {
       error: 'That language is not supported.',
       code: 'stt-bad-language',
     });
+  });
+
+  it('returns stt-too-long past the cap without Content-Length, and leaves the rest unread', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const endless = endlessBody();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const response = await sttPost(
+      new Request('http://localhost/api/stt', {
+        method: 'POST',
+        headers: { cookie: `${SESSION_COOKIE_NAME}=${token}`, 'content-type': 'audio/webm' },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ code: 'stt-too-long' });
+    // The dispatcher drops the rest; cancelling would abort the request under the 413.
+    expect(endless.cancelled()).toBe(false);
+    expect(endless.read()).toBeLessThan(MAX_STT_BYTES + 256 * 1024);
+  });
+
+  it('refuses over the daily AI budget before calling the model', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const llmUsage = memoryLlmUsageStore();
+    llmUsage.spent.set(`sub-1/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    setLlmBudgetForTest({ store: llmUsage });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+      const response = await sttPost(
+        new Request('http://localhost/api/stt', {
+          method: 'POST',
+          headers: {
+            cookie: `${SESSION_COOKIE_NAME}=${token}`,
+            'content-type': 'audio/webm',
+            'x-sous-language': 'en',
+          },
+          body: new Uint8Array([1, 2, 3]),
+        }),
+      );
+      expect(response.status).toBe(429);
+      await expect(response.json()).resolves.toMatchObject({ code: 'llm-budget-exceeded' });
+    } finally {
+      setLlmBudgetForTest(null);
+      vi.restoreAllMocks();
+    }
   });
 
   it('accepts X-Sous-Language when Fetch lowercases the name', async () => {

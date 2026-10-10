@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAgentLibrary, type AgentCollection, type AgentRecipe } from './library.ts';
-import { recipeTotalMinutes, scoreRecipe, searchRecipes } from './search.ts';
+import { recipeTotalMinutes, scoreRecipe, searchRecipes, searchRecipesPage } from './search.ts';
 
 function recipe(overrides: Partial<AgentRecipe> & { id: string; title: string }): AgentRecipe {
   return {
@@ -131,5 +131,35 @@ describe('searchRecipes', () => {
     const bigLib = library(many);
     expect(searchRecipes(bigLib, { limit: 100 }).length).toBe(20);
     expect(searchRecipes(bigLib, {}).length).toBe(10);
+  });
+});
+
+describe('searchRecipesPage', () => {
+  const lib = library(
+    Array.from({ length: 25 }, (_, i) =>
+      recipe({ id: `r${String(i).padStart(2, '0')}`, title: `Dish ${String(i).padStart(2, '0')}` }),
+    ),
+  );
+
+  it('pages alphabetically with a total, and the agent search is its first page', () => {
+    const first = searchRecipesPage(lib, {}, { offset: 0, limit: 10 });
+    expect(first.total).toBe(25);
+    expect(first.hits.map((h) => h.title)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `Dish ${String(i).padStart(2, '0')}`),
+    );
+    expect(searchRecipes(lib, { limit: 10 })).toEqual(first.hits);
+    const last = searchRecipesPage(lib, {}, { offset: 20, limit: 10 });
+    expect(last.hits.map((h) => h.id)).toEqual(['r20', 'r21', 'r22', 'r23', 'r24']);
+    expect(searchRecipesPage(lib, {}, { offset: 30, limit: 10 })).toEqual({ hits: [], total: 25 });
+  });
+
+  it('clamps the limit to 20 and a bad offset to 0', () => {
+    expect(searchRecipesPage(lib, {}, { offset: 0, limit: 100 }).hits).toHaveLength(20);
+    expect(searchRecipesPage(lib, {}, { offset: -5, limit: 1 }).hits[0]?.id).toBe('r00');
+    expect(searchRecipesPage(lib, {}, { offset: 2.7, limit: 1 }).hits[0]?.id).toBe('r02');
+  });
+
+  it('counts only matches in total', () => {
+    expect(searchRecipesPage(lib, { query: 'dish 1' }, { limit: 3 }).total).toBe(10);
   });
 });

@@ -7,6 +7,7 @@ import {
   cascadeGrantPairTransition,
   collectionIsCanonicalTombstoneAt,
   collectionLiveForGrant,
+  deleteRevokingPublicLinks,
   grantCascadeRevoke,
   incomingShareCascadeDoc,
   isSafeFirestoreDocumentId,
@@ -1555,6 +1556,81 @@ describe('collection delete grant cascade', () => {
     expect(repair.collection).not.toHaveProperty('grantCascadeAt');
     expect(repairEvents).toEqual(['readCollection', 'writeCollection']);
     expect(repair.grants.get(viewerSub)).toMatchObject({ active: true });
+  });
+
+  describe('public link revoke (deleteRevokingPublicLinks)', () => {
+    function deleteWithPublicLink(mem: Mem, events: string[]) {
+      const links = { live: ['public-link'], revoked: [] as string[] };
+      const io = {
+        readLive: async () => {
+          events.push('readPublicLinks');
+          return [...links.live];
+        },
+        writeRevoked: (rows: string[]) => {
+          events.push('writePublicLinks');
+          links.revoked.push(...rows);
+          links.live = links.live.filter((row) => !rows.includes(row));
+        },
+      };
+      const run = (clientUpdatedAt: number) =>
+        orchestrateCollectionGrantDelete(
+          { ownerSub, collectionId, clientUpdatedAt },
+          {
+            now: () => 5_000,
+            runTransaction: (work) =>
+              deleteRevokingPublicLinks(io, () => work(deleteTx(mem, events))),
+          },
+        );
+      return { links, run };
+    }
+
+    it('revokes the live link when a live collection is deleted, reading it first', async () => {
+      const mem = emptyMem({ id: collectionId, updatedAt: 50 });
+      mem.grants.set(viewerSub, liveForward(viewerSub, 40));
+      mem.shares.set(viewerSub, liveShare(40));
+      const events: string[] = [];
+      const { links, run } = deleteWithPublicLink(mem, events);
+      const result = await run(100);
+      expect(result).toEqual({ applied: true, serverUpdatedAt: 5_000 });
+      expect(links).toEqual({ live: [], revoked: ['public-link'] });
+      expect(events[0]).toBe('readPublicLinks');
+      expect(events.at(-1)).toBe('writePublicLinks');
+      readsBeforeWrites(events);
+    });
+
+    it('revokes on a first tombstone with no stored collection state', async () => {
+      const mem = emptyMem(undefined);
+      const events: string[] = [];
+      const { links, run } = deleteWithPublicLink(mem, events);
+      expect(await run(100)).toEqual({ applied: true, serverUpdatedAt: 5_000 });
+      expect(links.revoked).toEqual(['public-link']);
+    });
+
+    it('leaves the link live when a stale delete loses to a newer live collection', async () => {
+      const current = { id: collectionId, updatedAt: 200 };
+      const mem = emptyMem(current);
+      const events: string[] = [];
+      const { links, run } = deleteWithPublicLink(mem, events);
+      expect(await run(100)).toEqual({ applied: false, current });
+      expect(links).toEqual({ live: ['public-link'], revoked: [] });
+      expect(events).not.toContain('writePublicLinks');
+    });
+
+    it('writes nothing for a heal that does not apply: the first delete already revoked', async () => {
+      const stored = {
+        id: collectionId,
+        updatedAt: 100,
+        deletedAt: 100,
+        serverUpdatedAt: 80,
+        grantCascadeAt: 900,
+      };
+      const mem = emptyMem(stored);
+      const events: string[] = [];
+      const { links, run } = deleteWithPublicLink(mem, events);
+      expect(await run(40)).toEqual({ applied: false, current: stored });
+      expect(events).not.toContain('writePublicLinks');
+      expect(links.revoked).toEqual([]);
+    });
   });
 
   it('does not revive an old share on undelete, and a later grant add can', async () => {

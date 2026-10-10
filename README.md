@@ -2,8 +2,8 @@
 
 A personal, allowlisted recipe book that runs as an installed PWA on a phone.
 It holds a readable recipe view, a cooking assistant attached to that recipe,
-and one-tap import of recipes from a URL, pasted text, or photos of
-handwritten notes.
+one-tap import of recipes from a URL, pasted text, or photos of handwritten
+notes, and a Create mode that writes a recipe from an idea you type.
 
 Live at <https://sous.kyrylo.lol>.
 
@@ -63,13 +63,15 @@ return **401** by design — that deployment has no session cookie.
 
 ## Stack
 
-- Vite 6 + React 19 + TypeScript 5.8, React Router 7
+- Vite 8 + React 19 + TypeScript 5.9, React Router 7
 - Tailwind CSS v4 through `@tailwindcss/vite` — there is no `tailwind.config.js`
 - In-memory library after pull; Firestore/GCS via `server/`
 - `google-auth-library`, `@google-cloud/firestore`, and `@google-cloud/storage`
-  on the Node server; OAuth, sync, and photos live in `server/`. The two
-  `POST(req: Request)` handlers in `api/` call Gemini via `@google/genai` and
-  cannot import siblings on Vercel, so new HTTP routes belong in `server/`.
+  on the Node server; OAuth, sync, photos, and import live in `server/`.
+  `api/chat.ts` is the one live `POST(req: Request)` handler in `api/`: it
+  calls Gemini via `@google/genai` and cannot import siblings on Vercel, so
+  new HTTP routes belong in `server/`. `api/import.ts` is a Vercel-only stub
+  that always returns 401; Cloud Run serves `/api/import` from `server/`.
 - `scripts/server.ts` mounts `server/` routes plus the `api/` handlers in the
   Cloud Run container; Vercel still runs only the `api/` functions.
 - `vite-plugin-pwa` for the service worker and web manifest
@@ -142,20 +144,26 @@ Opt-outs: set `FIRESTORE_EMULATOR_HOST` to use the emulator instead of
 Firestore, or leave `PHOTO_BUCKET` unset in `.env.local` to keep photo upload
 off (`/api/photos` returns 503 until the bucket is set).
 
-### Local development
+### Test mode
 
-Local `npm run dev:api` talks to **real** Firestore and the photo bucket by
-default (same Google account ⇒ same `sub` as production — experiments mutate
-live data). Set up ADC once:
+To work signed in without touching production, run test mode: the app
+against a seeded Firestore emulator, with fake personas. The full guide
+(setup, personas, options, scripting, troubleshooting) is
+[testing/README.md](testing/README.md). It needs Java for the emulator.
 
 ```bash
-gcloud auth application-default login
-gcloud auth application-default set-quota-project cooking-assistant-508423
+gcloud emulators firestore start --host-port=127.0.0.1:8085
 ```
 
-Opt-outs: set `FIRESTORE_EMULATOR_HOST` to use the emulator instead of
-Firestore, or leave `PHOTO_BUCKET` unset in `.env.local` to keep photo upload
-off (`/api/photos` returns 503 and outbox rows stay until the bucket is set).
+```bash
+npm run dev:test
+```
+
+It looks for the emulator at `127.0.0.1:8085`; set `FIRESTORE_EMULATOR_HOST`
+to another loopback `host:port` to change that. Then run `npm run dev` and
+open `http://localhost:5173/__test/` to sign in as a persona. Each start
+reseeds the emulator; add `-- --keep` to keep its data. Google sign-in,
+photos, and email are off; model routes work when `GEMINI_API_KEY` is set.
 
 ## Commands
 
@@ -163,6 +171,7 @@ off (`/api/photos` returns 503 and outbox rows stay until the bucket is set).
 | --- | --- |
 | `npm run dev` | Vite dev server on 5173, proxying `/api` to 3001 |
 | `npm run dev:api` | API listener on 3001; needs `.env.local` and Node ≥ 22.18 |
+| `npm run dev:test` | Test mode on 3001 instead of `dev:api`: seeded emulator, fake personas at `/__test/` |
 | `npm run build` | `tsc -b` over the app/node/api tsconfigs, then `vite build` into `dist/` |
 | `npm run preview` | Serves the built `dist/` on 4173, for checking the PWA build |
 | `npm test` | Vitest once over `src/` and `server/` |
@@ -173,41 +182,6 @@ API on `PORT` (8080 by default). That is what the container runs.
 
 `npm run build` type-checks everything, including `api/`, `server/`, and
 `scripts/`, which the running dev servers do not — run it before deploying.
-
-## The Chrome extension
-
-[`extension/`](extension) is an unpacked MV3 extension that imports the recipe
-page you are looking at, straight into your library — one button, no review
-step. It is plain JavaScript with no build step, so nothing in `npm run build`
-or the container image touches it.
-
-**Load it**
-
-1. `chrome://extensions` → turn on **Developer mode** → **Load unpacked** →
-   pick the `extension/` directory.
-2. Sign in to Sous in that browser profile.
-3. Open a recipe page, click the toolbar icon, click **Import to Sous**.
-
-It posts to `POST /api/extension/import`, which extracts with Gemini and writes
-the recipe to Firestore under your account; your devices pick it up on their
-next sync, and the popup links straight to it. **That route has to be deployed
-for the production origin to work** — against a local checkout the extension
-talks to `http://localhost:5173`, which needs both `npm run dev` and
-`npm run dev:api` running.
-
-It tries `localhost` before production and only falls through to the next
-origin when the connection is refused, so a local run never posts your test
-imports into the real library.
-
-| Permission | Why |
-| --- | --- |
-| `cookies` | Reads the `sous_session` cookie for the two Sous origins and sends it as `X-Sous-Session`. The cookie is `SameSite=Lax`, so relying on the browser to attach it to an extension request would be relying on a browser implementation detail. |
-| `activeTab` + `scripting` | Grabs the rendered HTML of the tab you invoked it on, which is what makes it work on sites the server cannot fetch. No `<all_urls>`: access is granted per invocation. |
-| `storage` | Keeps per-tab import state in `chrome.storage.session`, so closing the popup mid-import does not lose the run. |
-| `host_permissions` | `https://sous.kyrylo.lol/*` and `http://localhost/*` — the localhost pattern is port-wide because cookies are not port-scoped and `chrome.cookies.get` has to match it. |
-
-The extension sends the page's HTML to the server, which forwards a trimmed
-version to Gemini, exactly as pasting the page into the import screen would.
 
 ## The Chrome extension
 
@@ -254,7 +228,7 @@ the full map).
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | yes | Passed to `new GoogleGenAI({ apiKey })` in the Gemini handlers (chat, import, and Ask dictation). Use a key from a **paid-tier** AI Studio project: free-tier content may be used to improve Google's products, and import sends photos of personal notes. |
+| `GEMINI_API_KEY` | yes | Passed to `new GoogleGenAI({ apiKey })` in the Gemini handlers (chat, import, and Ask dictation). Use a key from a **paid-tier** AI Studio project: free-tier content may be used to improve Google's products, and import sends photos of personal notes. In `.env.local`, use a separate dev key from its own project so local runs and evals don't use production's quota; production's key lives only on the Cloud Run service. |
 | `AUTH_GOOGLE_ID` | yes | OAuth 2.0 Web client id. |
 | `AUTH_GOOGLE_SECRET` | yes | OAuth client secret. |
 | `SESSION_SECRET` | yes | HMAC key for the `sous_session` cookie. **Do not rotate casually** — every device is signed out if it changes. |
@@ -265,9 +239,9 @@ the full map).
 | `MAIL_FROM` | yes (prod) | Resend sender for the owner's access-request notifications and the approval email to requesters. Must be on a domain verified in Resend. The sandbox `onboarding@resend.dev` only reaches the Resend account's own inbox, so approval emails are skipped (and logged) while it is set. |
 | `OWNER_NOTIFY_EMAIL` | yes (prod) | Inbox that receives access-request notifications. |
 | `RESEND_API_KEY` | no | Resend API key. Unset ⇒ no notification email; requests still land in `/admin`. |
-| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, and Ask dictation). Defaults to `gemini-3.7-flash`. A bare `CHAT_MODEL=` is read as `''` by `--env-file`, which defeats the default — comment the line out instead. |
-| `TRANSLATE_PROVIDER` | no | Recipe translation provider. Defaults to `gemini`, the only accepted value. Any other value fails closed (`503`, code `translate-provider-unavailable`). A bare `TRANSLATE_PROVIDER=` is read as `''` and keeps the default — comment the line out instead. |
-| `TRANSLATE_MODEL` | no | Gemini model for recipe translation. Defaults to `gemini-3.5-flash-lite`. A bare `TRANSLATE_MODEL=` is read as `''` and keeps the default — comment the line out instead. |
+| `CHAT_MODEL` | no | Model id for the Gemini endpoints (chat, import, Ask dictation, and the library assistant). Defaults to `gemini-3.8-flash`. A blank value uses the default. |
+| `TRANSLATE_PROVIDER` | no | Recipe translation provider. Defaults to `gemini`, the only accepted value. Any other value fails closed (`503`, code `translate-provider-unavailable`). A blank value uses the default. |
+| `TRANSLATE_MODEL` | no | Gemini model for recipe translation. Defaults to `gemini-3.5-flash-lite`. A blank value uses the default. |
 
 No `VITE_`-prefixed variable exists anywhere in the app, and none should. Vite
 inlines `VITE_*` values into the client bundle, so prefixing the Gemini key
@@ -354,7 +328,7 @@ is untouched. Chat and import there return 401.
 api/chat.ts               streaming Gemini proxy + the update_recipe tool
 api/import.ts             Vercel-only stub; always 401
 server/recipeImport.ts    import pipeline: page fetch, JSON-LD/region extraction, Gemini, cleanup
-server/importRoute.ts     POST /api/import: URL, pasted text, or up to 4 photos in, recipe draft out
+server/importRoute.ts     POST /api/import: URL, pasted text, up to 4 photos, or an idea to write from in, recipe draft out
 extension/                Chrome extension: import the page you are reading
 server/stt.ts             Ask dictation: raw audio in, `{ text }` out via Gemini
 server/auth.ts            Google OAuth and session cookie
@@ -433,20 +407,48 @@ their client push it back on the next sync.
    denies access immediately.
 2. Wait at least 60 seconds and confirm denial: their `/api/auth/session` must
    return `user: null` and sync must **401** before you delete anything else.
-3. Delete `members/{sub}` if you only revoked in step 1 (a revoked row is
-   still stored personal data).
-4. Recursively delete the `users/{sub}` subtree. The console does **not**
-   delete subcollections when you delete a parent document; use Firestore
-   `recursiveDelete`:
+3. Find the account's `sub` if you don't have it:
+   `node --env-file=.env.local scripts/import-audit.ts <email>` prints it.
+4. Delete everything in Firestore with one script. Dry run first; it prints
+   what each step would change, as counts only:
 
    ```bash
-   node -e "const {Firestore}=require('@google-cloud/firestore');const db=new Firestore({projectId:'cooking-assistant-508423'});db.recursiveDelete(db.doc('users/'+process.argv[1])).then(()=>console.log('deleted'),(e)=>{console.error(e.message);process.exit(1)})" <SUB>
+   node --env-file=.env.local scripts/delete-account-data.ts <SUB>
+   node --env-file=.env.local scripts/delete-account-data.ts <SUB> --apply
    ```
 
-   Requires Application Default Credentials with quota project
+   `--apply` refuses while `members/{sub}` is still active or any email
+   stored for them (profile, membership, access request) is in
+   `ALLOWED_EMAILS`, read from `.env.local`, which must match the deployed
+   allowlist. When no email is stored for the `sub` at all, it refuses until
+   you check the deployed allowlist by hand and add `--not-owner`. It runs
+   each step in `ACCOUNT_DELETION_ORDER` (`server/accountDeletion.ts`), reads
+   each one back, and exits non-zero if anything remains:
+   - **Sharing as a viewer:** each forward grant in an owner's tree is
+     tombstoned through the same transaction as a revoke or leave (the
+     tombstone drops their email), and one that transaction cannot read is
+     overwritten with a clean tombstone. Only then is `incomingShares/{sub}`
+     deleted. A share row that names no owner or collection, even in its id,
+     stops the step before anything changes.
+   - **Sharing as an owner:** every viewer's incoming share pointing at them
+     is tombstoned without their email. This reads the grants in their own
+     tree, which is why `users` runs last.
+   - `collectionLinks` and `publicLinks` they own, `importFeedback` and
+     `featureRequests` they sent, and MCP `mcpAuthCodes` and `mcpTokens` are
+     deleted.
+   - **Invites:** ones they minted are deleted; on one they redeemed from
+     someone else, `redeemedBy` is removed, and the invite still counts
+     toward its minter's limit.
+   - `accessRequests/{sub}` and `members/{sub}` are deleted, then the whole
+     `users/{sub}` tree with `recursiveDelete`, including `mcpGrants` and
+     cached translations.
+
+   Their opaque `sub` stays where it is part of someone else's record:
+   `approvedBy` and `decidedBy`, sharing tombstones, and other viewers' own
+   chat and cook rows. Their email, name, and content do not. Requires
+   Application Default Credentials with quota project
    `cooking-assistant-508423` (see [Local development](#local-development)).
-5. Delete `accessRequests/{sub}` (single document).
-6. Remove photo objects (Firestore does not touch GCS):
+5. Remove photo objects (Firestore does not touch GCS):
 
    ```bash
    gcloud storage rm --recursive gs://sous-photos-cooking-assistant-508423/users/<SUB>/ --project=cooking-assistant-508423
@@ -456,7 +458,8 @@ their client push it back on the next sync.
    `C:\Users\chern\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd`
    instead of `gcloud`.
 
-7. Verify all four are gone: `members/{sub}`, `accessRequests/{sub}`, the
-   `users/{sub}` subtree, and the bucket prefix under `users/<SUB>/`.
+6. Verify: a dry run of step 4 prints 0 on every line, and the bucket prefix
+   under `users/<SUB>/` is empty. Server logs are not deleted; Cloud Logging
+   drops them after 30 days, as `/privacy` says.
 
 There is **no automated purge job** for access-request or membership records.

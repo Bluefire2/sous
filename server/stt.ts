@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { admitLlm, llmRefusal, meteredAi } from './llmBudget.ts';
 import { DEFAULT_LOCALE, toSupportedLocale, type Locale } from './lang.ts';
 import {
   membershipUnauthorized,
@@ -152,7 +153,9 @@ async function readCappedBytes(
     }
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
+      // Released, not cancelled: the dispatcher drops the rest so the 413
+      // reaches the client (see readBoundedText in membership.ts).
+      reader.releaseLock();
       return { kind: 'too-large' };
     }
     chunks.push(value);
@@ -212,8 +215,12 @@ export async function sttPost(req: Request): Promise<Response> {
 
   const title = recipeTitleFromHeaders(req.headers);
 
-  const model = process.env.CHAT_MODEL || 'gemini-3.7-flash';
-  const ai = new GoogleGenAI({ apiKey });
+  const admission = await admitLlm(access.sub, 'stt');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  const model = process.env.CHAT_MODEL || 'gemini-3.8-flash';
+  const ai = meteredAi(new GoogleGenAI({ apiKey }), admission.meter);
   try {
     const result = await ai.models.generateContent({
       model,
@@ -250,5 +257,7 @@ export async function sttPost(req: Request): Promise<Response> {
     });
   } catch {
     return jsonError('stt-failed', 'Dictation failed — try again.', 502);
+  } finally {
+    admission.meter.release();
   }
 }

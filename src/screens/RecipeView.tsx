@@ -1,14 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { languageName, sameLanguage, useLocale, useT } from '../i18n';
-import { unitLabel } from '../i18n/unitLabel';
+import { StoredPhotoImage } from '../components/BlobImage';
 import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
+import ImportWarningBanner from '../components/ImportWarningBanner';
+import ShareRecipeButton from '../components/ShareRecipeButton';
+import ShareRecipeControl from '../components/ShareRecipeSheet';
+import VariantLinks from '../components/VariantLinks';
+import {
+  askButtonClass,
+  GallerySection,
+  IngredientsSection,
+  NotesSection,
+  recipePageClass,
+  RecipeTimes,
+  SourceCredit,
+  sourceLink,
+  StepsSection,
+  translateChipClass,
+} from '../components/RecipeBody';
+import { libraryHref, libraryPathFromState } from '../lib/collectionHref';
 import { useCookLogs } from '../lib/cookLogStore';
 import { SpinnerIcon, TranslateIcon } from '../lib/icons';
-import { usePhotoUrl } from '../lib/photoStore';
-import { useRecipe, useRecipeAccess, useRecipeSharedBy } from '../lib/recipeStore';
-import { formatQuantity } from '../lib/quantity';
+import {
+  useRecipe,
+  useRecipeAccess,
+  useRecipeCollectionId,
+  useRecipeSharedBy,
+} from '../lib/recipeStore';
 import { sync } from '../lib/syncEngine';
 import { translateChipMode, type TranslateChipMode } from '../lib/translateChip';
 import {
@@ -19,44 +39,10 @@ import {
   translateRecipe,
 } from '../lib/translationStore';
 import { backLink, ghostBtn, secondaryBtn } from '../lib/uiClasses';
+import { useRecipeTextSize } from '../lib/useDeviceSettings';
 import { useWakeLock } from '../lib/useWakeLock';
 import { useCookState } from '../lib/useCookState';
-import type { Ingredient } from '../lib/types';
 import type { Locale } from '../i18n';
-
-/**
- * The source is whatever the user pasted on import, so it is only ever linked
- * after it turns out to be an ordinary web address.
- */
-function sourceLink(url: string | undefined): URL | undefined {
-  if (url === undefined) return undefined;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      ? parsed
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function ingredientLabel(
-  ing: Ingredient,
-  scale: number,
-  locale: Locale,
-  labelUnit: (token: string) => string,
-): string {
-  const parts = [
-    ing.quantity !== undefined ? formatQuantity(ing.quantity * scale, locale) : null,
-    ing.unit ? labelUnit(ing.unit) : null,
-    ing.item,
-  ].filter(Boolean);
-  const base = parts.join(' ');
-  return ing.note ? `${base} (${ing.note})` : base;
-}
-
-const translateChipClass =
-  'inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-600/70 bg-accent-soft px-3 py-1.5 text-left text-sm font-medium text-ink shadow-sm hover:enabled:opacity-90 active:enabled:opacity-80 disabled:opacity-60';
 
 function TranslateChip({
   mode,
@@ -89,50 +75,10 @@ function TranslateChip({
 }
 
 function GalleryImage({ photoId }: { photoId: string }) {
-  const url = usePhotoUrl(photoId);
   return (
     <div className="overflow-hidden rounded-xl bg-surface-muted shadow-sm">
-      {url && (
-        <img src={url} alt="" className="aspect-square w-full object-cover" />
-      )}
+      <StoredPhotoImage photoId={photoId} alt="" className="aspect-square w-full object-cover" />
     </div>
-  );
-}
-
-function SourceCredit({ source }: { source: URL }) {
-  const t = useT();
-  const label = t('recipe.source', { source: source.hostname });
-  const at = label.indexOf(source.hostname);
-  const link = (
-    <a
-      href={source.href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="underline hover:text-ink"
-    >
-      {source.hostname}
-    </a>
-  );
-  if (at < 0) {
-    return (
-      <p className="mt-6 text-sm text-ink-muted">
-        <a
-          href={source.href}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="underline hover:text-ink"
-        >
-          {label}
-        </a>
-      </p>
-    );
-  }
-  return (
-    <p className="mt-6 text-sm text-ink-muted">
-      {label.slice(0, at)}
-      {link}
-      {label.slice(at + source.hostname.length)}
-    </p>
   );
 }
 
@@ -143,8 +89,12 @@ export default function RecipeView() {
   const recipe = useRecipe(id);
   const access = useRecipeAccess(id);
   const sharedByEmail = useRecipeSharedBy(id);
-  const photoUrl = usePhotoUrl(recipe?.photoId);
+  const collectionId = useRecipeCollectionId(id);
+  // Back to the list the recipe was opened from; otherwise the one that files it.
+  const location = useLocation();
+  const libraryBack = libraryPathFromState(location.state) ?? libraryHref(collectionId);
   useWakeLock();
+  const textSize = useRecipeTextSize();
 
   const {
     servings,
@@ -223,8 +173,23 @@ export default function RecipeView() {
       : canEdit
         ? t('recipe.sharedEdit')
         : t('recipe.sharedView');
-  const scale = servings / recipe.servings;
   const source = sourceLink(recipe.sourceUrl);
+  // Where a copy saved from someone's recipe link came from (`docs/plans/recipe-links.md`).
+  const savedFrom = recipe.savedFrom;
+  const savedOn =
+    savedFrom === undefined
+      ? undefined
+      : new Date(savedFrom.savedAt).toLocaleDateString(locale, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+  const savedFromLine =
+    savedFrom === undefined || savedOn === undefined
+      ? undefined
+      : savedFrom.name !== undefined
+        ? t('recipe.savedFrom', { name: savedFrom.name, date: savedOn })
+        : t('recipe.savedFromLink', { date: savedOn });
   // A translation must not flow into chat or save, or it would overwrite the original (principle 1).
   const displayRecipe = displayBody ?? recipe;
   const effective = effectiveRecipeLang(recipe);
@@ -299,49 +264,43 @@ export default function RecipeView() {
               : '';
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-24">
+    <div className={recipePageClass}>
       <header className="py-4">
-        <div className="flex items-center justify-between">
-          <Link to="/" className={backLink}>
+        <div className="flex items-center justify-between print:hidden">
+          <Link to={libraryBack} className={backLink}>
             &larr; {t('common.library')}
           </Link>
-          {canEdit && (
-            <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
-              {t('common.edit')}
-            </Link>
-          )}
+          <div className="flex items-center gap-1">
+            {/* The stored recipe: a translation is a view and is never shared (i18n principle 1). */}
+            {/* A recipe link is the owner's; a shared recipe shares as text only. */}
+            {shared ? <ShareRecipeButton recipe={recipe} /> : <ShareRecipeControl recipe={recipe} />}
+            {canEdit && (
+              <Link to={`/recipe/${recipe.id}/edit`} className={ghostBtn}>
+                {t('common.edit')}
+              </Link>
+            )}
+          </div>
         </div>
         {sharedLine !== undefined && (
-          <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted">
+          <p className="mt-2 rounded-xl bg-surface-muted px-3 py-2 text-sm break-words text-ink-muted print:hidden">
             {sharedLine}
           </p>
         )}
-        {photoUrl && (
-          <img
-            src={photoUrl}
-            alt=""
-            className="mt-3 h-52 w-full rounded-2xl object-cover shadow-sm"
-          />
+        {savedFromLine !== undefined && (
+          <p className="mt-2 text-sm break-words text-ink-muted">{savedFromLine}</p>
         )}
+        <StoredPhotoImage
+          photoId={recipe.photoId}
+          alt=""
+          className="mt-3 h-52 w-full rounded-2xl object-cover shadow-sm"
+        />
         <h1 className="mt-2 text-2xl font-bold">{displayRecipe.title}</h1>
         {displayRecipe.description && (
           <p className="mt-1 text-ink-muted">{displayRecipe.description}</p>
         )}
         {(hasTime || mode !== 'hidden') && (
           <div className="mt-2 text-sm">
-            {hasTime && (
-              <p className="flex flex-wrap items-center gap-x-1.5 text-ink-muted">
-                {recipe.prepMinutes != null && (
-                  <span>{t('recipe.prepMinutes', { count: recipe.prepMinutes })}</span>
-                )}
-                {recipe.prepMinutes != null && recipe.cookMinutes != null && (
-                  <span aria-hidden="true">·</span>
-                )}
-                {recipe.cookMinutes != null && (
-                  <span>{t('recipe.cookMinutes', { count: recipe.cookMinutes })}</span>
-                )}
-              </p>
-            )}
+            {hasTime && <RecipeTimes recipe={recipe} />}
             {mode !== 'hidden' && (
               <div className={hasTime ? 'mt-2' : undefined}>
                 <TranslateChip
@@ -356,170 +315,61 @@ export default function RecipeView() {
         )}
         {showAlready && (
           <p
-            className="mt-3 rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm text-ink"
+            className="mt-3 rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm text-ink print:hidden"
             role="status"
           >
             {t('recipe.alreadyInLanguage')}
           </p>
         )}
+        <VariantLinks recipeId={recipe.id} />
+        <ImportWarningBanner
+          recipe={recipe}
+          sections={displayRecipe.ingredientSections}
+          source={source}
+          canEdit={canEdit}
+        />
       </header>
 
-      <section>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{t('common.ingredients')}</h2>
-          <div className="flex items-center gap-1 rounded-full border border-line bg-surface">
-            <button
-              type="button"
-              aria-label={t('recipe.fewerServings')}
-              disabled={servings <= 1}
-              onClick={() => setServings(servings - 1)}
-              className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted disabled:opacity-30"
+      <IngredientsSection
+        recipe={recipe}
+        displayRecipe={displayRecipe}
+        servings={servings}
+        onServings={setServings}
+        checkedKeys={checkedKeys}
+        onToggle={toggleChecked}
+        textSize={textSize}
+      />
+
+      <StepsSection
+        recipe={recipe}
+        displayRecipe={displayRecipe}
+        currentStep={currentStep}
+        onStep={setCurrentStep}
+        textSize={textSize}
+        afterDone={
+          !shared && (
+            <Link
+              to={`/recipe/${recipe.id}/cooks/new`}
+              className={`${secondaryBtn} mt-3 inline-block px-5 py-2`}
             >
-              −
-            </button>
-            <span className="min-w-16 text-center text-sm">
-              {t('common.servingsCount', { count: servings })}
-            </span>
-            <button
-              type="button"
-              aria-label={t('recipe.moreServings')}
-              onClick={() => setServings(servings + 1)}
-              className="h-9 w-9 rounded-full text-lg text-ink-muted hover:bg-surface-muted active:bg-surface-muted"
-            >
-              +
-            </button>
-          </div>
-        </div>
+              {t('recipe.logThisCook')}
+            </Link>
+          )
+        }
+      />
 
-        {recipe.ingredientSections.map((section, si) => {
-          const translatedSection = displayRecipe.ingredientSections[si];
-          const sectionName = (translatedSection ?? section).name;
-          return (
-            <div key={si} className="mt-2">
-              {sectionName && (
-                <h3 className="mt-3 text-sm font-medium tracking-wide text-ink-muted uppercase">
-                  {sectionName}
-                </h3>
-              )}
-              <ul className="mt-1 flex flex-col gap-1.5">
-                {section.items.map((ing, ii) => {
-                  // Checkoff identity is the stored row index, so translated text cannot uncheck it.
-                  const key = `${si}-${ii}`;
-                  const isChecked = checkedKeys.has(key);
-                  const translatedItem = translatedSection?.items[ii];
-                  return (
-                    <li key={key}>
-                      <button
-                        type="button"
-                        onClick={() => toggleChecked(key)}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left shadow-sm transition-colors ${
-                          isChecked
-                            ? 'bg-surface-muted text-ink-subtle hover:bg-surface active:bg-surface'
-                            : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
-                        }`}
-                      >
-                        <span
-                          aria-hidden
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
-                            isChecked
-                              ? 'border-line-strong bg-ink-subtle text-page'
-                              : 'border-line-strong'
-                          }`}
-                        >
-                          {isChecked ? '✓' : ''}
-                        </span>
-                        <span>
-                          <span className={isChecked ? 'line-through' : ''}>
-                            {ingredientLabel(
-                              { ...(translatedItem ?? ing), quantity: ing.quantity },
-                              scale,
-                              locale,
-                              (token) => unitLabel(token, t),
-                            )}
-                          </span>
-                          {ing.optional === true && (
-                            <span className="ml-2 inline-block rounded-full border border-line px-2 py-0.5 align-middle text-xs leading-none text-ink-muted">
-                              {t('recipe.optionalIngredient')}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-      </section>
-
-      <section className="mt-6">
-        <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
-        <ol className="mt-2 flex flex-col gap-2">
-          {recipe.steps.map((step, i) => {
-            const isCurrent = i === currentStep;
-            const isDone = i < currentStep;
-            const text = displayRecipe.steps[i]?.text ?? step.text;
-            return (
-              <li key={i}>
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(i === currentStep ? i + 1 : i)}
-                  className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors ${
-                    isCurrent
-                      ? 'bg-surface ring-2 ring-amber-400'
-                      : isDone
-                        ? 'bg-surface-muted text-ink-subtle'
-                        : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
-                  }`}
-                >
-                  <span
-                    className={`font-semibold ${
-                      isCurrent ? 'text-amber-500' : 'text-ink-subtle'
-                    }`}
-                  >
-                    {isDone ? '✓' : i + 1}
-                  </span>
-                  <span className={isCurrent ? 'text-lg' : ''}>{text}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-        {currentStep >= recipe.steps.length && (
-          <div className="mt-4 text-center">
-            <p className="font-medium text-amber-600">{t('recipe.doneEnjoy')}</p>
-            {!shared && (
-              <Link
-                to={`/recipe/${recipe.id}/cooks/new`}
-                className={`${secondaryBtn} mt-3 inline-block px-5 py-2`}
-              >
-                {t('recipe.logThisCook')}
-              </Link>
-            )}
-          </div>
-        )}
-      </section>
-
-      {displayRecipe.notes && (
-        <section className="mt-6">
-          <h2 className="text-lg font-semibold">{t('common.notes')}</h2>
-          <p className="mt-2 rounded-lg bg-surface px-3 py-3 whitespace-pre-line text-ink-muted shadow-sm">
-            {displayRecipe.notes}
-          </p>
-        </section>
-      )}
+      {displayRecipe.notes && <NotesSection notes={displayRecipe.notes} />}
 
       {recipe.galleryPhotoIds && recipe.galleryPhotoIds.length > 0 && (
-        <section className="mt-6 grid grid-cols-2 gap-2">
+        <GallerySection>
           {recipe.galleryPhotoIds.map((id) => (
             <GalleryImage key={id} photoId={id} />
           ))}
-        </section>
+        </GallerySection>
       )}
 
       {!shared && (
-        <section className="mt-6">
+        <section className="mt-6 print:hidden">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">
               {t('recipe.yourCooks')}
@@ -550,7 +400,7 @@ export default function RecipeView() {
       <button
         type="button"
         onClick={() => setChatOpen(true)}
-        className={`fixed right-5 bottom-8 z-10 flex h-14 items-center gap-2 rounded-full bg-amber-500 px-5 font-medium text-white shadow-lg hover:bg-amber-600 active:bg-amber-600${chatOpen ? ' invisible' : ''}`}
+        className={`${askButtonClass}${chatOpen ? ' invisible' : ''}`}
       >
         {t('recipe.ask')}
       </button>

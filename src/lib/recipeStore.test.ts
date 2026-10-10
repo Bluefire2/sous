@@ -13,6 +13,8 @@ const required: Recipe = {
   tags: ['lunch'],
 };
 
+const ORIGINAL = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
 describe('compactRecipe', () => {
   it('omits optional keys that are undefined', () => {
     const compacted = compactRecipe({
@@ -25,6 +27,9 @@ describe('compactRecipe', () => {
       photoId: undefined,
       galleryPhotoIds: undefined,
       lang: undefined,
+      importCheck: undefined,
+      variantOf: undefined,
+      savedFrom: undefined,
     });
 
     expect(compacted).toEqual(required);
@@ -53,6 +58,9 @@ describe('compactRecipe', () => {
       photoId: 'p1',
       galleryPhotoIds: ['g1', 'g2'],
       lang: 'it',
+      importCheck: { at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] },
+      variantOf: ORIGINAL,
+      savedFrom: { name: 'Ada', savedAt: 4 },
     });
 
     expect(compacted.description).toBe('Hot.');
@@ -63,6 +71,26 @@ describe('compactRecipe', () => {
     expect(compacted.photoId).toBe('p1');
     expect(compacted.galleryPhotoIds).toEqual(['g1', 'g2']);
     expect(compacted.lang).toBe('it');
+    expect(compacted.importCheck).toEqual({ at: 3, warnings: [{ code: 'TOO_FEW_STEPS' }] });
+    expect(compacted.variantOf).toBe(ORIGINAL);
+    expect(compacted.savedFrom).toEqual({ name: 'Ada', savedAt: 4 });
+  });
+
+  it('drops a malformed savedFrom without dropping the recipe', () => {
+    expect(
+      compactRecipe({ ...required, savedFrom: { savedAt: 'x' } as unknown as Recipe['savedFrom'] }),
+    ).toEqual(required);
+  });
+
+  it('drops a malformed variantOf without dropping the recipe', () => {
+    expect(compactRecipe({ ...required, variantOf: 'not-a-recipe-id' })).toEqual(required);
+    const own = { ...required, id: ORIGINAL };
+    expect(compactRecipe({ ...own, variantOf: ORIGINAL })).toEqual(own);
+  });
+
+  it('drops a malformed importCheck without dropping the recipe', () => {
+    const malformed = { at: 'later', warnings: [] } as unknown as Recipe['importCheck'];
+    expect(compactRecipe({ ...required, importCheck: malformed })).toEqual(required);
   });
 
   it('stores lang only when normalizeLang yields a tag', () => {

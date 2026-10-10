@@ -98,6 +98,15 @@ export function languageName(tag: string, uiLocale: Locale): string | undefined 
   }
 }
 
+/**
+ * A UI language's own name as a standalone label, first letter capitalized
+ * ("Українська", "Русский"). `Intl.DisplayNames` gives the mid-sentence form.
+ */
+export function localeDisplayName(locale: Locale): string {
+  const name = languageName(locale, locale) ?? locale;
+  return name.charAt(0).toLocaleUpperCase(locale) + name.slice(1);
+}
+
 function getLocaleSnapshot(): Locale {
   return settings.getLocale();
 }

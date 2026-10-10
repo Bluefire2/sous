@@ -14,8 +14,7 @@ import {
   type BackupGraphIds,
   type BackupImportEntities,
 } from './backupImportRemap';
-import type { ChatMessage, Collection, Recipe } from './types';
-import type { CookStateRow } from './useCookState';
+import type { ChatMessage, Collection, CookStateRow, Recipe } from './types';
 
 const ALICE = 'alice-sub';
 const CAROL = 'carol-sub';
@@ -213,6 +212,29 @@ describe('remapBackupImport', () => {
     expect(newChat.recipeId).toBe(newRecipe.id);
     expect(newChat.photoIds).toEqual([newPhoto]);
     expect(newCook.recipeId).toBe(newRecipe.id);
+  });
+
+  it('clone mode remaps variantOf through the recipe map and keeps an id outside it', () => {
+    const variantId = '12121212-1212-4121-8121-121212121212';
+    const sharedVariantId = '13131313-1313-4131-8131-131313131313';
+    const sharedOriginal = '14141414-1414-4141-8141-141414141414';
+    const base = entities().recipes[0]!;
+    const input = entities({
+      recipes: [
+        base,
+        { ...base, id: variantId, title: 'Spicy soup', variantOf: ALICE_RECIPE },
+        { ...base, id: sharedVariantId, title: 'Their soup', variantOf: sharedOriginal },
+      ],
+    });
+    // A shared original is never exported, so it must not join the graph.
+    expect(backupGraphIds(input).recipeIds.has(sharedOriginal)).toBe(false);
+
+    const out = remapBackupImport(input, 'clone', seqUuid());
+    const [original, variant, sharedVariant] = out.recipes;
+    expect(variant?.variantOf).toBe(original?.id);
+    expect(variant?.variantOf).not.toBe(ALICE_RECIPE);
+    expect(sharedVariant?.variantOf).toBe(sharedOriginal);
+    expect(original?.variantOf).toBeUndefined();
   });
 
   it('builds complete recipe and photo ID universes from entities and references', () => {

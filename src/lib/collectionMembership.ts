@@ -25,6 +25,31 @@ export function unfiledRecipes(
   return recipes.filter((recipe) => !claimed.has(recipe.id));
 }
 
+/**
+ * One pass over the recipes. `unfiled` is the Recipes row. Every named
+ * collection is present in `byCollection`, including ones with no recipes.
+ */
+export function recipeCounts(
+  recipes: readonly Recipe[],
+  collections: readonly Collection[],
+): { unfiled: number; byCollection: ReadonlyMap<string, number> } {
+  const membership = winningMembership(collections);
+  const byCollection = new Map<string, number>();
+  for (const collection of collections) {
+    byCollection.set(collection.id, 0);
+  }
+  let unfiled = 0;
+  for (const recipe of recipes) {
+    const collectionId = membership.get(recipe.id);
+    if (collectionId === undefined) {
+      unfiled += 1;
+      continue;
+    }
+    byCollection.set(collectionId, (byCollection.get(collectionId) ?? 0) + 1);
+  }
+  return { unfiled, byCollection };
+}
+
 export function recipesInCollection(
   recipes: readonly Recipe[],
   collection: Collection,

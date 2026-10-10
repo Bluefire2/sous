@@ -3,6 +3,7 @@ import {
   moveRecipe,
   moveRecipes,
   recipeIdsAfterMove,
+  recipeCounts,
   recipesInCollection,
   unfiledRecipes,
   winningMembership,
@@ -50,6 +51,19 @@ describe('winningMembership', () => {
 describe('unfiledRecipes', () => {
   it('returns recipes not claimed by any live named collection', () => {
     expect(unfiledRecipes([r1, r2, r3], [dinners]).map((r) => r.id)).toEqual(['r3']);
+  });
+});
+
+describe('recipeCounts', () => {
+  it('counts each recipe once, under the collection that wins it', () => {
+    const counts = recipeCounts([r1, r2, r3], [dinners, lunches]);
+    expect(counts.unfiled).toBe(unfiledRecipes([r1, r2, r3], [dinners, lunches]).length);
+    expect(counts.byCollection.get('c-b')).toBe(
+      recipesInCollection([r1, r2, r3], dinners, [dinners, lunches]).length,
+    );
+    expect(counts.byCollection.get('c-a')).toBe(
+      recipesInCollection([r1, r2, r3], lunches, [dinners, lunches]).length,
+    );
   });
 });
 

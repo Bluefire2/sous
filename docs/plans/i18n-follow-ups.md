@@ -167,5 +167,9 @@ changing anything.
      separate test account, deleted at the end of the run;
    - or keep it read-only and have the standalone suite
      (`npm run test:i18n`, plan milestone) run against seeded emulator data.
+
+   Test mode (`docs/plans/test-mode.md`) now provides the second option:
+   fake personas against a seeded emulator, with no production data in
+   reach. The standalone suite is expected to run on it.
 2. **Standalone suite.** Unchanged; see the plan's "Upcoming milestone:
    standalone i18n review suite".

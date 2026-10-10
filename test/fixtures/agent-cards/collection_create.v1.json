@@ -1,0 +1,63 @@
+{
+  "cases": [
+    {
+      "ok": true,
+      "args": { "name": "Soups" },
+      "expect": {
+        "name": "Soups",
+        "recipeIds": [],
+        "sources": [],
+        "preview": [],
+        "total": 0
+      }
+    },
+    {
+      "ok": true,
+      "args": { "name": "  Soups  ", "recipeIds": ["r1"] },
+      "expect": {
+        "name": "Soups",
+        "recipeIds": ["r1"],
+        "sources": [{ "id": "r1", "from": { "kind": "unfiled" } }],
+        "preview": [
+          {
+            "id": "r1",
+            "title": "Library title",
+            "from": { "kind": "unfiled" }
+          }
+        ],
+        "total": 1
+      }
+    },
+    {
+      "ok": true,
+      "args": { "name": "Stews", "recipeIds": ["r2", "r2"] },
+      "expect": {
+        "name": "Stews",
+        "recipeIds": ["r2"],
+        "sources": [{ "id": "r2", "from": { "kind": "collection", "name": "Weeknight" } }],
+        "preview": [
+          {
+            "id": "r2",
+            "title": "Second recipe",
+            "from": { "kind": "collection", "name": "Weeknight" }
+          }
+        ],
+        "total": 1
+      }
+    },
+    { "ok": false, "args": { "name": "Weeknight", "recipeIds": ["r1"] } },
+    { "ok": false, "args": { "name": "Soups", "recipeIds": ["missing"] } },
+    { "ok": false, "args": { "recipeIds": ["r1"] } },
+    {
+      "ok": true,
+      "args": { "name": "Soups", "recipeIds": [] },
+      "expect": {
+        "name": "Soups",
+        "recipeIds": [],
+        "sources": [],
+        "preview": [],
+        "total": 0
+      }
+    }
+  ]
+}

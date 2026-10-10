@@ -51,7 +51,7 @@
   </head>
   <body>
     <h1>Terms of use</h1>
-    <p class="muted">Last updated: 30 September 2026</p>
+    <p class="muted">Last updated: 8 October 2026</p>
 
     <h2>What Sous is</h2>
     <p>
@@ -70,7 +70,31 @@
       recipes and photos. An editor can also change the recipes' details (such
       as title, ingredients, steps, notes, servings, cooking times, and tags),
       but not their photos, and cannot delete them or change who has access.
-      Sharing does not create a household account.
+      Sharing does not create a household account. You can also make a named
+      collection public: anyone with its link can then read its recipes and
+      photos without an account, until you turn the link off. Visitors
+      without an account cannot use the cooking assistant or translation.
+      You can likewise turn on a link for one of your recipes: anyone with it
+      can read that recipe and its photos and see your Google display name,
+      and a member can save their own copy, which stays theirs after you
+      turn the link off or change or delete your recipe.
+      Only make public what you have the right to share.
+    </p>
+    <p>
+      You can connect an AI app, such as Claude, to your library. After you
+      allow it on Sous's consent page, it can search and read your own
+      recipes and, if you allowed editing, add and edit them and move them
+      between your collections, including into ones you share with other
+      members (it never adds recipes to a collection with a public link); it
+      cannot see
+      recipes shared with you, photos, or your cook log, and cannot delete
+      anything. The app's provider receives the recipe text the app reads or
+      writes, under that provider's terms. What a connected app does with
+      your recipes, and any edit it saves, is that app's doing, made with the
+      access you gave it. Disconnect it in Settings → Connected apps; signing
+      out does not disconnect it. Each request it makes and each step of
+      connecting it is logged for 30 days without recipe text, as the Privacy
+      policy's Server logs section describes.
     </p>
 
     <h2>Accuracy</h2>
@@ -93,21 +117,44 @@
       import is logged for 30 days with your account id and its outcome, plus
       the page address (without its query string) when it came from a link or
       the extension, so failed imports can be fixed; the Privacy policy's
-      Server logs section describes what Sous's logs hold. Use your own
+      Server logs section describes what Sous's logs hold. If an import goes
+      wrong you can choose to send an import report; it holds the link or the
+      text you pasted, the recipe the import extracted, and any note you add,
+      and it is deleted after about 180 days. Photos are never included. Use
+      your own
       judgement and check anything that matters.
+    </p>
+    <p>
+      A recipe Sous writes from an idea you type is made up by the model, not
+      copied from a tested source: check amounts, times, temperatures, and
+      food safety before you cook it. If you turn on Search the web, Gemini
+      may run Google searches for your idea, and the pages it used are shown
+      with the result together with Google's search suggestions. An import
+      report for such a recipe holds the idea you typed in place of pasted
+      text.
+    </p>
+    <p>
+      If you fill in Kitchen profile in Settings, it is sent to Gemini with
+      your questions on a recipe, your library assistant messages, and
+      recipes written from an idea, so the answers can take your allergies,
+      diet, and equipment into account. That is a request to the model, not a
+      guarantee: it can still miss an allergen, including one hidden in a
+      prepared ingredient. Always check a recipe for allergens yourself.
     </p>
 
     <h2>Acceptable use</h2>
     <p>
       Sous is for your own recipes and normal personal use. Do not try to break
-      or probe the service, and do not use it to generate abuse.
+      or probe the service, and do not use it to generate abuse. AI features
+      have a daily limit per account, far above normal use; once it is
+      reached they stop working until midnight UTC.
     </p>
 
     <h2>Ending it</h2>
     <p>
       You can stop at any time: sign out, clear this site's browser data on a
-      device, or revoke Sous's access from your Google account permissions
-      page. The UI language preference is kept in this browser's local storage
+      device, revoke Sous's access from your Google account permissions
+      page, or disconnect connected apps in Settings. The UI language preference is kept in this browser's local storage
       under <code>cook.locale</code>. To remove all data stored for your
       account, see the Privacy policy. The service may also change or stop at
       any time.

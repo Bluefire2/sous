@@ -5,9 +5,11 @@ import {
   isPhotoByteCountTooLarge,
   isPhotoContentLengthTooLarge,
   MAX_PHOTO_BYTES,
+  photoBytesFromResponse,
   photoUploadDecision,
   photoUploadStopsAtLiveReplay,
   planUploadIntent,
+  readCappedBytes,
 } from './photos.ts';
 
 describe('assertPhotoId', () => {
@@ -83,6 +85,77 @@ describe('photo body size predicates', () => {
   it('flags streamed byte counts over 2 MB', () => {
     expect(isPhotoByteCountTooLarge(MAX_PHOTO_BYTES)).toBe(false);
     expect(isPhotoByteCountTooLarge(MAX_PHOTO_BYTES + 1)).toBe(true);
+  });
+});
+
+describe('readCappedBytes', () => {
+  it('returns the body when it fits in the cap', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        controller.close();
+      },
+    });
+    const result = await readCappedBytes(body, 3);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect([...result.bytes]).toEqual([1, 2, 3]);
+    }
+  });
+
+  it('cancels a body that exceeds the cap', async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(1000));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const result = await readCappedBytes(body, 1500);
+    expect(result).toEqual({ ok: false, reason: 'too-large' });
+    expect(cancelled).toBe(true);
+    expect(pulls).toBe(2);
+  });
+});
+
+describe('photoBytesFromResponse', () => {
+  it('treats 404 as missing and other errors as failed', async () => {
+    expect(await photoBytesFromResponse(new Response(null, { status: 404 }), 10)).toEqual({
+      kind: 'missing',
+    });
+    expect(await photoBytesFromResponse(new Response('nope', { status: 503 }), 10)).toEqual({
+      kind: 'failed',
+      status: 503,
+    });
+  });
+
+  it('rejects a declared length over the cap without reading the body', async () => {
+    let pulled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled = true;
+        controller.enqueue(new Uint8Array([1]));
+      },
+    });
+    const response = new Response(body, {
+      status: 200,
+      headers: { 'Content-Length': String(MAX_PHOTO_BYTES + 1) },
+    });
+    expect(await photoBytesFromResponse(response, MAX_PHOTO_BYTES)).toEqual({ kind: 'too-large' });
+    expect(pulled).toBe(false);
+  });
+
+  it('returns bytes that fit', async () => {
+    const response = new Response(new Uint8Array([4, 5]), { status: 200 });
+    const result = await photoBytesFromResponse(response, MAX_PHOTO_BYTES);
+    expect(result.kind).toBe('bytes');
+    if (result.kind === 'bytes') {
+      expect([...result.bytes]).toEqual([4, 5]);
+    }
   });
 });
 

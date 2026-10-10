@@ -44,7 +44,7 @@ describe('routePaths', () => {
     expect(match('/recipe/new').ids).toEqual(['newRecipe']);
   });
 
-  it('sends /collections and other /collections/* paths to the redirects', () => {
+  it('matches /collections as the index and other /collections/* as the fallback', () => {
     expect(match('/collections').ids).toEqual(['collectionsIndex']);
     expect(match('/collections/abc/nope').ids).toEqual(['collectionsUnknown']);
   });

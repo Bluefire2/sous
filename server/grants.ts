@@ -4,6 +4,10 @@ import { allowedEmails } from './env.ts';
 import { readMember } from './members.ts';
 import { accessAllows } from './membership.ts';
 import {
+  readLivePublicLinksInTransaction,
+  writeRevokedPublicLinks,
+} from './publicLinks.ts';
+import {
   canViewCollection,
   canViewRecipe,
   parseShareRole,
@@ -1094,6 +1098,32 @@ export async function orchestrateCollectionGrantDelete(
   });
 }
 
+export type PublicLinkRevokeIo<Row> = {
+  /** Live public links of the collection; read before anything is written. */
+  readLive: () => Promise<Row[]>;
+  writeRevoked: (rows: Row[]) => void;
+};
+
+/**
+ * A collection delete and its public-link revoke in one transaction. The
+ * live links are read first (Firestore: all reads before writes), then the
+ * delete runs, and the links are revoked only when it applied. A delete
+ * that did not apply is either stale (the collection is live and newer) or
+ * a heal of a tombstone whose first delete already revoked them; public
+ * links can only be created on a live collection.
+ */
+export async function deleteRevokingPublicLinks<Row>(
+  io: PublicLinkRevokeIo<Row>,
+  work: () => Promise<MutationResult>,
+): Promise<MutationResult> {
+  const rows = await io.readLive();
+  const result = await work();
+  if (result.applied) {
+    io.writeRevoked(rows);
+  }
+  return result;
+}
+
 export async function deleteCollectionWithGrants(
   ownerSub: string,
   collectionId: string,
@@ -1108,42 +1138,49 @@ export async function deleteCollectionWithGrants(
       now: () => Date.now(),
       runTransaction: (work) =>
         db.runTransaction(async (tx) =>
-          work({
-            readCollection: async () => {
-              const snap = await tx.get(collectionRef);
-              return snap.exists
-                ? (snap.data() as Record<string, unknown>)
-                : undefined;
+          deleteRevokingPublicLinks(
+            {
+              readLive: () => readLivePublicLinksInTransaction(tx, ownerSub, collectionId),
+              writeRevoked: (rows) => writeRevokedPublicLinks(tx, rows, Date.now()),
             },
-            queryLiveForwardGrants: async () => {
-              const snap = await tx.get(
-                grants.where('active', '==', true).limit(LIVE_GRANT_QUERY_LIMIT),
-              );
-              return snap.docs.map((doc) => ({
-                viewerSub: doc.id,
-                data: doc.data() as Record<string, unknown>,
-              }));
-            },
-            readReverseShare: async (viewerSub) => {
-              const snap = await tx.get(
-                incomingShareRef(viewerSub, shareGrantId(ownerSub, collectionId)),
-              );
-              return snap.exists
-                ? (snap.data() as Record<string, unknown>)
-                : undefined;
-            },
-            writeCollection: (doc) => {
-              tx.set(collectionRef, doc, { merge: false });
-            },
-            writePair: (viewerSub, grant, share) => {
-              tx.set(grants.doc(viewerSub), grant, { merge: false });
-              tx.set(
-                incomingShareRef(viewerSub, shareGrantId(ownerSub, collectionId)),
-                share,
-                { merge: false },
-              );
-            },
-          }),
+            () =>
+              work({
+                readCollection: async () => {
+                  const snap = await tx.get(collectionRef);
+                  return snap.exists
+                    ? (snap.data() as Record<string, unknown>)
+                    : undefined;
+                },
+                queryLiveForwardGrants: async () => {
+                  const snap = await tx.get(
+                    grants.where('active', '==', true).limit(LIVE_GRANT_QUERY_LIMIT),
+                  );
+                  return snap.docs.map((doc) => ({
+                    viewerSub: doc.id,
+                    data: doc.data() as Record<string, unknown>,
+                  }));
+                },
+                readReverseShare: async (viewerSub) => {
+                  const snap = await tx.get(
+                    incomingShareRef(viewerSub, shareGrantId(ownerSub, collectionId)),
+                  );
+                  return snap.exists
+                    ? (snap.data() as Record<string, unknown>)
+                    : undefined;
+                },
+                writeCollection: (doc) => {
+                  tx.set(collectionRef, doc, { merge: false });
+                },
+                writePair: (viewerSub, grant, share) => {
+                  tx.set(grants.doc(viewerSub), grant, { merge: false });
+                  tx.set(
+                    incomingShareRef(viewerSub, shareGrantId(ownerSub, collectionId)),
+                    share,
+                    { merge: false },
+                  );
+                },
+              }),
+          ),
         ),
     },
   );

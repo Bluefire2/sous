@@ -29,6 +29,9 @@ import {
   compactRecipeFields,
   MAX_RECIPE_LANG_CHARS,
   compareMutation,
+  nextRecipeUpdatedAt,
+  ownRecipeUpdateDecision,
+  recipeDocBody,
   SHARED_PARENT_OWNER_SUB_FIELD,
   sharedParentMarkerForWrite,
   sharedParentOwnerFromCandidate,
@@ -42,6 +45,12 @@ import {
   foldListLiveDocsCandidate,
   isUuid,
   messageIdsToClearAtBoundary,
+  chatClearJobs,
+  chatClearMessageCost,
+  chatClearWriteAts,
+  chatMessagesToClear,
+  tombstoneChunk,
+  type TombstoneRefs,
   emailLowerBackfill,
   userProfileUpsertFields,
   validatePushOp,
@@ -380,6 +389,14 @@ describe('compactRecipeFields', () => {
     expect(compacted.galleryPhotoIds).toEqual(['g1', 'g2']);
   });
 
+  it('keeps a valid importCheck and drops a malformed one without rejecting the recipe', () => {
+    const importCheck = { at: 5, warnings: [{ code: 'TOO_FEW_STEPS' }], dismissedAt: 6 };
+    expect(compactRecipeFields({ ...required, importCheck }).importCheck).toEqual(importCheck);
+    const compacted = compactRecipeFields({ ...required, importCheck: { at: 'soon', warnings: [] } });
+    expect(compacted).not.toHaveProperty('importCheck');
+    expect(compacted.title).toBe('Soup');
+  });
+
   it('normalizes lang and omits a value it cannot understand', () => {
     expect(compactRecipeFields({ ...required, lang: 'it-IT' }).lang).toBe('it');
     expect(compactRecipeFields({ ...required, lang: 'ua' }).lang).toBe('uk');
@@ -389,6 +406,24 @@ describe('compactRecipeFields', () => {
     expect(
       compactRecipeFields({ ...required, lang: 'x'.repeat(MAX_RECIPE_LANG_CHARS) }),
     ).not.toHaveProperty('lang');
+  });
+
+  it('keeps a variantOf recipe id and drops a malformed one without rejecting the recipe', () => {
+    const original = '22222222-2222-4222-8222-222222222222';
+    expect(compactRecipeFields({ ...required, variantOf: original }).variantOf).toBe(original);
+    const compacted = compactRecipeFields({ ...required, variantOf: 'r0' });
+    expect(compacted).not.toHaveProperty('variantOf');
+    expect(compacted.title).toBe('Soup');
+  });
+
+  it('keeps a savedFrom and drops a malformed one without rejecting the recipe', () => {
+    expect(
+      compactRecipeFields({ ...required, savedFrom: { name: 'Ada', savedAt: 9, extra: 1 } })
+        .savedFrom,
+    ).toEqual({ name: 'Ada', savedAt: 9 });
+    const compacted = compactRecipeFields({ ...required, savedFrom: { name: 'Ada' } });
+    expect(compacted).not.toHaveProperty('savedFrom');
+    expect(compacted.title).toBe('Soup');
   });
 
   it('omits an empty gallery and strips the cover id', () => {
@@ -628,6 +663,193 @@ describe('messageIdsToClearAtBoundary', () => {
       10,
     );
     expect(ids).toEqual(['a']);
+  });
+});
+
+describe('tombstoneChunk', () => {
+  const READ_AFTER_WRITE =
+    'Firestore transactions require all reads to be executed before all writes.';
+
+  // Refs are "collection/id" paths.
+  const refs: TombstoneRefs<string> = {
+    doc: (job) => `${job.kind}/${job.id}`,
+    gcsDelete: (photoId) => `gcsDeletes/${photoId}`,
+  };
+
+  function transaction(docs: Record<string, Record<string, unknown> | undefined>) {
+    const order: string[] = [];
+    const writes: Array<{ ref: string; data: Record<string, unknown>; merge: boolean }> = [];
+    let written = false;
+    return {
+      order,
+      writes,
+      async getAll(...paths: string[]) {
+        if (written) {
+          throw new Error(READ_AFTER_WRITE);
+        }
+        order.push('read');
+        return paths.map((path) => {
+          const data = docs[path];
+          return { exists: data !== undefined, data: () => data };
+        });
+      },
+      set(ref: string, data: Record<string, unknown>, options: { merge: boolean }) {
+        written = true;
+        order.push('write');
+        writes.push({ ref, data, merge: options.merge });
+      },
+    };
+  }
+
+  it('reads the whole chunk before writing, including a thread of two', async () => {
+    const tx = transaction({
+      'chatMessages/user': { updatedAt: 1, content: 'Can I use honey?' },
+      'chatMessages/assistant': { updatedAt: 2, content: 'Yes.' },
+    });
+    const jobs = [
+      { kind: 'chatMessages' as const, id: 'user' },
+      { kind: 'chatMessages' as const, id: 'assistant' },
+    ];
+
+    await tombstoneChunk(tx, jobs, refs, () => [10, 10], 11);
+
+    expect(tx.order).toEqual(['read', 'write', 'write']);
+    expect(tx.writes).toEqual([
+      {
+        ref: 'chatMessages/user',
+        data: { id: 'user', updatedAt: 10, deletedAt: 10, serverUpdatedAt: 11 },
+        merge: false,
+      },
+      {
+        ref: 'chatMessages/assistant',
+        data: { id: 'assistant', updatedAt: 10, deletedAt: 10, serverUpdatedAt: 11 },
+        merge: false,
+      },
+    ]);
+  });
+
+  it('hands every stored state to writeAts and skips a null', async () => {
+    const tx = transaction({ 'cookState/a': { updatedAt: 5 } });
+    const seen: unknown[] = [];
+
+    await tombstoneChunk(
+      tx,
+      [
+        { kind: 'cookState' as const, id: 'a' },
+        { kind: 'cookState' as const, id: 'missing' },
+      ],
+      refs,
+      (stored) => {
+        seen.push(...stored);
+        return [null, 10];
+      },
+      11,
+    );
+
+    expect(seen).toEqual([{ updatedAt: 5 }, null]);
+    expect(tx.writes.map((write) => write.ref)).toEqual(['cookState/missing']);
+  });
+
+  it('queues gcsDeletes beside a photo tombstone', async () => {
+    const tx = transaction({ 'photos/p': { updatedAt: 1 } });
+
+    await tombstoneChunk(tx, [{ kind: 'photos' as const, id: 'p' }], refs, () => [10], 11);
+
+    expect(tx.writes.map(({ ref, merge }) => ({ ref, merge }))).toEqual([
+      { ref: 'photos/p', merge: false },
+      { ref: 'gcsDeletes/p', merge: true },
+    ]);
+    expect(tx.writes[1]?.data).toMatchObject({ photoId: 'p' });
+  });
+
+  it('clears a thread with its photos and keeps a later message and its photo', async () => {
+    const userPhoto = '11111111-1111-4111-8111-111111111111';
+    const laterPhoto = '22222222-2222-4222-8222-222222222222';
+    const thread = [
+      { id: 'user', data: { createdAt: 1, updatedAt: 1, photoIds: [userPhoto] } },
+      { id: 'assistant', data: { createdAt: 2, updatedAt: 2 } },
+      { id: 'later', data: { createdAt: 20, updatedAt: 20, photoIds: [laterPhoto] } },
+    ];
+    const tx = transaction({
+      ...Object.fromEntries(thread.map(({ id, data }) => [`chatMessages/${id}`, data])),
+      [`photos/${userPhoto}`]: { updatedAt: 1 },
+      [`photos/${laterPhoto}`]: { updatedAt: 1 },
+    });
+
+    const [chunk, ...rest] = chunkByCost(chatMessagesToClear(thread, 10), chatClearMessageCost, 400);
+    expect(rest).toEqual([]);
+    const jobs = chatClearJobs(chunk ?? []);
+    await tombstoneChunk(tx, jobs, refs, (stored) => chatClearWriteAts(jobs, stored, 10), 11);
+
+    expect(tx.order).toEqual(['read', 'write', 'write', 'write', 'write']);
+    expect(tx.writes.map((write) => write.ref)).toEqual([
+      'chatMessages/user',
+      `photos/${userPhoto}`,
+      `gcsDeletes/${userPhoto}`,
+      'chatMessages/assistant',
+    ]);
+  });
+});
+
+describe('chatMessagesToClear', () => {
+  const photo = '11111111-1111-4111-8111-111111111111';
+
+  it('lists live messages created at or before the clear', () => {
+    const messages = chatMessagesToClear(
+      [
+        { id: 'at', data: { createdAt: 10 } },
+        { id: 'after', data: { createdAt: 11 } },
+        { id: 'deleted', data: { createdAt: 1, deletedAt: 2 } },
+        { id: 'noCreatedAt', data: {} },
+      ],
+      10,
+    );
+    expect(messages).toEqual([{ id: 'at', photoIds: [] }]);
+  });
+
+  it('lists each valid photo id once', () => {
+    const messages = chatMessagesToClear(
+      [
+        { id: 'a', data: { createdAt: 1, photoIds: [photo, 'not-a-uuid'] } },
+        { id: 'b', data: { createdAt: 2, photoIds: [photo] } },
+      ],
+      10,
+    );
+    expect(messages).toEqual([
+      { id: 'a', photoIds: [photo] },
+      { id: 'b', photoIds: [] },
+    ]);
+  });
+});
+
+describe('chatClearWriteAts', () => {
+  const jobs = chatClearJobs([
+    { id: 'kept', photoIds: ['p1'] },
+    { id: 'cleared', photoIds: ['p2'] },
+  ]);
+
+  it('keeps the photos of a message stored newer than the clear', () => {
+    const stored = [{ updatedAt: 20 }, { updatedAt: 1 }, { updatedAt: 5 }, { updatedAt: 1 }];
+    expect(chatClearWriteAts(jobs, stored, 10)).toEqual([null, null, 10, 10]);
+  });
+
+  it('keeps a photo stored newer than the clear even when its message clears', () => {
+    const stored = [{ updatedAt: 5 }, { updatedAt: 20 }, null, null];
+    expect(chatClearWriteAts(jobs, stored, 10)).toEqual([10, null, 10, 10]);
+  });
+
+  it('keeps a message and its photos in one chunk', () => {
+    expect(chatClearMessageCost({ id: 'm', photoIds: ['p1', 'p2'] })).toBe(5);
+    expect(
+      chunkByCost(
+        [
+          { id: 'a', photoIds: ['p1'] },
+          { id: 'b', photoIds: ['p2'] },
+        ],
+        chatClearMessageCost,
+        4,
+      ).map((chunk) => chatClearJobs(chunk).map((job) => job.id)),
+    ).toEqual([['a', 'p1'], ['b', 'p2']]);
   });
 });
 
@@ -1126,5 +1348,68 @@ describe('foldListLiveDocsCandidate', () => {
     acc = foldListLiveDocsCandidate(acc, live({ id: 'c' }, 10), limits);
     acc = foldListLiveDocsCandidate(acc, live({ id: 'd' }, 10), limits);
     expect(acc.docs.map((d) => d.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('recipeDocBody', () => {
+  it('compacts the payload and stamps identity and both clocks', () => {
+    const body = recipeDocBody(
+      {
+        id: 'ignored',
+        createdAt: 1,
+        updatedAt: 999,
+        title: 'Soup',
+        servings: 2,
+        ingredientSections: [],
+        steps: [],
+        tags: [],
+        stray: 'dropped',
+        deletedAt: 5,
+      },
+      'r1',
+      20,
+      30,
+    );
+    expect(body).toEqual({
+      id: 'r1',
+      createdAt: 1,
+      updatedAt: 20,
+      serverUpdatedAt: 30,
+      title: 'Soup',
+      servings: 2,
+      ingredientSections: [],
+      steps: [],
+      tags: [],
+    });
+  });
+});
+
+describe('nextRecipeUpdatedAt', () => {
+  it('is now when the stored clock is behind', () => {
+    expect(nextRecipeUpdatedAt(100, 500)).toBe(500);
+  });
+
+  it('is past the stored clock even when that clock is ahead of now', () => {
+    expect(nextRecipeUpdatedAt(10_000, 500)).toBe(10_001);
+    expect(nextRecipeUpdatedAt(500, 500)).toBe(501);
+  });
+});
+
+describe('ownRecipeUpdateDecision', () => {
+  const live = { id: 'r1', title: 'Soup', updatedAt: 42, createdAt: 1 };
+
+  it('is not_found for a missing or tombstoned doc', () => {
+    expect(ownRecipeUpdateDecision(undefined, 42)).toEqual({ kind: 'not_found' });
+    expect(ownRecipeUpdateDecision({ ...live, deletedAt: 50 }, 42)).toEqual({ kind: 'not_found' });
+    expect(ownRecipeUpdateDecision({ id: 'r1', title: 'Soup' }, 42)).toEqual({ kind: 'not_found' });
+  });
+
+  it('is conflict with the current version when the version differs', () => {
+    expect(ownRecipeUpdateDecision(live, 41)).toEqual({ kind: 'conflict', version: 42 });
+    expect(ownRecipeUpdateDecision(live, 43)).toEqual({ kind: 'conflict', version: 42 });
+  });
+
+  it('is ok with the stored doc when the version matches', () => {
+    expect(ownRecipeUpdateDecision(live, 42)).toEqual({ kind: 'ok', stored: live, storedUpdatedAt: 42 });
   });
 });

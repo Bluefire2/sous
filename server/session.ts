@@ -11,6 +11,13 @@ export const INVITE_COOKIE_NAME = 'sous_invite';
  */
 export const COLLECTION_LINK_COOKIE_NAME = 'sous_collection_link';
 const COLLECTION_LINK_COOKIE_PATH = '/c';
+/**
+ * Hop cookie for an MCP client's authorization request (`/oauth/authorize` →
+ * `/oauth/consent`). Carries the request's parameters and a nonce the consent
+ * form posts back, HMAC-signed, for 10 minutes, and only on `/oauth` paths.
+ */
+export const MCP_AUTHZ_COOKIE_NAME = 'sous_mcp_authz';
+const MCP_AUTHZ_COOKIE_PATH = '/oauth';
 
 /**
  * Carries the same token as the cookie, for clients that cannot rely on the
@@ -51,6 +58,28 @@ export interface InviteTxPayload {
 
 export interface CollectionLinkTxPayload {
   id: string;
+  iat: number;
+  exp: number;
+}
+
+export interface McpAuthzTx {
+  clientId: string;
+  redirectUri: string;
+  /** Echoed back to the client untouched; absent when the request had none. */
+  state?: string;
+  codeChallenge: string;
+  scopes: string[];
+  /** Posted back by the consent form; pins the POST to the page that rendered it. */
+  nonce: string;
+  /**
+   * An OAuth error code found in the request. It is reported to the client
+   * only after the consent step verifies `redirectUri` against the client's
+   * metadata, so an unverified URI never receives a redirect.
+   */
+  error?: string;
+}
+
+export interface McpAuthzTxPayload extends McpAuthzTx {
   iat: number;
   exp: number;
 }
@@ -527,6 +556,136 @@ export function clearedCollectionLinkCookie(options: { secure: boolean }): strin
     `${COLLECTION_LINK_COOKIE_NAME}=`,
     'HttpOnly',
     `Path=${COLLECTION_LINK_COOKIE_PATH}`,
+    'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (options.secure) {
+    parts.push('Secure');
+  }
+  return parts.join('; ');
+}
+
+/** The MCP authorization request carried in the `sous_mcp_authz` cookie (`v: 'mcpauthz'`). */
+export function signMcpAuthzTx(tx: McpAuthzTx, now: number): string {
+  const secret = sessionSecret();
+  if (!secret) {
+    throw new Error('SESSION_SECRET is not set');
+  }
+  const iat = now;
+  const exp = now + TEN_MINUTES_MS;
+  const payload: Record<string, unknown> = {
+    v: 'mcpauthz',
+    clientId: tx.clientId,
+    redirectUri: tx.redirectUri,
+    codeChallenge: tx.codeChallenge,
+    scopes: tx.scopes,
+    nonce: tx.nonce,
+    iat,
+    exp,
+  };
+  if (tx.state !== undefined) {
+    payload.state = tx.state;
+  }
+  if (tx.error !== undefined) {
+    payload.error = tx.error;
+  }
+  const payloadPart = base64urlEncode(JSON.stringify(payload));
+  const signature = hmacSign(payloadPart, secret);
+  return `${payloadPart}.${signature}`;
+}
+
+export function verifyMcpAuthzTx(token: string, now: number): McpAuthzTxPayload | null {
+  const secret = sessionSecret();
+  if (!secret) {
+    return null;
+  }
+  const parts = splitToken(token);
+  if (!parts) {
+    return null;
+  }
+  if (!hmacVerify(parts.payload, parts.signature, secret)) {
+    return null;
+  }
+  const parsed = base64urlDecodeJson(parts.payload);
+  if (typeof parsed !== 'object' || parsed === null) {
+    return null;
+  }
+  const row = parsed as {
+    v?: unknown;
+    clientId?: unknown;
+    redirectUri?: unknown;
+    state?: unknown;
+    codeChallenge?: unknown;
+    scopes?: unknown;
+    nonce?: unknown;
+    error?: unknown;
+    iat?: unknown;
+    exp?: unknown;
+  };
+  if (row.v !== 'mcpauthz') {
+    return null;
+  }
+  if (
+    typeof row.clientId !== 'string' ||
+    typeof row.redirectUri !== 'string' ||
+    typeof row.codeChallenge !== 'string' ||
+    typeof row.nonce !== 'string' ||
+    row.nonce === ''
+  ) {
+    return null;
+  }
+  if (!Array.isArray(row.scopes) || !row.scopes.every((s) => typeof s === 'string')) {
+    return null;
+  }
+  if (row.state !== undefined && typeof row.state !== 'string') {
+    return null;
+  }
+  if (row.error !== undefined && typeof row.error !== 'string') {
+    return null;
+  }
+  if (typeof row.iat !== 'number' || typeof row.exp !== 'number') {
+    return null;
+  }
+  if (row.exp <= now) {
+    return null;
+  }
+  const out: McpAuthzTxPayload = {
+    clientId: row.clientId,
+    redirectUri: row.redirectUri,
+    codeChallenge: row.codeChallenge,
+    scopes: row.scopes as string[],
+    nonce: row.nonce,
+    iat: row.iat,
+    exp: row.exp,
+  };
+  if (typeof row.state === 'string') {
+    out.state = row.state;
+  }
+  if (typeof row.error === 'string') {
+    out.error = row.error;
+  }
+  return out;
+}
+
+export function mcpAuthzCookie(token: string, options: { secure: boolean }): string {
+  const parts = [
+    `${MCP_AUTHZ_COOKIE_NAME}=${token}`,
+    'HttpOnly',
+    `Path=${MCP_AUTHZ_COOKIE_PATH}`,
+    'SameSite=Lax',
+    `Max-Age=${OAUTH_MAX_AGE_SEC}`,
+  ];
+  if (options.secure) {
+    parts.push('Secure');
+  }
+  return parts.join('; ');
+}
+
+export function clearedMcpAuthzCookie(options: { secure: boolean }): string {
+  const parts = [
+    `${MCP_AUTHZ_COOKIE_NAME}=`,
+    'HttpOnly',
+    `Path=${MCP_AUTHZ_COOKIE_PATH}`,
     'SameSite=Lax',
     'Max-Age=0',
   ];

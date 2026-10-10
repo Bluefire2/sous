@@ -50,6 +50,8 @@ function toolChipLabel(
       return tr('assistant.makingList');
     case 'propose_collection_move':
       return tr('assistant.preparingMove');
+    case 'propose_create_collection':
+      return tr('assistant.preparingCollection');
     default:
       return tr('assistant.working');
   }

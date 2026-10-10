@@ -1,5 +1,5 @@
 {
-  "name": "cook",
+  "name": "sous",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,19 +7,24 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-web.ts",
     "dev:api": "node --env-file=.env.local scripts/dev-api-server.ts",
+    "dev:test": "node --env-file-if-exists=.env.local testing/test-server.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:import": "vitest run --config vitest.eval.config.ts",
-    "eval:ocr-compare": "node --env-file=.env.local evals/ocrCompare.ts"
+    "test:i18n": "node --env-file-if-exists=.env.local testing/i18n-review/run.ts",
+    "eval:ocr-compare": "node --env-file=.env.local evals/ocrCompare.ts",
+    "click:library": "node testing/library-click-through.ts"
   },
   "dependencies": {
-    "@google-cloud/firestore": "^9.2.0",
+    "@google-cloud/firestore": "^9.3.1",
     "@google-cloud/storage": "^8.2.0",
-    "@google/genai": "^2.24.0",
+    "@google/genai": "^2.27.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@radix-ui/react-dialog": "1.1.23",
     "date-fns": "^4.4.0",
     "google-auth-library": "^11.1.0",
@@ -30,13 +35,16 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.7",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^4.5.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "playwright": "^1.63.0",
+    "playwright-core": "^1.63.0",
     "tailwindcss": "^4.1.7",
-    "typescript": "~5.8.3",
-    "vite": "^6.3.5",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.2",
     "vite-plugin-pwa": "^1.0.0",
     "vitest": "^5.0.2"
   }

@@ -239,12 +239,29 @@ function collectionMoveReplayData(data: unknown): unknown {
   };
 }
 
+function collectionCreateReplayData(data: unknown): unknown {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return data;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    name: record.name,
+    preview: record.preview,
+    total: record.total,
+  };
+}
+
 function wireCards(cards: AgentWireCard[]): AgentWireCard[] {
   return cards.map((c) => ({
     type: c.type,
     v: c.v,
     id: c.id,
-    data: c.type === 'collection_move' ? collectionMoveReplayData(c.data) : c.data,
+    data:
+      c.type === 'collection_move'
+        ? collectionMoveReplayData(c.data)
+        : c.type === 'collection_create'
+          ? collectionCreateReplayData(c.data)
+          : c.data,
   }));
 }
 

@@ -1,8 +1,9 @@
 import { t, type MessageKey, type TranslateParams } from '../i18n';
 
 /**
- * Machine codes from import, extension import, stt, admin, sharing, and
- * translation. The same English sentence shares one code across those routes.
+ * Machine codes from import, extension import, stt, admin, sharing,
+ * translation, and the daily AI budget (every model route). The same English
+ * sentence shares one code across those routes.
  */
 const ERROR_CODES = {
   'import-bad-url': 'error.importBadUrl',
@@ -13,6 +14,7 @@ const ERROR_CODES = {
   'import-no-recipe': 'error.importNoRecipe',
   'import-extract-failed': 'error.importExtractFailed',
   'import-unusable': 'error.importUnusable',
+  'import-model-failed': 'error.importModelFailed',
   'import-too-many-photos': 'error.importTooManyPhotos',
   'import-bad-photo-type': 'error.importBadPhotoType',
   'import-photos-unreadable': 'error.importPhotosUnreadable',
@@ -20,6 +22,11 @@ const ERROR_CODES = {
   'import-body-too-large': 'error.importBodyTooLarge',
   'import-photos-failed': 'error.importPhotosFailed',
   'import-no-recipe-photos': 'error.importNoRecipePhotos',
+  'import-brief-too-long': 'error.importBriefTooLong',
+  'import-search-rate-limited': 'error.importSearchRateLimited',
+  'import-profile-unavailable': 'error.importProfileUnavailable',
+  'import-no-recipe-brief': 'error.importNoRecipeBrief',
+  'import-generate-failed': 'error.importGenerateFailed',
   'import-bad-language': 'error.sttBadLanguage',
   'bad-request': 'error.badRequest',
   'stt-bad-request': 'error.badRequest',
@@ -46,6 +53,8 @@ const ERROR_CODES = {
   'translate-provider-unavailable': 'error.translateProviderUnavailable',
   'translate-failed': 'error.translateFailed',
   'translate-rate-limited': 'error.translateRateLimited',
+  'llm-budget-exceeded': 'error.llmBudgetExceeded',
+  'llm-busy': 'error.llmBusy',
 } as const satisfies Record<string, MessageKey>;
 
 type ErrorCode = keyof typeof ERROR_CODES;

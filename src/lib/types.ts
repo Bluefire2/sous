@@ -1,3 +1,6 @@
+import type { ImportCheck } from './importCheck';
+import type { SavedFrom } from './recipeSavedFrom';
+
 export interface Ingredient {
   quantity?: number;
   unit?: string;
@@ -42,6 +45,25 @@ export interface Recipe {
    * code must keep working without it (`docs/constitutions/i18n.md`).
    */
   lang?: string;
+  /**
+   * What the import check found, when an import raised warnings. Missing is
+   * normal (a clean import, a hand-written recipe, an older client); code
+   * must keep working without it (`docs/plans/import-reliability.md`).
+   */
+  importCheck?: ImportCheck;
+  /**
+   * Id of the original this recipe is a variant of, shared by every variant
+   * of it, so they group as equals. Set only when the variant is created and
+   * never edited. Missing is normal, and the original may be gone or someone
+   * else's (`docs/plans/recipe-variants.md`).
+   */
+  variantOf?: string;
+  /**
+   * Set when this recipe was saved from someone's recipe link: their display
+   * name then, and when. Only the server sets it; edits keep it. Missing is
+   * normal (`docs/plans/recipe-links.md`).
+   */
+  savedFrom?: SavedFrom;
   createdAt: number;
   updatedAt: number;
 }
@@ -68,6 +90,21 @@ export interface ChatMessage {
   /** Set when the assistant proposed a recipe modification via update_recipe. */
   proposedRecipe?: RecipeDraft;
   createdAt: number;
+}
+
+/** One row per recipe. `Set` is not JSON, hence `string[]`. */
+export interface CookStateRow {
+  recipeId: string;
+  servings: number;
+  currentStep: number;
+  checkedKeys: string[];
+  /** Recipe revision this progress was recorded against. Not the progress-write clock. */
+  recipeUpdatedAt: number;
+  /**
+   * Client time of this progress write. Absent on old rows. Not the recipe
+   * revision.
+   */
+  updatedAt?: number;
 }
 
 /** One time a recipe was cooked. Its own store kind; never fields on `Recipe`. */

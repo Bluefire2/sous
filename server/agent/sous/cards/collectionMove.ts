@@ -479,7 +479,7 @@ export const collectionMoveCard: CardSpec<AgentLibrary, CollectionMoveData> = {
     },
   },
   rule:
-    'Call list_collections first; use this tool to file or unfile; pass collectionId when list_collections already returned one; treat Recipes / Unfiled / no collection as unfiled only when no owned collection has that name; pass all:true for every owned recipe and fromCollectionId for one source collection; do not claim the move already happened; a missing name cannot be created from the assistant.',
+    'Call list_collections first; use this tool to file or unfile; pass collectionId when list_collections already returned one; treat Recipes / Unfiled / no collection as unfiled only when no owned collection has that name; pass all:true for every owned recipe and fromCollectionId for one source collection; do not claim the move already happened; a missing name is created with propose_create_collection, not this tool.',
   normalize: normalizeCollectionMove,
   revalidate: revalidateCollectionMove,
   historyText: collectionMoveHistoryText,

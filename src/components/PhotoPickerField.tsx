@@ -1,8 +1,8 @@
 import { useRef } from 'react';
 import type { ReactElement } from 'react';
 import { useT } from '../i18n';
-import { useObjectUrl, usePhotoUrl } from '../lib/photoStore';
 import { addBtn } from '../lib/uiClasses';
+import { MemoryBlobImage, StoredPhotoImage } from './BlobImage';
 
 function PhotoThumb({
   photoId,
@@ -15,14 +15,14 @@ function PhotoThumb({
   removeLabel: string;
   onRemove: () => void;
 }): ReactElement {
-  const storedUrl = usePhotoUrl(file ? undefined : photoId);
-  const pickedUrl = useObjectUrl(file);
-  const url = pickedUrl ?? storedUrl;
-
   return (
     <li className="relative">
       <div className="h-24 w-24 overflow-hidden rounded-xl bg-surface-muted shadow-sm">
-        {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+        {file ? (
+          <MemoryBlobImage blob={file} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <StoredPhotoImage photoId={photoId} alt="" className="h-full w-full object-cover" />
+        )}
       </div>
       <button
         type="button"

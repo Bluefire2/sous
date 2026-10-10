@@ -1,5 +1,11 @@
+import { formatDistance } from 'date-fns';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { dateFnsLocale, relativeAgoLabel, relativeExpiryLabel } from './relativeTime';
+import {
+  dateFnsLocale,
+  lastCookedLabel,
+  relativeAgoLabel,
+  relativeExpiryLabel,
+} from './relativeTime';
 import { LOCALE_KEY } from './settings';
 
 // The default locale comes from `cook.locale`, then the browser language, so
@@ -100,11 +106,92 @@ describe('relativeExpiryLabel', () => {
   });
 });
 
+describe('lastCookedLabel', () => {
+  // Local wall-clock times, since `cookedOn` is the person's local date.
+  const morning = new Date(2026, 9, 5, 0, 30).getTime();
+  const evening = new Date(2026, 9, 5, 23, 30).getTime();
+
+  it('is "today" for today and for a date after today', () => {
+    expect(lastCookedLabel('2026-10-05', morning, 'en')).toBe('Last cooked today');
+    expect(lastCookedLabel('2026-10-05', evening, 'en')).toBe('Last cooked today');
+    expect(lastCookedLabel('2026-10-07', evening, 'en')).toBe('Last cooked today');
+  });
+
+  it('counts whole local days, whatever the time of day', () => {
+    for (const now of [morning, evening]) {
+      expect(lastCookedLabel('2026-10-04', now, 'en')).toBe('Last cooked 1 day ago');
+      expect(lastCookedLabel('2026-10-02', now, 'en')).toBe('Last cooked 3 days ago');
+      expect(lastCookedLabel('2026-09-14', now, 'en')).toBe('Last cooked 21 days ago');
+    }
+    expect(lastCookedLabel('2026-08-05', morning, 'en')).toBe('Last cooked 2 months ago');
+    expect(lastCookedLabel('2025-09-01', morning, 'en')).toBe('Last cooked about 1 year ago');
+  });
+
+  it('crosses a daylight-saving change as whole days', () => {
+    // The last Sunday of March moves clocks in Europe; the count is still days.
+    const afterSpring = new Date(2026, 2, 30, 12, 0).getTime();
+    expect(lastCookedLabel('2026-03-29', afterSpring, 'en')).toBe('Last cooked 1 day ago');
+    expect(lastCookedLabel('2026-03-28', afterSpring, 'en')).toBe('Last cooked 2 days ago');
+  });
+
+  it('speaks the UI language', () => {
+    expect(lastCookedLabel('2026-09-28', morning, 'uk')).toBe('Востаннє готували 7 днів тому');
+    expect(lastCookedLabel('2026-09-28', morning, 'ru')).toBe('Последний раз готовили 7 дней назад');
+    expect(lastCookedLabel('2026-09-28', morning, 'zh-Hans')).toBe('上次烹饪：7 天前');
+    expect(lastCookedLabel('2026-10-05', morning, 'uk')).toBe('Востаннє готували сьогодні');
+  });
+
+  it('is undefined for a malformed date', () => {
+    expect(lastCookedLabel('2026-10', morning, 'en')).toBeUndefined();
+    expect(lastCookedLabel('yesterday', morning, 'en')).toBeUndefined();
+    expect(lastCookedLabel('2026-10-01', Number.NaN, 'en')).toBeUndefined();
+  });
+});
+
 describe('dateFnsLocale', () => {
   it('maps every UI language to a date-fns locale', () => {
     expect(dateFnsLocale('en').code).toBe('en-US');
     expect(dateFnsLocale('uk').code).toBe('uk');
     expect(dateFnsLocale('ru').code).toBe('ru');
     expect(dateFnsLocale('zh-Hans').code).toBe('zh-CN');
+  });
+});
+
+describe('Ukrainian day counts', () => {
+  // date-fns' uk locale spells "дні" with a Latin "i"; see relativeTime.ts.
+  const MIXED_SCRIPT = /\p{Script=Cyrillic}\p{Script=Latin}|\p{Script=Latin}\p{Script=Cyrillic}/u;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = new Date(2026, 9, 6, 12).getTime();
+  const dayCounts = [2, 3, 4, 22, 24];
+  const localDate = (at: number) => {
+    const d = new Date(at);
+    return [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+      .map((part) => String(part).padStart(2, '0'))
+      .join('-');
+  };
+
+  it.each(dayCounts)('%i days has no Latin letter inside a Cyrillic word', (days) => {
+    const then = now - days * DAY_MS;
+    const labels = [
+      formatDistance(then, now, { locale: dateFnsLocale('uk') }),
+      relativeAgoLabel(then, now, 'uk'),
+      relativeExpiryLabel(now + days * DAY_MS, now, 'uk'),
+      lastCookedLabel(localDate(then), now, 'uk') ?? '',
+    ];
+    for (const label of labels) {
+      expect(label).toContain(`${days} дні`);
+      expect(label).not.toMatch(MIXED_SCRIPT);
+    }
+  });
+
+  it('reads "4 дні тому" and "за 3 дні" in Cyrillic', () => {
+    expect(relativeAgoLabel(now - 4 * DAY_MS, now, 'uk')).toBe('4 дні тому');
+    expect(formatDistance(now + 3 * DAY_MS, now, { addSuffix: true, locale: dateFnsLocale('uk') }))
+      .toBe('за 3 дні');
+  });
+
+  it('leaves the other Ukrainian forms alone', () => {
+    expect(relativeAgoLabel(now - DAY_MS, now, 'uk')).toBe('1 день тому');
+    expect(relativeAgoLabel(now - 13 * DAY_MS, now, 'uk')).toBe('13 днів тому');
   });
 });

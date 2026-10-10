@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useLocale, useT } from '../i18n';
 import { unitLabel } from '../i18n/unitLabel';
 import { chatStore, useChatMessages } from '../lib/chatStore';
-import { photoStore, useObjectUrl, usePhotoUrl } from '../lib/photoStore';
+import { MemoryBlobImage, StoredPhotoImage } from './BlobImage';
+import { photoStore } from '../lib/photoStore';
 import { recipeStore } from '../lib/recipeStore';
-import { streamChatReply, type CookingState } from '../lib/chatApi';
+import { MAX_CHAT_PHOTOS, streamChatReply, type CookingState } from '../lib/chatApi';
 import { transcribeAudio } from '../lib/sttApi';
 import {
   canRecord,
@@ -192,32 +193,26 @@ function ProposalCard({
 
 function PhotoThumb({ photoId }: { photoId: string }) {
   const t = useT();
-  const url = usePhotoUrl(photoId);
   return (
     <div className="h-20 w-20 overflow-hidden rounded-lg bg-surface-muted">
-      {url && (
-        <img
-          src={url}
-          alt={t('chat.attachedPhoto')}
-          className="h-full w-full object-cover"
-        />
-      )}
+      <StoredPhotoImage
+        photoId={photoId}
+        alt={t('chat.attachedPhoto')}
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 }
 
 function PendingPhotoThumb({ blob }: { blob: Blob }) {
   const t = useT();
-  const url = useObjectUrl(blob);
   return (
     <div className="h-20 w-20 overflow-hidden rounded-lg bg-surface-muted">
-      {url && (
-        <img
-          src={url}
-          alt={t('chat.attachedPhoto')}
-          className="h-full w-full object-cover"
-        />
-      )}
+      <MemoryBlobImage
+        blob={blob}
+        alt={t('chat.attachedPhoto')}
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 }
@@ -342,6 +337,8 @@ export default function ChatPanel({
   };
 
   const attachPhoto = async (file: File) => {
+    // The server refuses a message with more photos than this (400).
+    if (pendingRef.current.length >= MAX_CHAT_PHOTOS) return;
     try {
       // The originals are several megabytes; downscale before attach.
       // and exportLibrary re-encodes every stored blob as base64 — same intent
@@ -545,14 +542,21 @@ export default function ChatPanel({
       const assistantContent =
         reply.text.trim() ||
         (reply.proposedRecipe ? t('chat.proposalIntro') : '');
+      const emptyReply = !reply.truncated && assistantContent === '';
       await chatStore.append({
         recipeId: recipe.id,
         role: 'assistant',
+        // A complete reply with no text and no usable proposal (one that
+        // normalizeRecipeDraft rejected) must not be saved as an empty bubble
+        // that stays in the thread and goes back to the model as an empty turn.
         content: reply.truncated
           ? `${assistantContent}\n\n${t('chat.replyCutOff')}`
-          : assistantContent,
+          : assistantContent || `⚠️ ${t('common.somethingWentWrong')}`,
         proposedRecipe: reply.proposedRecipe,
       });
+      if (emptyReply) {
+        setError(t('common.somethingWentWrong'));
+      }
     } catch (e) {
       // Half an answer beats a question left hanging in the thread. An abort is
       // the user's own doing, so it needs no bubble of its own and no error.
@@ -585,7 +589,7 @@ export default function ChatPanel({
     <DialogShell
       onClose={onClose}
       backdropLabel={t('chat.closeChat')}
-      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end"
+      overlayClassName="fixed inset-0 z-20 flex flex-col justify-end print:hidden"
       panelClassName="flex h-[75dvh] flex-col rounded-t-3xl bg-surface shadow-2xl md:mx-auto md:w-full md:max-w-xl"
     >
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
@@ -678,8 +682,9 @@ export default function ChatPanel({
           <button
             type="button"
             aria-label={t('chat.attachPhoto')}
+            disabled={pendingPhotos.length >= MAX_CHAT_PHOTOS}
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-muted hover:bg-line-strong active:bg-line-strong"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-muted hover:bg-line-strong active:bg-line-strong disabled:opacity-40"
           >
             <CameraIcon className="block h-5 w-5" />
           </button>

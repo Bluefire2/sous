@@ -13,3 +13,7 @@ dev-dist
 gha-creds-*.json
 # In-context translation review reports
 .i18n-review/
+# Local dev-server launch config for the Claude desktop browser pane
+.claude/launch.json
+# Coverage report (npm run test:coverage)
+coverage/

@@ -4,7 +4,7 @@ import { selectCookRow } from './librarySelectors';
 import { withLocalWrite } from './localWrite';
 import { useLibrarySelect } from './useLibrary';
 import { finiteCookUpdatedAt, pushOps } from './remote';
-import type { Recipe } from './types';
+import type { CookStateRow, Recipe } from './types';
 
 export interface CookState {
   servings: number;
@@ -18,21 +18,6 @@ export interface CookStateApi extends CookState {
   toggleChecked: (key: string) => void;
   /** Ingredient item names for the checked keys, skipping stale ones. */
   checkedItemNames: (recipe: Recipe) => string[];
-}
-
-/** One row per recipe. `Set` is not JSON, hence `string[]`. */
-export interface CookStateRow {
-  recipeId: string;
-  servings: number;
-  currentStep: number;
-  checkedKeys: string[];
-  /** Recipe revision this progress was recorded against. Not the progress-write clock. */
-  recipeUpdatedAt: number;
-  /**
-   * Client time of this progress write. Absent on old rows. Not the recipe
-   * revision.
-   */
-  updatedAt?: number;
 }
 
 type Progress = Omit<CookStateRow, 'recipeId' | 'recipeUpdatedAt' | 'updatedAt'>;

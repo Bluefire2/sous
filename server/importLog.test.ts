@@ -66,6 +66,7 @@ describe('noteImportOutcome', () => {
         tags: [],
       },
       translation: { kind: 'failed' },
+      warnings: [],
     });
     expect(entry).toEqual({ outcome: 'ok', ingredients: 3, steps: 0, translation: 'failed' });
   });
@@ -74,6 +75,51 @@ describe('noteImportOutcome', () => {
     const entry: ImportLogEntry = {};
     noteImportOutcome(entry, { kind: 'parse_error' });
     expect(entry).toEqual({ outcome: 'parse_error' });
+  });
+
+  it('records how the page was read, each attempt, and the warning codes, never positions', () => {
+    const entry: ImportLogEntry = {};
+    noteImportOutcome(entry, {
+      kind: 'ok',
+      recipe: {
+        title: 'Soup',
+        servings: 2,
+        ingredientSections: [{ items: [{ item: 'saffron' }] }],
+        steps: [],
+        tags: [],
+      },
+      warnings: [
+        { code: 'INSTRUCTIONS_NOT_ON_PAGE' },
+        { code: 'UNGROUNDED_INGREDIENT', at: [0, 0] },
+      ],
+      log: {
+        source: 'text',
+        attempts: [{ result: 'warn', codes: ['INSTRUCTIONS_NOT_ON_PAGE', 'UNGROUNDED_INGREDIENT'] }],
+      },
+    });
+    expect(entry).toEqual({
+      outcome: 'ok',
+      source: 'text',
+      attempts: ['warn'],
+      codes: ['INSTRUCTIONS_NOT_ON_PAGE', 'UNGROUNDED_INGREDIENT'],
+      ingredients: 1,
+      steps: 0,
+    });
+    expect(JSON.stringify(entry)).not.toContain('saffron');
+  });
+
+  it('records a model error with its status', () => {
+    const entry: ImportLogEntry = {};
+    noteImportOutcome(entry, {
+      kind: 'model_error',
+      log: { source: 'jsonld', attempts: [{ result: 'threw', codes: [] }], errorStatus: 503 },
+    });
+    expect(entry).toEqual({
+      outcome: 'model_error',
+      source: 'jsonld',
+      attempts: ['threw'],
+      errorStatus: 503,
+    });
   });
 });
 

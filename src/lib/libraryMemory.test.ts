@@ -32,8 +32,7 @@ import {
   upsertRecipe,
 } from './libraryMemory';
 import { installSharedRows } from './testLibrary';
-import type { ChatMessage, Collection, Recipe } from './types';
-import type { CookStateRow } from './useCookState';
+import type { ChatMessage, Collection, CookStateRow, Recipe } from './types';
 
 function recipe(id: string, title: string): Recipe {
   return {

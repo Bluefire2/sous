@@ -21,8 +21,7 @@ import {
   withSharedRecipeAccess,
   type ItemOrigin,
 } from './libraryMemory';
-import type { ChatMessage, Collection, CookLog, Recipe } from './types';
-import type { CookStateRow } from './useCookState';
+import type { ChatMessage, Collection, CookLog, CookStateRow, Recipe } from './types';
 
 export type SyncOutcome = 'ok' | 'error' | 'offline' | 'signedOut' | 'skipped' | 'superseded';
 

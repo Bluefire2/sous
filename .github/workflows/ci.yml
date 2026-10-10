@@ -27,7 +27,12 @@ jobs:
       - run: npm ci
       # tsc -b && vite build: the PWA and Tailwind build, not only types.
       - run: npm run build
-      - run: npm test
+      # npm test with a coverage report (docs/plans/test-coverage.md, step 12).
+      # The same tests; the report has no thresholds and cannot fail the job.
+      - run: npm run test:coverage
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('coverage/coverage-summary.json') != '' }}
+        run: node scripts/coverageSummary.ts coverage/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
 
   # Builds the production image and boots it with no cloud credentials.
   # Catches what tsc cannot: Node type-stripping and import resolution
@@ -59,6 +64,60 @@ jobs:
       - name: Container logs
         if: always()
         run: docker logs sous-ci || true
+
+  # Test mode (docs/plans/test-mode.md): the built app against a seeded
+  # Firestore emulator, with fake personas signed in by /__test/sign-in. The
+  # only CI job that runs the emulator (the scheduled i18n-review.yml is the
+  # other workflow); unit tests stay pure. Needs no secrets.
+  test-mode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the Firestore emulator
+        run: |
+          docker run -d --name firestore-emulator -p 127.0.0.1:8085:8085 \
+            gcr.io/google.com/cloudsdktool/google-cloud-cli:587.0.0-emulators \
+            gcloud emulators firestore start --host-port=0.0.0.0:8085
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.18'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Wait for the emulator
+        run: |
+          for _ in $(seq 1 90); do
+            if [ "$(curl -s --max-time 2 http://127.0.0.1:8085/ || true)" = "Ok" ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "The Firestore emulator never answered"
+          exit 1
+      - name: Start test mode
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+        run: node testing/test-server.ts --static --port 4173 > test-server.log 2>&1 &
+      # Reads, MCP, then writes (testing/writeSmoke.ts); the writes run last.
+      - name: Smoke test
+        run: node testing/smoke.ts http://localhost:4173
+      # The real scripts/delete-account-data.ts on the viewer persona. Removes
+      # the viewer for good, so it runs after every other check.
+      - name: Account deletion
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+        run: node testing/deletionCheck.ts http://localhost:4173
+      # No server log line may hold an email, a token, or a query string.
+      # Also after a failed check: that run's log is the one most worth sweeping.
+      - name: Log sweep
+        if: ${{ !cancelled() }}
+        run: node testing/logSweep.ts test-server.log
+      - name: Logs
+        if: always()
+        run: |
+          cat test-server.log || true
+          docker logs firestore-emulator 2>&1 | tail -50 || true
 
   dependency-review:
     if: github.event_name == 'pull_request'

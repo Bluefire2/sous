@@ -1,5 +1,4 @@
-import type { CookStateRow } from './useCookState';
-import type { ChatMessage, Collection, CookLog, Recipe } from './types';
+import type { ChatMessage, Collection, CookLog, CookStateRow, Recipe } from './types';
 import { recipePhotoIds } from './recipePhotos';
 
 export type CloneIdNamespace = 'recipe' | 'collection' | 'photo' | 'chatMessage' | 'cookLog';
@@ -65,6 +64,12 @@ function remapRecipe(recipe: Recipe, recipeIdMap: Map<string, string>, photoIdMa
         ? undefined
         : remapId(photoIdMap, recipe.photoId),
     galleryPhotoIds: recipe.galleryPhotoIds?.map((id) => remapId(photoIdMap, id)),
+    // Not part of the graph: an original that is a shared recipe is never
+    // exported. Every variant of one original maps alike, so groups survive.
+    variantOf:
+      recipe.variantOf === undefined
+        ? undefined
+        : remapId(recipeIdMap, recipe.variantOf),
   };
 }
 

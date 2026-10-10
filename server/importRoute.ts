@@ -1,11 +1,12 @@
 /**
- * `POST /api/import` — URL, pasted text, or up to 4 photos in, a recipe draft
- * out for the client to review and save. Gated by `withMembership` in
- * `scripts/server.ts`. The pipeline lives in `server/recipeImport.ts`; this
- * file only maps its outcomes to HTTP and writes one log line per request
- * (`server/importLog.ts`).
+ * `POST /api/import` — URL, pasted text, up to 4 photos, or a brief for the
+ * model to write a recipe from, in; a recipe draft out for the client to
+ * review and save. Gated by `withMembership` in `scripts/server.ts`. The
+ * pipeline lives in `server/recipeImport.ts`; this file only maps its
+ * outcomes to HTTP and writes one log line per request (`server/importLog.ts`).
  *
- * Photo import is bound by `docs/constitutions/image-import.md`.
+ * Photo import is bound by `docs/constitutions/image-import.md`. Writing a
+ * recipe from a brief is `docs/plans/recipe-generation.md`.
  */
 import {
   loggableUrl,
@@ -14,11 +15,18 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { readBoundedText, type MembershipHandlerContext } from './membership.ts';
+import { readKitchenProfileBlock, type KitchenProfileStore } from './kitchenProfile.ts';
+import {
+  RequestBodyError,
+  readBoundedText,
+  type MembershipHandlerContext,
+} from './membership.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
+  MAX_GENERATE_BRIEF_CHARS,
   fetchPageHtml,
+  generateFromBrief,
   importFromHtml,
   importFromImages,
   importFromSource,
@@ -29,6 +37,8 @@ import {
   type PageFetchOutcome,
   type RecipeImportDeps,
 } from './recipeImport.ts';
+import { admitTranslateCall } from './recipeTranslation.ts';
+import { admitLlm, llmRefusal, meteredAi, type LlmMeter, type LlmRoute } from './llmBudget.ts';
 
 export const MAX_IMPORT_IMAGES = 4;
 /** Decoded bytes, per image. */
@@ -53,6 +63,63 @@ interface ImportRequestBody {
    * absent. `text` becomes extra context.
    */
   images?: unknown;
+  /**
+   * An idea for a dish for the model to write a recipe from. Used when `url`
+   * and `images` are absent; wins over `text`. A string of at most
+   * `MAX_GENERATE_BRIEF_CHARS`.
+   */
+  brief?: unknown;
+  /** With `brief`: let Gemini run Google searches for it. A boolean. */
+  search?: unknown;
+}
+
+/**
+ * Searched generations per member per hour, per container instance. Each
+ * search Google runs is billed, so the brief path is the only import that is
+ * rate-limited; unsearched briefs cost what a paste import costs.
+ */
+export const MAX_IMPORT_SEARCHES_PER_HOUR = 20;
+const SEARCH_WINDOW_MS = 60 * 60 * 1000;
+const searchBuckets = new Map<string, number[]>();
+
+/** Test hook: clears the per-instance search rate-limit buckets. */
+export function resetImportSearchRateLimitForTest(): void {
+  searchBuckets.clear();
+}
+
+/**
+ * Runs `run` with model deps charged to the member's daily budget
+ * (`server/llmBudget.ts`), or answers the refusal. `deps` is the test seam;
+ * otherwise the deps come from env, the translator's client metered too.
+ */
+export async function withImportBudget(
+  sub: string,
+  route: LlmRoute,
+  entry: ImportLogEntry,
+  deps: RecipeImportDeps | undefined,
+  run: (deps: RecipeImportDeps) => Promise<Response>,
+): Promise<Response> {
+  const admission = await admitLlm(sub, route);
+  if (admission.kind !== 'ok') {
+    entry.outcome = 'llm_refused';
+    return llmRefusal(admission);
+  }
+  const { meter } = admission;
+  try {
+    return await run(meteredImportDeps(deps, meter));
+  } finally {
+    meter.release();
+  }
+}
+
+/**
+ * `deps` (the test seam) or the env deps, with every model client charged to
+ * `meter`. With `deps`, only `deps.ai` is wrapped: a test's translator is a
+ * plain function with no client to meter.
+ */
+export function meteredImportDeps(deps: RecipeImportDeps | undefined, meter: LlmMeter): RecipeImportDeps {
+  const wrap = (ai: RecipeImportDeps['ai']) => meteredAi(ai, meter);
+  return deps !== undefined ? { ...deps, ai: wrap(deps.ai) } : recipeImportDepsFromEnv(wrap);
 }
 
 export type ImportImagesCheck =
@@ -66,6 +133,15 @@ export type ImportImagesCheck =
 const NOTHING_TO_IMPORT = 'Provide a URL, recipe text, or photos.';
 const BODY_TOO_LARGE = "That's too large to import — try fewer photos.";
 const PHOTOS_NOT_A_RECIPE = "Couldn't find a recipe in those photos.";
+const MODEL_FAILED = "Couldn't read that recipe — try again.";
+const BRIEF_TOO_LONG = "That's too long — keep the idea under 2,000 characters.";
+const KITCHEN_PROFILE_UNAVAILABLE = "Couldn't read your kitchen profile, so nothing was generated. Try again.";
+const SEARCH_RATE_LIMITED = 'Too many web searches. Try again later, or turn Search the web off.';
+const BRIEF_NOT_A_RECIPE = "Couldn't make a recipe from that — describe a dish.";
+const GENERATE_FAILED = "Couldn't generate that recipe — try again.";
+
+const NOT_A_RECIPE_DEFAULT = { code: 'import-no-recipe', error: "Couldn't find a recipe in that content." };
+const MODEL_FAILED_DEFAULT = { code: 'import-model-failed', error: MODEL_FAILED };
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -152,6 +228,9 @@ function fetchFailure(page: Exclude<PageFetchOutcome, { kind: 'ok' }>): Response
     case 'unsupported_scheme':
       return fail('import-bad-scheme', 'Only http and https URLs are supported.', 422);
     case 'unreachable':
+    // A non-public address gets the same answer as a dead host, so the
+    // response says nothing about what the server's network can reach.
+    case 'blocked':
       return fail('import-unreachable', 'Could not reach that URL.', 422);
     case 'refused':
       return fail(
@@ -166,14 +245,32 @@ function fetchFailure(page: Exclude<PageFetchOutcome, { kind: 'ok' }>): Response
 function outcomeResponse(
   outcome: ImportOutcome,
   sourceUrl: string | undefined,
-  notARecipe: { code: string; error: string } = {
-    code: 'import-no-recipe',
-    error: "Couldn't find a recipe in that content.",
-  },
+  copy: {
+    notARecipe?: { code: string; error: string };
+    modelFailed?: { code: string; error: string };
+    /** Replaces the extraction wording for `parse_error` and `unusable` (a generated recipe). */
+    noRecipe?: { code: string; error: string };
+  } = {},
 ): Response {
+  const notARecipe = copy.notARecipe ?? NOT_A_RECIPE_DEFAULT;
+  const modelFailed = copy.modelFailed ?? MODEL_FAILED_DEFAULT;
   switch (outcome.kind) {
     case 'ok': {
       const recipe = { ...outcome.recipe, sourceUrl };
+      // Codes only; the client owns the words (i18n principle 10).
+      const warnings = outcome.warnings.length > 0 ? { warnings: outcome.warnings } : {};
+      // The pages a generated recipe was grounded on, and Google's chip.
+      const grounding =
+        outcome.grounding !== undefined
+          ? {
+              grounding: {
+                sources: outcome.grounding.sources,
+                ...(outcome.grounding.searchSuggestions !== undefined
+                  ? { searchSuggestions: outcome.grounding.searchSuggestions }
+                  : {}),
+              },
+            }
+          : {};
       const translation = outcome.translation;
       if (translation?.kind === 'ok') {
         return Response.json({
@@ -182,21 +279,27 @@ function outcomeResponse(
             lang: translation.lang,
             recipe: { ...translation.recipe, sourceUrl },
           },
+          ...warnings,
+          ...grounding,
         });
       }
       if (translation?.kind === 'failed') {
-        return Response.json({ recipe, translationFailed: true });
+        return Response.json({ recipe, translationFailed: true, ...warnings, ...grounding });
       }
-      return Response.json({ recipe });
+      return Response.json({ recipe, ...warnings, ...grounding });
     }
     case 'empty_source':
       return fail('import-empty', NOTHING_TO_IMPORT, 400);
     case 'not_a_recipe':
       return fail(notARecipe.code, notARecipe.error, 422);
     case 'parse_error':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-extract-failed', 'Extraction failed — no structured result.', 502);
     case 'unusable':
+      if (copy.noRecipe !== undefined) return fail(copy.noRecipe.code, copy.noRecipe.error, 502);
       return fail('import-unusable', 'Extraction produced an unusable recipe.', 502);
+    case 'model_error':
+      return fail(modelFailed.code, modelFailed.error, 502);
   }
 }
 
@@ -204,11 +307,12 @@ export function importPost(
   req: Request,
   ctx?: MembershipHandlerContext,
   deps?: RecipeImportDeps,
+  kitchenStore?: KitchenProfileStore,
 ): Promise<Response> {
   const entry: ImportLogEntry = {};
   // Log line only; `withMembership` has already decided access.
   if (ctx !== undefined) entry.sub = ctx.authorizedSub;
-  return withImportLog(entry, () => handleImport(req, entry, deps));
+  return withImportLog(entry, () => handleImport(req, entry, deps, kitchenStore));
 }
 
 /** `importPost` without the log line; it records what happened on `entry`. */
@@ -216,8 +320,17 @@ async function handleImport(
   req: Request,
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
+  kitchenStore: KitchenProfileStore | undefined,
 ): Promise<Response> {
-  const raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_IMPORT_BODY_BYTES);
+  } catch (err) {
+    if (!(err instanceof RequestBodyError)) throw err;
+    // The client went away mid-upload; nobody reads this answer.
+    entry.outcome = 'aborted';
+    return fail('bad-request', 'Bad request', 400);
+  }
   if (raw === null) {
     entry.outcome = 'too_large';
     return fail('import-body-too-large', BODY_TOO_LARGE, 413);
@@ -234,6 +347,9 @@ async function handleImport(
     return fail('bad-request', 'Bad request', 400);
   }
   const body = parsed as ImportRequestBody;
+  // `entry.sub` is the membership gate's decision; `withMembership` always
+  // passes it, so only direct calls without a context (tests) share the '' bucket.
+  const member = entry.sub ?? '';
   const target = readImportTranslateTo(body.translateTo);
   if (!target.ok) {
     entry.outcome = 'bad_language';
@@ -250,13 +366,12 @@ async function handleImport(
       entry.outcome = 'fetch_failed';
       return fetchFailure(page);
     }
-    const outcome = await importFromHtml(
-      page.html,
-      deps ?? recipeImportDepsFromEnv(),
-      target.translateTo,
-    );
-    noteImportOutcome(entry, outcome);
-    return outcomeResponse(outcome, body.url);
+    const url = body.url;
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      const outcome = await importFromHtml(page.html, metered, target.translateTo);
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, url);
+    });
   }
 
   const check = checkImportImages(body.images);
@@ -265,25 +380,22 @@ async function handleImport(
     entry.via = 'photos';
     entry.photos = images.length;
     entry.bytes = bytes;
-    let outcome: ImportOutcome;
-    try {
-      outcome = await importFromImages(
-        images,
-        typeof body.text === 'string' ? body.text : '',
-        deps ?? recipeImportDepsFromEnv(),
-        target.translateTo,
-      );
-    } catch (err) {
-      // Only a numeric status is kept from the error: SDK messages can echo the request.
-      entry.outcome = 'threw';
-      const status = thrownStatus(err);
-      if (status !== undefined) entry.errorStatus = status;
-      return fail('import-photos-failed', "Couldn't read those photos — try again.", 502);
-    }
-    noteImportOutcome(entry, outcome);
-    return outcomeResponse(outcome, undefined, {
-      code: 'import-no-recipe-photos',
-      error: PHOTOS_NOT_A_RECIPE,
+    const notes = typeof body.text === 'string' ? body.text : '';
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      let outcome: ImportOutcome;
+      try {
+        outcome = await importFromImages(images, notes, metered, target.translateTo);
+      } catch (err) {
+        // Only a numeric status is kept from the error: SDK messages can echo the request.
+        entry.outcome = 'threw';
+        const status = thrownStatus(err);
+        if (status !== undefined) entry.errorStatus = status;
+        return fail('import-photos-failed', "Couldn't read those photos — try again.", 502);
+      }
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, undefined, {
+        notARecipe: { code: 'import-no-recipe-photos', error: PHOTOS_NOT_A_RECIPE },
+      });
     });
   }
   if (check.kind !== 'absent') {
@@ -292,17 +404,65 @@ async function handleImport(
     return imagesFailure(check);
   }
 
+  if (body.brief !== undefined && body.brief !== null) {
+    entry.via = 'generate';
+    if (typeof body.brief !== 'string' || (body.search !== undefined && typeof body.search !== 'boolean')) {
+      entry.outcome = 'bad_request';
+      return fail('bad-request', 'Bad request', 400);
+    }
+    const search = body.search === true;
+    entry.search = search;
+    const brief = body.brief.trim();
+    if (brief === '') {
+      entry.outcome = 'empty_source';
+      return fail('import-empty', NOTHING_TO_IMPORT, 400);
+    }
+    if (brief.length > MAX_GENERATE_BRIEF_CHARS) {
+      entry.outcome = 'bad_brief';
+      return fail('import-brief-too-long', BRIEF_TOO_LONG, 400);
+    }
+    // Read before a search slot or the day's budget is taken. A failed read is
+    // 503: a recipe written without the member's allergies is worse than none.
+    let kitchenProfile = '';
+    if (member !== '') {
+      try {
+        kitchenProfile = await readKitchenProfileBlock(member, kitchenStore);
+      } catch {
+        entry.outcome = 'store_unavailable';
+        return fail('import-profile-unavailable', KITCHEN_PROFILE_UNAVAILABLE, 503);
+      }
+    }
+    if (
+      search &&
+      !admitTranslateCall(searchBuckets, member, Date.now(), MAX_IMPORT_SEARCHES_PER_HOUR, SEARCH_WINDOW_MS)
+    ) {
+      entry.outcome = 'rate_limited';
+      return fail('import-search-rate-limited', SEARCH_RATE_LIMITED, 429);
+    }
+    return withImportBudget(member, 'import', entry, deps, async (metered) => {
+      const outcome = await generateFromBrief(brief, metered, {
+        search,
+        translateTo: target.translateTo,
+        kitchenProfile,
+      });
+      noteImportOutcome(entry, outcome);
+      return outcomeResponse(outcome, undefined, {
+        notARecipe: { code: 'import-no-recipe-brief', error: BRIEF_NOT_A_RECIPE },
+        modelFailed: { code: 'import-generate-failed', error: GENERATE_FAILED },
+        noRecipe: { code: 'import-generate-failed', error: GENERATE_FAILED },
+      });
+    });
+  }
+
   entry.via = 'paste';
   const text = body.text?.trim() ?? '';
   if (text === '') {
     entry.outcome = 'empty_source';
     return fail('import-empty', NOTHING_TO_IMPORT, 400);
   }
-  const outcome = await importFromSource(
-    text,
-    deps ?? recipeImportDepsFromEnv(),
-    target.translateTo,
-  );
-  noteImportOutcome(entry, outcome);
-  return outcomeResponse(outcome, undefined);
+  return withImportBudget(member, 'import', entry, deps, async (metered) => {
+    const outcome = await importFromSource(text, metered, target.translateTo);
+    noteImportOutcome(entry, outcome);
+    return outcomeResponse(outcome, undefined);
+  });
 }

@@ -227,13 +227,13 @@ A card is emitted when the model calls a card's `toolName`. The server validates
 
 ## v2: write tools and trust boundary (documented, not built)
 
-- Collection moves are the **`collection_move` card** (`propose_collection_move`), applied on the client through `collectionStore.moveRecipes`. Recipe edits, new recipes, and creating a collection stay unbuilt.
+- Collection moves are the **`collection_move` card** (`propose_collection_move`), applied on the client through `collectionStore.moveRecipes`. Creating a collection is the **`collection_create` card** (`propose_create_collection`): the person confirms, and `collectionStore.createWithRecipes` creates it and files the given recipes in one push. Recipe edits and new recipes stay unbuilt.
 - Other write tools are **proposal cards** the user applies (`propose_recipe_edit`, `propose_new_recipe`), following the `update_recipe` pattern. They are never server-side writes from inside the loop.
 - The client applies an accepted proposal through the existing stores (`recipeStore`, `collectionStore`). Last-write-wins, tombstones, `compactRecipe`, and push validation therefore all apply unchanged.
 - This fits `CardSpec` with a client-side `apply` handler added to the registry entry.
 - **Trust boundary:** recipe text (often imported from the web) is untrusted and can contain prompt injection. So:
   - proposals are never auto-applied;
-  - every proposal shows a diff and needs an explicit user action (a collection move shows the destination and the full list of recipes that will move, collapsed to a preview of 8 until expanded);
+  - every proposal shows a diff and needs an explicit user action (a collection move shows the destination and the full list of recipes that will move, collapsed to a preview of 8 until expanded; a collection create shows the new name and the recipes that will be filed, with the same preview);
   - proposal targets are validated against the user's own library;
   - no tool gets network or cross-user access.
 - Also parked: persisted threads (a new synced Firestore kind), photo input, and Google Search grounding.

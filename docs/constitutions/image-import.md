@@ -102,6 +102,13 @@ holds the account `sub`, `via: 'photos'`, the photo count and total decoded
 bytes, the outcome with ingredient and step counts, the translation result, a
 thrown error's numeric status, the response status, and the duration.
 
+A report the person chooses to send afterwards (`POST /api/import-feedback`,
+`docs/plans/import-feedback.md`) is a separate request, not part of the photo
+import. For a photo import it holds the photo count and the error, and on a
+thumbs down also the extracted recipe as JSON. It never holds image bytes,
+base64, or the notes typed with the photos, though the extraction can reflect
+what the notes said.
+
 **Why:** the owner decided this. Handwritten notes are personal, and the
 privacy page promises that photos sent for import are not kept. Saving a scan
 as the recipe's cover photo is a separate feature. It would change that
@@ -223,6 +230,15 @@ principle named.
 Add entries newest first, in this form: date, principle number,
 what changed, why the change was worth it, evidence, PR link.
 
+- **2026-10-01, principle 3.** *Was:* a photo import writes nothing to
+  Firestore. *Now:* the person may afterwards send an import report, which
+  for a photo import stores the photo count, the error, and on a thumbs down
+  the extraction, but never the photos or the notes. *Why:* failed and poor
+  imports cannot be fixed without the source and what came out, and photo
+  imports have no other record. The report is opt-in, per import, visible
+  before sending, and deleted after 180 days. *Evidence:*
+  `docs/plans/import-reliability.md` phase 1 is blocked because failing
+  imports were never stored. *PR:* https://github.com/Bluefire2/sous/pull/107.
 - **2026-10-01, principle 3.** *Was:* "Log counts and byte sizes only, as
   `server/stt.ts` does." *Now:* a photo import writes the shared import log
   line. Besides the counts and byte sizes, that line holds the account `sub`,

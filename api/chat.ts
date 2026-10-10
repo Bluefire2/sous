@@ -1,5 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { GoogleGenAI, Type, type Content, type Part, type Schema } from '@google/genai';
+import {
+  GoogleGenAI,
+  Type,
+  type Content,
+  type GenerateContentResponseUsageMetadata,
+  type Part,
+  type Schema,
+} from '@google/genai';
 
 // NOTE: Duplicated in server/session.ts + server/allowlist.ts.
 // This inline copy is the Vercel gate and must stay in sync with those files.
@@ -102,6 +109,7 @@ export function sessionSub(req: Request): string | null {
     v?: unknown;
     sub?: unknown;
     email?: unknown;
+    iat?: unknown;
     exp?: unknown;
   };
   if (row.v !== 1) {
@@ -113,7 +121,8 @@ export function sessionSub(req: Request): string | null {
   if (typeof row.email !== 'string') {
     return null;
   }
-  if (typeof row.exp !== 'number' || row.exp <= Date.now()) {
+  // Same as verifySession in server/session.ts: both timestamps must be numbers.
+  if (typeof row.iat !== 'number' || typeof row.exp !== 'number' || row.exp <= Date.now()) {
     return null;
   }
   if (!isEmailAllowed(row.email, process.env.ALLOWED_EMAILS ?? '')) {
@@ -206,14 +215,234 @@ export interface ChatRequestBody {
   cookingState?: unknown;
 }
 
+// NOTE: The request limits and checks below follow server/importRoute.ts
+// (MAX_IMPORT_*, IMPORT_IMAGE_TYPES, checkImportImages) and the bounded reader
+// follows readBoundedText in server/membership.ts (past the limit it releases
+// the body for the dispatcher to drop rather than cancelling it). They are
+// copied, not imported, for the same Vercel reason as the session gate above.
+// Unlike readBoundedText, the copy rethrows a failed body read as is, not as
+// RequestBodyError; on Cloud Run the dispatcher's isRequestAbort
+// (scripts/server.ts) keeps a client hang-up mid-upload out of the log.
+
+/**
+ * Photos per message. The client sends photos only on the newest message,
+ * and import takes at most four of one recipe.
+ */
+export const MAX_CHAT_IMAGES = 4;
+/**
+ * Decoded bytes, per photo. The client re-encodes each photo as a JPEG of at
+ * most 1280 px on its long edge (encodeImageForChat), a few hundred KB; import
+ * allows 3 MB for its larger 2048 px photos.
+ */
+export const MAX_CHAT_IMAGE_BYTES = 3 * 1024 * 1024;
+/**
+ * Raw request body, the same as import. Recipe JSON and a text-only history are
+ * tens of KB, so nearly all of it is photos. Four photos at the per-photo cap
+ * exceed it, as with import.
+ */
+export const MAX_CHAT_BODY_BYTES = 12 * 1024 * 1024;
+/**
+ * Message text, summed over the thread. Without it the 12 MB body could be
+ * almost all text, enough to fill the model's context in one paid request.
+ * The client drops the oldest messages to fit (`MAX_CHAT_HISTORY_CHARS` in
+ * src/lib/chatApi.ts mirrors it).
+ */
+export const MAX_CHAT_TEXT_CHARS = 120_000;
+/**
+ * `recipe` plus `cookingState` as JSON. A stored recipe is under 200 000 JSON
+ * chars (validateRecipePut in server/store.ts), so any real one fits.
+ */
+export const MAX_CHAT_CONTEXT_CHARS = 210_000;
+const CHAT_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const ASSISTANT_UNAVAILABLE = 'Assistant is unavailable.';
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/** The body as text, or null when it is longer than `limit` bytes. */
+async function readBoundedBody(req: Request, limit: number): Promise<string | null> {
+  const contentLength = req.headers.get('content-length');
+  if (contentLength !== null) {
+    const len = Number(contentLength);
+    if (Number.isFinite(len) && len > limit) {
+      return null;
+    }
+  }
+  if (req.body === null) {
+    return '';
+  }
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value) {
+      total += value.byteLength;
+      if (total > limit) {
+        reader.releaseLock();
+        return null;
+      }
+      chunks.push(value);
+    }
+  }
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(combined);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function decodedBytes(base64: string): number {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return (base64.length / 4) * 3 - padding;
+}
+
+function parseChatImages(raw: unknown): ChatRequestImage[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_CHAT_IMAGES) {
+    return null;
+  }
+  const images: ChatRequestImage[] = [];
+  for (const item of raw) {
+    if (!isPlainObject(item) || typeof item.mediaType !== 'string' || typeof item.base64 !== 'string') {
+      return null;
+    }
+    const mediaType = item.mediaType.trim().toLowerCase();
+    if (!CHAT_IMAGE_TYPES.has(mediaType)) {
+      return null;
+    }
+    const base64 = item.base64;
+    if (base64 === '' || base64.length % 4 !== 0 || !BASE64.test(base64)) {
+      return null;
+    }
+    if (decodedBytes(base64) > MAX_CHAT_IMAGE_BYTES) {
+      return null;
+    }
+    images.push({ mediaType, base64 });
+  }
+  return images;
+}
+
+/** The request body when its shape is valid, else null. Unknown keys are dropped. */
+export function parseChatRequest(raw: unknown): ChatRequestBody | null {
+  if (!isPlainObject(raw)) {
+    return null;
+  }
+  if (!Array.isArray(raw.messages) || raw.messages.length === 0) {
+    return null;
+  }
+  if (!isPlainObject(raw.recipe)) {
+    return null;
+  }
+  const messages: ChatRequestMessage[] = [];
+  let textChars = 0;
+  for (const item of raw.messages) {
+    if (!isPlainObject(item)) {
+      return null;
+    }
+    if (item.role !== 'user' && item.role !== 'assistant') {
+      return null;
+    }
+    if (typeof item.content !== 'string') {
+      return null;
+    }
+    textChars += item.content.length;
+    if (textChars > MAX_CHAT_TEXT_CHARS) {
+      return null;
+    }
+    const message: ChatRequestMessage = { role: item.role, content: item.content };
+    if (item.images !== undefined) {
+      const images = parseChatImages(item.images);
+      if (images === null) {
+        return null;
+      }
+      message.images = images;
+    }
+    messages.push(message);
+  }
+  const contextChars =
+    JSON.stringify(raw.recipe).length + (JSON.stringify(raw.cookingState) ?? '').length;
+  if (contextChars > MAX_CHAT_CONTEXT_CHARS) {
+    return null;
+  }
+  return { messages, recipe: raw.recipe, cookingState: raw.cookingState };
+}
+
+/**
+ * A high estimate of the prompt's tokens, for a stream that ended before it
+ * reported usage: one token per character (no script uses more), the
+ * update_recipe schema included, and 1 300 per photo.
+ */
+export function estimatedPromptTokens(system: string, messages: ChatRequestMessage[]): number {
+  let chars = system.length + JSON.stringify(RECIPE_SCHEMA).length;
+  let photos = 0;
+  for (const m of messages) {
+    chars += m.content.length;
+    photos += m.images?.length ?? 0;
+  }
+  return chars + photos * 1300;
+}
+
+/**
+ * A thrown error's class and numeric status, and nothing else. An SDK message
+ * can quote the request, and this one carries the whole recipe and the
+ * conversation. Mirrors sanitizedError in server/importLog.ts.
+ */
+function describeThrown(err: unknown): string {
+  const rawName = err instanceof Error ? err.name : typeof err;
+  const name = /^[A-Za-z]{1,40}$/.test(rawName) ? rawName : 'Error';
+  let status: number | undefined;
+  if (typeof err === 'object' && err !== null) {
+    const raw = (err as { status?: unknown }).status;
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 100 && raw <= 599) {
+      status = raw;
+    }
+  }
+  return `${name}${status === undefined ? '' : ` (status ${status})`}; message withheld`;
+}
+
 // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
-const MODEL = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+const MODEL = process.env.CHAT_MODEL || 'gemini-3.8-flash';
 
 // A turn that triggers update_recipe streams a text reply and then the complete recipe JSON —
 // the slowest response this app produces, so Vercel's 10s default can kill it.
 export const maxDuration = 60;
 
-function systemPrompt(recipe: unknown, cookingState: unknown): string {
+/**
+ * Rules for the member's kitchen profile. The block itself is built on Cloud
+ * Run by `kitchenProfilePromptBlock` in `server/kitchenProfile.ts` (this file
+ * cannot import it) and arrives through the handler context.
+ */
+const KITCHEN_PROFILE_RULES = [
+  'Allergies and foods marked "never include" in the kitchen profile are hard',
+  'constraints: never suggest them, and never add them in update_recipe. When',
+  'the recipe contains one and the user asks about cooking it, substituting,',
+  'or changing it, say so in your text reply, naming the ingredient and the',
+  'allergy, before or instead of proposing a safe swap. Follow the diet and',
+  'avoid the dislikes in suggestions and changes unless the user asks',
+  'otherwise. Use the equipment and notes as background only: never change',
+  'servings or anything else the user did not ask about because of them.',
+];
+
+function systemPrompt(recipe: unknown, cookingState: unknown, kitchenProfile?: string): string {
+  const profile =
+    kitchenProfile !== undefined && kitchenProfile !== '' ? ['', kitchenProfile, '', ...KITCHEN_PROFILE_RULES] : [];
   return [
     'You are a cooking assistant embedded in a personal recipe app. The user',
     'is viewing (and possibly mid-way through cooking) the recipe below, so',
@@ -230,6 +459,7 @@ function systemPrompt(recipe: unknown, cookingState: unknown): string {
     'just the changed parts. Briefly say what you changed in your text reply.',
     'The app shows the user a diff and lets them apply it, so do not ask for',
     'permission first. For pure questions, answer without the tool.',
+    ...profile,
     '',
     'Current recipe (JSON):',
     JSON.stringify(recipe),
@@ -252,7 +482,19 @@ function toGeminiContents(messages: ChatRequestMessage[]): Content[] {
   });
 }
 
-export async function POST(req: Request, ctx?: { authorizedSub?: string }): Promise<Response> {
+/**
+ * On Cloud Run, `withChatBudget` (server/llmBudget.ts) passes `onUsage`; it is
+ * called once per model call with the stream's last reported usage.
+ * `withKitchenProfile` (server/kitchenProfile.ts) passes the member's profile
+ * block, built from the store, never from the request body.
+ */
+export interface ChatContext {
+  authorizedSub?: string;
+  onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata | undefined) => void;
+  kitchenProfile?: string;
+}
+
+export async function POST(req: Request, ctx?: ChatContext): Promise<Response> {
   const authorized =
     typeof ctx?.authorizedSub === 'string' && ctx.authorizedSub !== ''
       ? ctx.authorizedSub
@@ -261,43 +503,85 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const body = (await req.json()) as ChatRequestBody;
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const rawBody = await readBoundedBody(req, MAX_CHAT_BODY_BYTES);
+  if (rawBody === null) {
+    return jsonError('Request too large', 413);
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawBody);
+  } catch {
+    return jsonError('Bad request', 400);
+  }
+  const body = parseChatRequest(parsedJson);
+  if (body === null) {
+    return jsonError('Bad request', 400);
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey === undefined || apiKey.trim() === '') {
+    return jsonError(ASSISTANT_UNAVAILABLE, 503);
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const system = systemPrompt(body.recipe, body.cookingState, ctx?.kitchenProfile);
   const abort = new AbortController();
 
-  const stream = await ai.models.generateContentStream({
-    model: MODEL,
-    contents: toGeminiContents(body.messages),
-    config: {
-      abortSignal: abort.signal,
-      systemInstruction: systemPrompt(body.recipe, body.cookingState),
-      maxOutputTokens: 4096,
-      tools: [
-        {
-          functionDeclarations: [
-            {
-              name: 'update_recipe',
-              description:
-                'Propose a modified version of the recipe the user is viewing. ' +
-                'Pass the complete updated recipe.',
-              parameters: RECIPE_SCHEMA,
-            },
-          ],
-        },
-      ],
-    },
-  });
+  let stream: Awaited<ReturnType<typeof ai.models.generateContentStream>>;
+  try {
+    stream = await ai.models.generateContentStream({
+      model: MODEL,
+      contents: toGeminiContents(body.messages),
+      config: {
+        abortSignal: abort.signal,
+        systemInstruction: system,
+        maxOutputTokens: 4096,
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: 'update_recipe',
+                description:
+                  'Propose a modified version of the recipe the user is viewing. ' +
+                  'Pass the complete updated recipe.',
+                parameters: RECIPE_SCHEMA,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  } catch (err) {
+    console.error(`Chat model call failed: ${describeThrown(err)}`);
+    return jsonError(ASSISTANT_UNAVAILABLE, 502);
+  }
 
   // Plain text streams as-is, then a separator (0x1E), then any proposal JSON, then a
   // final separator that marks a clean end. Fewer than three parts means the stream was cut off.
   const encoder = new TextEncoder();
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
+      // After the client cancels, the stream is already closed and close()
+      // or error() would throw out of this detached task as an unhandled
+      // rejection, which ends the process.
+      const settle = (finish: () => void) => {
+        try {
+          finish();
+        } catch {
+          /* already closed by cancel */
+        }
+      };
       void (async () => {
+        let usage: GenerateContentResponseUsageMetadata | undefined;
+        let streamedChars = 0;
         try {
           let proposalArgs: Record<string, unknown> | undefined;
           for await (const chunk of stream) {
-            if (chunk.text) controller.enqueue(encoder.encode(chunk.text));
+            if (chunk.usageMetadata) usage = chunk.usageMetadata;
+            if (chunk.text) {
+              streamedChars += chunk.text.length;
+              controller.enqueue(encoder.encode(chunk.text));
+            }
             const update = chunk.functionCalls?.find(
               (call) => call.name === 'update_recipe' && call.args,
             );
@@ -308,10 +592,24 @@ export async function POST(req: Request, ctx?: { authorizedSub?: string }): Prom
           controller.close();
         } catch (err) {
           if (abort.signal.aborted) {
-            controller.close();
+            settle(() => controller.close());
             return;
           }
-          controller.error(err);
+          // The dispatcher in scripts/server.ts logs a body error it sees, so
+          // pass on a description, never the SDK's error and its message.
+          const failure = new Error(`Chat stream failed: ${describeThrown(err)}`);
+          settle(() => controller.error(failure));
+        } finally {
+          // A stream cut off before any usage chunk is still billed for its
+          // prompt and what it already wrote, so it is charged an estimate
+          // that errs high.
+          ctx?.onUsage?.(
+            MODEL,
+            usage ?? {
+              promptTokenCount: estimatedPromptTokens(system, body.messages),
+              candidatesTokenCount: streamedChars,
+            },
+          );
         }
       })();
     },

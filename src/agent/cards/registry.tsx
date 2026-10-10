@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import type { AgentWireCard } from '../protocol';
 import type { MoveApplyStatus } from '../store';
+import CollectionCreateCard from './CollectionCreateCard';
 import CollectionMoveCard from './CollectionMoveCard';
-import { parseCollectionMove, parseShoppingList } from './parse';
+import { parseCollectionCreate, parseCollectionMove, parseShoppingList } from './parse';
 import ShoppingListCard from './ShoppingListCard';
 
 export type CardRenderContext = {
@@ -51,6 +52,14 @@ const registry: Record<string, RegistryEntry> = {
   )),
   collection_move: defineCard(parseCollectionMove, (data, card, ctx) => (
     <CollectionMoveCard
+      data={data}
+      cardId={card.id}
+      apply={ctx.applies[card.id]}
+      moveBusy={ctx.moveBusy}
+    />
+  )),
+  collection_create: defineCard(parseCollectionCreate, (data, card, ctx) => (
+    <CollectionCreateCard
       data={data}
       cardId={card.id}
       apply={ctx.applies[card.id]}

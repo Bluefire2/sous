@@ -3,7 +3,8 @@ import type { FormEvent, ReactElement, ReactNode } from 'react';
 import { languageName, useLocale, useT } from '../i18n';
 import { unitLabel } from '../i18n/unitLabel';
 import { encodeImageForStorage } from '../lib/image';
-import { photoStore, useObjectUrl, usePhotoUrl } from '../lib/photoStore';
+import { MemoryBlobImage, StoredPhotoImage } from './BlobImage';
+import { photoStore } from '../lib/photoStore';
 import { blankDraft } from '../lib/recipeDraft';
 import { defaultRecipeFormLang, detectedLangHint } from '../lib/recipeFormLang';
 import { MAX_GALLERY_PHOTOS } from '../lib/recipePhotos';
@@ -244,9 +245,7 @@ function PhotoField({
 }): ReactElement {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
-  const storedUrl = usePhotoUrl(picked ? undefined : photoId);
-  const pickedUrl = useObjectUrl(picked);
-  const url = pickedUrl ?? storedUrl;
+  const showPreview = picked !== undefined || photoId !== undefined;
 
   return (
     <div className="mt-3">
@@ -262,7 +261,7 @@ function PhotoField({
           e.target.value = '';
         }}
       />
-      {url === undefined ? (
+      {!showPreview ? (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -272,11 +271,19 @@ function PhotoField({
         </button>
       ) : (
         <div className="mt-1">
-          <img
-            src={url}
-            alt=""
-            className="h-44 w-full rounded-xl object-cover shadow-sm"
-          />
+          {picked ? (
+            <MemoryBlobImage
+              blob={picked}
+              alt=""
+              className="h-44 w-full rounded-xl object-cover shadow-sm"
+            />
+          ) : (
+            <StoredPhotoImage
+              photoId={photoId}
+              alt=""
+              className="h-44 w-full rounded-xl object-cover shadow-sm"
+            />
+          )}
           <div className="mt-2 flex gap-2">
             <button
               type="button"

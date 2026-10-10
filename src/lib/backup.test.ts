@@ -1271,3 +1271,31 @@ describe('cook logs in backups', () => {
     expect(getPendingBlob(LOG_PHOTO)).toBeUndefined();
   });
 });
+
+describe('import checks in backups', () => {
+  const IMPORT_CHECK = {
+    at: 10,
+    warnings: [{ code: 'UNGROUNDED_INGREDIENT' as const, at: [0, 0] as [number, number] }],
+    dismissedAt: 11,
+  };
+
+  it('round-trips importCheck through export and import, dropping a malformed one', async () => {
+    installFileReader();
+    upsertRecipe({ ...RECIPE, importCheck: IMPORT_CHECK });
+    const exported = JSON.parse(await (await exportLibrary('me')).text());
+    expect(exported.recipes[0].importCheck).toEqual(IMPORT_CHECK);
+
+    clearLibrary();
+    recordImportCalls();
+    const broken = { ...RECIPE, id: '12121212-1212-4121-8121-121212121212', importCheck: { at: 'x' } };
+    const file = new File(
+      [JSON.stringify({ ...exported, recipes: [...exported.recipes, broken] })],
+      'cook-backup.json',
+      { type: 'application/json' },
+    );
+    await expect(importLibrary(file, 'me')).resolves.toMatchObject({ imported: 2, skipped: 0 });
+    const byId = new Map(listRecipes().map((recipe) => [recipe.id, recipe]));
+    expect(byId.get(RECIPE.id)?.importCheck).toEqual(IMPORT_CHECK);
+    expect(byId.get(broken.id)).not.toHaveProperty('importCheck');
+  });
+});

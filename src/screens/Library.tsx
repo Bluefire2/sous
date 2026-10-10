@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useT } from '../i18n';
-import LibraryInviteToast, {
-  type LibraryInviteNotice,
-} from '../components/LibraryInviteToast';
+import { useLocale, useT } from '../i18n';
+import CollectionSection from '../components/CollectionSection';
+import CreateCollectionSheet from '../components/CreateCollectionSheet';
+import LanguageMenu from '../components/LanguageMenu';
+import NoticeToast, { type Notice } from '../components/NoticeToast';
+import LibrarySortMenu from '../components/LibrarySortMenu';
 import ShareCollectionSheet from '../components/ShareCollectionSheet';
 import Sheet from '../components/Sheet';
 import { createInvite } from '../lib/adminApi';
 import { createMemberInvite } from '../lib/inviteApi';
 import { copyStrategy, inviteMintClient, isInviteQuotaError } from '../lib/inviteMint';
-import { FolderIcon, InviteIcon, PlusIcon, SettingsIcon, SharedIcon, SpinnerIcon } from '../lib/icons';
+import { DiceIcon, FolderIcon, InviteIcon, PlusIcon, SettingsIcon, SpinnerIcon } from '../lib/icons';
 import {
   importHref,
   libraryHref,
@@ -23,18 +25,39 @@ import {
   unfiledRecipes,
   wouldExceedRecipeIdCap,
 } from '../lib/collectionMembership';
-import { initialLibraryFlow, libraryFlowReducer, runCreate, sheetError } from '../lib/libraryFlow';
+import {
+  initialLibraryFlow,
+  libraryFlowReducer,
+  sheetError,
+  submitCollectionCreate,
+} from '../lib/libraryFlow';
 import {
   readPersistedLibraryView,
   writePersistedLibraryView,
 } from '../lib/librarySearchMemory';
-import { usePhotoUrl } from '../lib/photoStore';
+import {
+  LIBRARY_PAGE_SIZE,
+  libraryListKey,
+  readPersistedLibraryPaging,
+  showMore,
+  shownCount,
+  writePersistedLibraryPaging,
+} from '../lib/libraryPaging';
+import { sortLibraryRecipes } from '../lib/librarySort';
+import { useLastCookedOn } from '../lib/cookLogStore';
+import { lastCookedLabel } from '../lib/relativeTime';
+import { isLibrarySearchShortcut } from '../lib/librarySearchShortcut';
+import { pickRandom } from '../lib/randomRecipe';
 import { recipeStore, useRecipes } from '../lib/recipeStore';
 import { visibleLibraryRecipes } from '../lib/visibleLibraryRecipes';
 import { useSession } from '../lib/session';
+import { useMountedFlow } from '../lib/useMountedFlow';
 import { useSyncStatus } from '../lib/syncEngine';
+import { useNearViewport } from '../lib/useNearViewport';
 import { AssistantEntryLink } from '../agent/index';
 import {
+  backLink,
+  chipClass,
   dangerBtn,
   ghostBtn,
   ghostIconBtn,
@@ -45,25 +68,103 @@ import {
   primaryBtn,
   secondaryBtn,
 } from '../lib/uiClasses';
+import { StoredPhotoImage } from '../components/BlobImage';
+import { RecipeTimes } from '../components/RecipeBody';
+import type { Recipe } from '../lib/types';
 
+// A card's photo is fetched only once the card nears the screen, so a long
+// list does not download every photo when it opens.
 function CardThumb({ photoId }: { photoId: string }) {
-  const url = usePhotoUrl(photoId);
+  const ref = useRef<HTMLDivElement>(null);
+  const near = useNearViewport(ref);
   return (
-    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
-      {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+    <div ref={ref} className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
+      {near && <StoredPhotoImage photoId={photoId} alt="" className="h-full w-full object-cover" />}
     </div>
   );
 }
 
-function chipClass(active: boolean): string {
-  return active
-    ? 'rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-page'
-    : 'rounded-full bg-surface-muted px-3 py-1.5 text-sm text-ink-muted hover:bg-surface hover:text-ink';
+/**
+ * The roll sheet's body. Each new pick replays the dice spin, and the pick
+ * shows when the spin ends. The live region stays mounted while the sheet is
+ * open, so screen readers announce each result as it fills in.
+ */
+function RollResult({
+  pick,
+  pool,
+  from,
+  onReroll,
+}: {
+  pick: Recipe;
+  pool: readonly Recipe[];
+  from: string;
+  onReroll: () => void;
+}) {
+  const t = useT();
+  const [settledId, setSettledId] = useState<string | null>(null);
+  const rolling =
+    settledId !== pick.id &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true;
+
+  useEffect(() => {
+    if (!rolling) return;
+    // The length of the `dice-roll` animation in index.css.
+    const timer = setTimeout(() => setSettledId(pick.id), 900);
+    return () => clearTimeout(timer);
+  }, [rolling, pick.id]);
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <DiceIcon className={`block h-6 w-6 ${rolling ? 'animate-dice-roll' : ''}`} />
+        <h2 className="text-lg font-semibold">{t('library.roll')}</h2>
+      </div>
+      <p className="mt-1 text-sm text-ink-muted">
+        {t('library.recipeCount', { count: pool.length })}
+      </p>
+      <div className="mt-4 flex min-h-20 gap-3" aria-live="polite">
+        {!rolling && (
+          <>
+            {pick.photoId !== undefined && <CardThumb photoId={pick.photoId} />}
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-semibold">{pick.title}</p>
+              <RecipeTimes recipe={pick} />
+              {pick.description && (
+                <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{pick.description}</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <Link
+        to={`/recipe/${pick.id}`}
+        state={{ from }}
+        aria-disabled={rolling}
+        tabIndex={rolling ? -1 : undefined}
+        className={`${primaryBtn} mt-4 block py-3 text-center ${rolling ? 'pointer-events-none opacity-40' : ''}`}
+      >
+        {t('library.rollOpen')}
+      </Link>
+      {pool.length > 1 && (
+        // `aria-disabled` rather than `disabled`, so the button keeps focus through the spin.
+        <button
+          type="button"
+          onClick={() => !rolling && onReroll()}
+          aria-disabled={rolling}
+          className={`${secondaryBtn} mt-2 w-full py-3 aria-disabled:opacity-40`}
+        >
+          {t('library.rollAgain')}
+        </button>
+      )}
+    </>
+  );
 }
 
 export default function Library() {
   const t = useT();
+  const locale = useLocale();
   const allRecipes = useRecipes();
+  const lastCookedOn = useLastCookedOn();
   const collections = useCollections();
   const fullPull = useFullPull();
   const { status: sessionStatus, user } = useSession();
@@ -83,21 +184,31 @@ export default function Library() {
   const [browseAll, setBrowseAll] = useState(
     () => readPersistedLibraryView().browseAll,
   );
+  const [sort, setSort] = useState(() => readPersistedLibraryView().sort);
   useEffect(() => {
-    writePersistedLibraryView({ query, browseAll });
-  }, [query, browseAll]);
+    writePersistedLibraryView({ query, browseAll, sort });
+  }, [query, browseAll, sort]);
+  // How far down the list the person has paged. It belongs to one list (see
+  // libraryListKey), so a new search, scope, order, or collection shows one
+  // page again without an effect to reset it.
+  const [paging, setPaging] = useState(readPersistedLibraryPaging);
+  useEffect(() => {
+    writePersistedLibraryPaging(paging);
+  }, [paging]);
+  const listKey = libraryListKey({ collectionId, browseAll, query, sort });
+  const shown = shownCount(paging, listKey);
+  // Show more moves focus to the first card it added.
+  const listRef = useRef<HTMLUListElement>(null);
+  const focusCardAt = useRef<number | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [flow, dispatch] = useReducer(libraryFlowReducer, initialLibraryFlow);
   const { sheet } = flow;
-  // The flow as last rendered. An async submit compares its starting token
-  // with this after each await, so a sheet the user closed or replaced
-  // neither closes again nor navigates.
-  const flowRef = useRef(flow);
-  useLayoutEffect(() => {
-    flowRef.current = flow;
-  }, [flow]);
+  // A workflow is current while its sheet is the one open and Library is
+  // still mounted: after unmount, a late result must not navigate away from
+  // the screen the user went to.
+  const { mountedRef, isCurrent } = useMountedFlow(flow);
   // In-flight delete and leave, by collection id. They outlive the sheet,
   // so a missing-collection redirect waits for the request that removed it.
   const [leavingId, setLeavingId] = useState<string | null>(null);
@@ -106,11 +217,11 @@ export default function Library() {
   const [invitePending, setInvitePending] = useState(false);
   const [revealedUrl, setRevealedUrl] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [inviteNotice, setInviteNotice] = useState<LibraryInviteNotice | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<Notice | null>(null);
   const [inviteQuota, setInviteQuota] = useState<{ id: number; message: string } | null>(null);
-  const mountedRef = useRef(true);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const firstActionRef = useRef<HTMLAnchorElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const scoped =
     allRecipes === undefined || collections === undefined
@@ -125,6 +236,33 @@ export default function Library() {
     scoped,
     query,
     browseAll,
+  });
+  const sorted =
+    recipes === undefined
+      ? undefined
+      : sortLibraryRecipes(recipes, sort, { lastCooked: lastCookedOn, locale });
+  const pageRecipes = sorted?.slice(0, shown);
+  const hiddenCount = (sorted?.length ?? 0) - (pageRecipes?.length ?? 0);
+
+  const rollPool =
+    sheet.kind === 'roll' ? allRecipes?.filter((r) => sheet.poolIds.includes(r.id)) : undefined;
+  const rollPick = sheet.kind === 'roll' ? rollPool?.find((r) => r.id === sheet.pickId) : undefined;
+  const roll = (poolIds: readonly string[], previous?: string) =>
+    dispatch(
+      previous === undefined
+        ? { type: 'openRoll', poolIds, pickId: pickRandom(poolIds) }
+        : { type: 'reroll', poolIds, pickId: pickRandom(poolIds, previous) },
+    );
+
+  // A pull removed the pick: roll again from what is left of the pool.
+  useEffect(() => {
+    if (sheet.kind !== 'roll' || rollPool === undefined || rollPick !== undefined) return;
+    if (rollPool.length === 0) {
+      dispatch({ type: 'close' });
+    } else {
+      const ids = rollPool.map((r) => r.id);
+      dispatch({ type: 'reroll', poolIds: ids, pickId: pickRandom(ids) });
+    }
   });
 
   const pendingDelete =
@@ -144,11 +282,18 @@ export default function Library() {
     (sheet.kind === 'create' || sheet.kind === 'move' || sheet.kind === 'rename') &&
     sheet.saving;
   const setCollectionName = (name: string) => dispatch({ type: 'setName', name });
-  // A workflow is current while its sheet is the one open and Library is
-  // still mounted: after unmount, a late result must not navigate away from
-  // the screen the user went to.
-  const isCurrent = (token: number) => mountedRef.current && flowRef.current.token === token;
   const namedIsShared = named ? collectionStore.isShared(named.id) : false;
+  const sharedLabels = new Map<string, string>();
+  for (const collection of collections ?? []) {
+    if (!collectionStore.isShared(collection.id)) continue;
+    const email = collectionStore.sharedBy(collection.id);
+    sharedLabels.set(
+      collection.id,
+      email
+        ? t('library.sharedByLabel', { name: collection.name, email })
+        : t('library.sharedLabel', { name: collection.name }),
+    );
+  }
   const leaveBusy = leavingId !== null && leavingId === collectionId;
   const showSwitcher = (collections?.length ?? 0) > 0;
   const addCollectionId =
@@ -161,7 +306,29 @@ export default function Library() {
       : recipes
           .filter((recipe) => !recipeStore.isShared(recipe.id))
           .map((recipe) => recipe.id);
+  // Select all covers the cards on screen, not the pages behind Show more.
+  const ownedPageIds =
+    pageRecipes === undefined || namedIsShared
+      ? []
+      : pageRecipes
+          .filter((recipe) => !recipeStore.isShared(recipe.id))
+          .map((recipe) => recipe.id);
   const canSelect = ownedVisibleIds.length > 0;
+  // A page of only shared recipes has nothing for Select all to check.
+  const canSelectPage = ownedPageIds.length > 0;
+  // The selection the bar, Move, and the header act on. A search can hide a
+  // checked recipe one render before the effect below drops it from
+  // selectedIds; counting only what the search matches keeps them in
+  // agreement. A checked recipe that a refresh pushes past the last page
+  // stays checked and counted. While the library loads nothing is on screen,
+  // so keep the whole set.
+  const activeSelectedIds =
+    recipes === undefined
+      ? [...selectedIds]
+      : ownedVisibleIds.filter((id) => selectedIds.has(id));
+  const allOwnedSelected =
+    ownedPageIds.length > 0 && ownedPageIds.every((id) => selectedIds.has(id));
+  const someOwnedSelected = activeSelectedIds.length > 0 && !allOwnedSelected;
   // Undefined while the library is still loading, so a refresh does not
   // clear a selection that has not been shown yet. An empty string means
   // the list is loaded and no owned recipe is on screen.
@@ -191,6 +358,38 @@ export default function Library() {
     });
   };
 
+  const toggleSelectAll = () => {
+    // Select none clears every check, including any past the last page (a
+    // sort or refresh can push them there), so Move never acts on a recipe
+    // the person can no longer see checked.
+    if (allOwnedSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds((prev) => new Set([...prev, ...ownedPageIds]));
+  };
+
+  const showMoreRecipes = () => {
+    focusCardAt.current = shown;
+    setPaging((prev) => showMore(prev, listKey));
+  };
+
+  useEffect(() => {
+    const index = focusCardAt.current;
+    if (index === null) return;
+    focusCardAt.current = null;
+    listRef.current?.querySelectorAll<HTMLElement>('[data-card-title]')[index]?.focus();
+  }, [shown]);
+
+  // indeterminate is DOM-only. A ref callback also sets it on an input that
+  // remounts while someOwnedSelected is unchanged, which an effect would miss.
+  const selectAllRef = useCallback(
+    (input: HTMLInputElement | null) => {
+      if (input) input.indeterminate = someOwnedSelected;
+    },
+    [someOwnedSelected],
+  );
+
   const remove = async (id: string) => {
     dispatch({ type: 'close' });
     setDeleteError(null);
@@ -208,39 +407,30 @@ export default function Library() {
 
   const closeSheets = () => dispatch({ type: 'close' });
 
-  const submitCreate = async () => {
-    if (sheet.kind !== 'create' || sheet.saving) {
-      return;
-    }
-    const { token } = flow;
-    dispatch({ type: 'submitting', token });
-    try {
-      // Reuses the collection a failed attempt already created, so retrying
-      // does not leave two folders with the same name behind.
-      const result = await runCreate({
-        name: sheet.name,
-        created: sheet.created,
-        moveRecipeIds: sheet.moveRecipeIds,
-        isCurrent: () => isCurrent(token),
-        create: (name) => collectionStore.create(name),
-        rename: (id, name) => collectionStore.rename(id, name),
-        move: async (recipeIds, collectionId) => {
-          await collectionStore.moveRecipes(recipeIds, collectionId);
-        },
-        onCreated: (created) => dispatch({ type: 'created', token, created }),
-      });
-      if (result.kind === 'stale') return;
-      setSelecting(false);
-      setSelectedIds(new Set());
-      closeSheets();
-      navigate(libraryHref(result.id));
-    } catch (err) {
-      dispatch({
-        type: 'failed',
-        token,
-        error: err instanceof Error ? err.message : t('error.collectionSave'),
-      });
-    }
+  const submitCreate = () => {
+    if (sheet.kind !== 'create') return;
+    void submitCollectionCreate({
+      name: sheet.name,
+      created: sheet.created,
+      moveRecipeIds: sheet.moveRecipeIds,
+      saving: sheet.saving,
+      token: flow.token,
+      isCurrent,
+      dispatch,
+      failureMessage: t('error.collectionSave'),
+      create: (name) => collectionStore.create(name),
+      rename: (id, name) => collectionStore.rename(id, name),
+      move: async (recipeIds, collectionId) => {
+        await collectionStore.moveRecipes(recipeIds, collectionId);
+      },
+      onSuccess: (id) => {
+        setSelecting(false);
+        setSelectedIds(new Set());
+        closeSheets();
+        setBrowseAll(false);
+        navigate(libraryHref(id));
+      },
+    });
   };
 
   const submitMove = async (dest: 'default' | string) => {
@@ -257,6 +447,7 @@ export default function Library() {
       setSelectedIds(new Set());
       closeSheets();
       if (ids.length <= 1) {
+        setBrowseAll(false);
         navigate(dest === 'default' ? '/' : libraryHref(dest));
       }
     } catch (err) {
@@ -340,13 +531,6 @@ export default function Library() {
       setLeavingId(null);
     }
   };
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   const showInviteToast = (kind: 'success' | 'error', message: string) => {
     setInviteNotice((prev) => ({
@@ -534,6 +718,18 @@ export default function Library() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // `/` jumps to the search. Not while a recipe menu or sheet is open,
+      // nor while a disclosure menu (language, collection actions) is: those
+      // keep their open state in their own hook, and their trigger says so.
+      const overlayOpen =
+        menuId !== null ||
+        sheet.kind !== 'closed' ||
+        document.querySelector('[aria-expanded="true"]') !== null;
+      if (isLibrarySearchShortcut(event, overlayOpen)) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       if (menuId !== null) {
         event.preventDefault();
@@ -587,12 +783,28 @@ export default function Library() {
       </button>
     ) : null;
 
+  const rollControl =
+    recipes !== undefined && recipes.length > 1 && !selecting ? (
+      <button
+        type="button"
+        aria-label={t('library.roll')}
+        onClick={() => roll(recipes.map((r) => r.id))}
+        className={`${ghostIconBtn} shrink-0`}
+      >
+        <DiceIcon className="block h-5 w-5" />
+      </button>
+    ) : null;
+
+  // Ordering one recipe means nothing, and an empty library has no list.
+  const sortControl =
+    (allRecipes?.length ?? 0) > 1 ? <LibrarySortMenu sort={sort} onChange={setSort} /> : null;
+
   return (
     <div className={`mx-auto max-w-xl px-4 ${selecting ? 'pb-40' : 'pb-24'}`}>
-      <LibraryInviteToast notice={inviteNotice} />
+      <NoticeToast notice={inviteNotice} />
       <header className="flex items-center justify-between py-4">
         <h1 className="text-2xl font-bold">Sous</h1>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-y-1">
           <AssistantEntryLink />
           {user !== null && (
             <button
@@ -626,6 +838,7 @@ export default function Library() {
           >
             <SettingsIcon className="block h-5 w-5" />
           </Link>
+          <LanguageMenu />
         </div>
       </header>
 
@@ -660,7 +873,7 @@ export default function Library() {
       {collections !== undefined && collections.length === 0 && sessionStatus === 'signedIn' && (
         // Nothing shared by you or with you yet: say where sharing starts.
         <div className="mb-3 flex items-start gap-1.5">
-          <FolderIcon className="mt-2 block h-4 w-4 shrink-0 text-ink-muted" />
+          <FolderIcon className="mt-1.5 block h-5 w-5 shrink-0 text-ink-muted" />
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
             <span>{t('library.collectionsEmpty')}</span>
             <button
@@ -674,77 +887,21 @@ export default function Library() {
         </div>
       )}
 
-      {showSwitcher && (
-        <nav aria-label={t('library.collectionsNav')} className="mb-3 flex items-start gap-1.5">
-          <FolderIcon className="mt-2 block h-4 w-4 shrink-0 text-ink-muted" />
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Link
-              to="/"
-              onClick={() => setBrowseAll(false)}
-              className={chipClass(!browseAll && currentId === undefined)}
-            >
-              {t('library.recipes')}
-            </Link>
-            {collections?.map((collection) => {
-              const shared = collectionStore.isShared(collection.id);
-              const sharedBy = shared ? collectionStore.sharedBy(collection.id) : undefined;
-              const sharedLabel = sharedBy
-                ? t('library.sharedByLabel', { name: collection.name, email: sharedBy })
-                : t('library.sharedLabel', { name: collection.name });
-              return (
-                <Link
-                  key={collection.id}
-                  to={libraryHref(collection.id)}
-                  onClick={() => setBrowseAll(false)}
-                  aria-label={shared ? sharedLabel : collection.name}
-                  title={shared ? sharedLabel : undefined}
-                  className={`${chipClass(!browseAll && collection.id === currentId)} inline-flex items-center gap-1.5`}
-                >
-                  {shared && (
-                    <SharedIcon className="block h-3.5 w-3.5 shrink-0" />
-                  )}
-                  {collection.name}
-                </Link>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'startCreate' })}
-              className="rounded-full px-3 py-1.5 text-sm text-ink-muted hover:text-ink"
-            >
-              {t('library.new')}
-            </button>
-            {named && !namedIsShared && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: 'openShare' })}
-                  className="rounded-full px-3 py-1.5 text-sm text-ink-muted hover:text-ink"
-                >
-                  {t('common.share')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    dispatch({ type: 'openRename', collectionId: named.id, name: named.name })
-                  }
-                  className="rounded-full px-3 py-1.5 text-sm text-ink-muted hover:text-ink"
-                >
-                  {t('library.rename')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    dispatch({ type: 'openDeleteCollection', collectionId: named.id })
-                  }
-                  className="rounded-full px-3 py-1.5 text-sm text-danger hover:text-ink"
-                >
-                  {t('common.delete')}
-                </button>
-              </>
-            )}
-          </div>
-        </nav>
+      {showSwitcher && collections !== undefined && (
+        <CollectionSection
+          collections={collections}
+          sharedLabels={sharedLabels}
+          currentId={currentId}
+          browseAll={browseAll}
+          ownedName={named && !namedIsShared ? named.name : undefined}
+          onCreate={() => dispatch({ type: 'startCreate' })}
+          onShare={() => dispatch({ type: 'openShare' })}
+          onRename={() =>
+            named && dispatch({ type: 'openRename', collectionId: named.id, name: named.name })
+          }
+          onDelete={() => named && dispatch({ type: 'openDeleteCollection', collectionId: named.id })}
+          onOpenList={() => setBrowseAll(false)}
+        />
       )}
 
       {named && namedIsShared && !browseAll && (
@@ -774,9 +931,12 @@ export default function Library() {
         </div>
       )}
 
+      {/* The search keeps at least 14rem so its placeholder isn't clipped;
+          narrower than that, the buttons wrap under it. */}
       {showSwitcher ? (
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={
               browseAll
@@ -787,27 +947,40 @@ export default function Library() {
             }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className={`${inputClass} min-w-0 flex-1`}
+            className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          {selectControl}
-          <button
-            type="button"
-            onClick={() => setBrowseAll((on) => !on)}
-            className={`${chipClass(browseAll)} shrink-0`}
-          >
-            {t('library.allCollections')}
-          </button>
+          {/* Sort comes last, so its menu, aligned to its right edge, opens
+              inside the page on a phone; the chips wrap rather than overflow. */}
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {rollControl}
+            {selectControl}
+            <button
+              type="button"
+              onClick={() => setBrowseAll((on) => !on)}
+              className={`${chipClass(browseAll)} shrink-0`}
+            >
+              {t('library.allCollections')}
+            </button>
+            {sortControl}
+          </div>
         </div>
       ) : (
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
+            ref={searchRef}
             type="search"
             placeholder={t('library.search')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className={`${inputClass} min-w-0 flex-1`}
+            className={`${inputClass} min-w-0 flex-1 basis-56 text-ellipsis`}
           />
-          {selectControl}
+          {(sortControl || selectControl || rollControl) && (
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {rollControl}
+              {selectControl}
+              {sortControl}
+            </div>
+          )}
         </div>
       )}
 
@@ -820,108 +993,169 @@ export default function Library() {
       ) : recipes.length === 0 ? (
         <p className="py-12 text-center text-ink-muted">{emptyCopy()}</p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {recipes.map((recipe) => {
-            const shared = recipeStore.isShared(recipe.id);
-            const checked = selectedIds.has(recipe.id);
-            return (
-              <li key={recipe.id} className="flex items-start gap-1">
-                {selecting && !shared && (
-                  <label className="mt-3 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      aria-label={t('library.selectRecipe', { title: recipe.title })}
-                      onChange={() => toggleSelected(recipe.id)}
-                      className={`h-5 w-5 accent-ink ${inputFocus}`}
-                    />
-                  </label>
-                )}
-                <div className="relative min-w-0 flex-1">
-              <Link
-                to={`/recipe/${recipe.id}`}
-                className="flex gap-3 rounded-2xl border border-line bg-surface p-4 pr-14 shadow-sm hover:border-line-strong hover:bg-surface-muted active:bg-surface-muted"
-              >
-                {recipe.photoId !== undefined && (
-                  <CardThumb photoId={recipe.photoId} />
-                )}
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lg font-semibold">{recipe.title}</h2>
-                  {recipe.description && (
-                    <p className="mt-1 line-clamp-2 text-sm text-ink-muted">
-                      {recipe.description}
-                    </p>
+        <>
+          {selecting && canSelectPage && (
+            <label className="mb-1 flex cursor-pointer items-center gap-1">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allOwnedSelected}
+                  onChange={toggleSelectAll}
+                  className={`h-5 w-5 accent-ink ${inputFocus}`}
+                />
+              </span>
+              <span className="text-sm font-medium">{t('library.selectAll')}</span>
+            </label>
+          )}
+          <ul ref={listRef} className="flex flex-col gap-3">
+            {(pageRecipes ?? []).map((recipe) => {
+              const shared = recipeStore.isShared(recipe.id);
+              const checked = selectedIds.has(recipe.id);
+              const cookedOn = shared ? undefined : lastCookedOn.get(recipe.id);
+              const cooked = cookedOn === undefined ? undefined : lastCookedLabel(cookedOn, Date.now(), locale);
+              return (
+                <li key={recipe.id} className="flex items-start gap-1">
+                  {selecting && !shared && (
+                    <label className="mt-3 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        aria-label={t('library.selectRecipe', { title: recipe.title })}
+                        onChange={() => toggleSelected(recipe.id)}
+                        className={`h-5 w-5 accent-ink ${inputFocus}`}
+                      />
+                    </label>
                   )}
-                  {recipe.tags.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {recipe.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-ink-muted"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="relative min-w-0 flex-1">
+                {/* The card is not one link: its tag chips are buttons, and a
+                    button inside an anchor is invalid. The title link's ::after
+                    covers the card, so a tap anywhere else still opens the
+                    recipe; the chips sit above it. */}
+                <div className="relative flex gap-3 rounded-2xl border border-line bg-surface p-4 pr-14 shadow-sm hover:border-line-strong hover:bg-surface-muted active:bg-surface-muted">
+                  {recipe.photoId !== undefined && (
+                    <CardThumb photoId={recipe.photoId} />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-semibold">
+                      <Link
+                        to={`/recipe/${recipe.id}`}
+                        state={{ from: libraryHref(collectionId) }}
+                        data-card-title=""
+                        className="after:absolute after:inset-0 after:rounded-2xl"
+                      >
+                        {recipe.title}
+                      </Link>
+                    </h2>
+                    {recipe.description && (
+                      <p className="mt-1 line-clamp-2 text-sm text-ink-muted">
+                        {recipe.description}
+                      </p>
+                    )}
+                    {cooked !== undefined && (
+                      <p className="mt-1 text-xs text-ink-subtle">{cooked}</p>
+                    )}
+                    {recipe.tags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {recipe.tags.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            aria-label={t('library.filterByTag', { tag })}
+                            onClick={() => setQuery(tag)}
+                            className="relative rounded-full bg-surface-muted px-2 py-0.5 text-xs text-ink-muted hover:bg-line hover:text-ink active:bg-line"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Link>
 
-              {!shared && !selecting && (
-              <button
-                type="button"
-                aria-label={t('library.actionsFor', { title: recipe.title })}
-                aria-expanded={menuId === recipe.id}
-                onClick={(event) => {
-                  menuTriggerRef.current = event.currentTarget;
-                  setMenuId(menuId === recipe.id ? null : recipe.id);
-                }}
-                className="absolute top-2 right-2 flex h-11 w-11 items-center justify-center rounded-full text-xl leading-none text-ink-subtle hover:bg-surface-muted active:bg-surface-muted"
-              >
-                ⋯
-              </button>
-              )}
-
-              {menuId === recipe.id && !shared && !selecting && (
-                <div
-                  role="group"
+                {!shared && !selecting && (
+                <button
+                  type="button"
                   aria-label={t('library.actionsFor', { title: recipe.title })}
-                  className="absolute top-13 right-3 z-20 w-40 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
+                  aria-expanded={menuId === recipe.id}
+                  onClick={(event) => {
+                    menuTriggerRef.current = event.currentTarget;
+                    setMenuId(menuId === recipe.id ? null : recipe.id);
+                  }}
+                  className="absolute top-2 right-2 flex h-11 w-11 items-center justify-center rounded-full text-xl leading-none text-ink-subtle hover:bg-surface-muted active:bg-surface-muted"
                 >
-                  <Link
-                    to={`/recipe/${recipe.id}/edit`}
-                    ref={firstActionRef}
-                    className={menuItem}
+                  ⋯
+                </button>
+                )}
+
+                {menuId === recipe.id && !shared && !selecting && (
+                  <div
+                    role="group"
+                    aria-label={t('library.actionsFor', { title: recipe.title })}
+                    className="absolute top-13 right-3 z-20 w-40 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
                   >
-                    {t('common.edit')}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuId(null);
-                      dispatch({ type: 'openMove', recipeIds: [recipe.id] });
-                    }}
-                    className={`${menuItem} border-t border-line`}
-                  >
-                    {t('library.moveTo')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuId(null);
-                      dispatch({ type: 'openDeleteRecipe', recipeId: recipe.id });
-                    }}
-                    className={`${menuItemDanger} border-t border-line`}
-                  >
-                    {t('common.delete')}
-                  </button>
-                </div>
-              )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    <Link
+                      to={`/recipe/${recipe.id}/edit`}
+                      ref={firstActionRef}
+                      className={menuItem}
+                    >
+                      {t('common.edit')}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuId(null);
+                        dispatch({ type: 'openMove', recipeIds: [recipe.id] });
+                      }}
+                      className={`${menuItem} border-t border-line`}
+                    >
+                      {t('library.moveTo')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuId(null);
+                        dispatch({ type: 'openDeleteRecipe', recipeId: recipe.id });
+                      }}
+                      className={`${menuItemDanger} border-t border-line`}
+                    >
+                      {t('common.delete')}
+                    </button>
+                  </div>
+                )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {hiddenCount > 0 && (
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <button type="button" onClick={showMoreRecipes} className={secondaryBtn}>
+                {t('library.showMore', { count: Math.min(hiddenCount, LIBRARY_PAGE_SIZE) })}
+              </button>
+              <p className="text-sm text-ink-subtle">
+                {t('library.shownOfTotal', {
+                  shown: pageRecipes?.length ?? 0,
+                  total: sorted?.length ?? 0,
+                })}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {sessionStatus === 'signedIn' && recipes !== undefined && !selecting && (
+        // Quiet on purpose: after the last card, centered so the + button never covers it.
+        <p className="mt-6 text-center text-sm text-ink-subtle">
+          {t('library.suggestPrompt')}{' '}
+          <Link
+            to="/suggest"
+            state={{ from: 'library' }}
+            className={`${backLink} inline-block py-3 underline underline-offset-2`}
+          >
+            {t('library.suggestLink')}
+          </Link>
+        </p>
       )}
 
       {menuId !== null && !selecting && (
@@ -938,23 +1172,23 @@ export default function Library() {
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-page px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-xl flex-col gap-2">
             <p className="text-sm font-medium">
-              {t('library.selectedCount', { count: selectedIds.size })}
+              {t('library.selectedCount', { count: activeSelectedIds.length })}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedIds(new Set(ownedVisibleIds))}
-                disabled={!canSelect}
+                onClick={toggleSelectAll}
+                disabled={!canSelectPage}
                 className={`${ghostBtn} disabled:opacity-40`}
               >
-                {t('library.selectAll')}
+                {allOwnedSelected ? t('library.selectNone') : t('library.selectAll')}
               </button>
               <button
                 type="button"
-                disabled={selectedIds.size === 0}
+                disabled={activeSelectedIds.length === 0}
                 onClick={() => {
                   setMenuId(null);
-                  dispatch({ type: 'openMove', recipeIds: [...selectedIds] });
+                  dispatch({ type: 'openMove', recipeIds: activeSelectedIds });
                 }}
                 className={`${primaryBtn} px-4 py-2 text-sm disabled:opacity-40`}
               >
@@ -979,6 +1213,17 @@ export default function Library() {
         </button>
       )}
 
+      {sheet.kind === 'roll' && rollPool !== undefined && rollPick !== undefined && (
+        <Sheet onClose={() => closeSheets()}>
+          <RollResult
+            pick={rollPick}
+            pool={rollPool}
+            from={libraryHref(collectionId)}
+            onReroll={() => roll(rollPool.map((r) => r.id), rollPick.id)}
+          />
+        </Sheet>
+      )}
+
       {sheet.kind === 'add' && (
         <Sheet onClose={() => closeSheets()}>
           <h2 className="text-lg font-semibold">{t('library.addRecipeTitle')}</h2>
@@ -987,6 +1232,12 @@ export default function Library() {
             className={`${primaryBtn} mt-3 block py-3 text-center`}
           >
             {t('library.importFromLink')}
+          </Link>
+          <Link
+            to={importHref(addCollectionId, 'create')}
+            className={`${secondaryBtn} mt-2 block py-3 text-center`}
+          >
+            {t('library.generateFromIdea')}
           </Link>
           <Link
             to={newRecipeHref(addCollectionId)}
@@ -1090,41 +1341,14 @@ export default function Library() {
       )}
 
       {sheet.kind === 'create' && (
-        <Sheet onClose={() => closeSheets()}>
-          <h2 className="text-lg font-semibold">{t('common.newCollection')}</h2>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitCreate();
-            }}
-          >
-            <input
-              autoFocus
-              value={collectionName}
-              disabled={sheetSaving}
-              onChange={(e) => setCollectionName(e.target.value)}
-              placeholder={t('common.name')}
-              className={`${inputClass} mt-3 disabled:opacity-60`}
-            />
-            {collectionError && (
-              <p className="mt-2 text-sm text-danger">{collectionError}</p>
-            )}
-            <button
-              type="submit"
-              disabled={collectionName.trim() === '' || sheetSaving}
-              className={`${primaryBtn} mt-3 w-full py-3`}
-            >
-              {t('library.create')}
-            </button>
-            <button
-              type="button"
-              onClick={() => closeSheets()}
-              className={`${secondaryBtn} mt-2 w-full py-3`}
-            >
-              {t('common.cancel')}
-            </button>
-          </form>
-        </Sheet>
+        <CreateCollectionSheet
+          name={collectionName}
+          saving={sheetSaving}
+          error={collectionError}
+          onName={setCollectionName}
+          onSubmit={submitCreate}
+          onClose={closeSheets}
+        />
       )}
 
       {sheet.kind === 'rename' && named && (

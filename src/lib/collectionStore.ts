@@ -25,12 +25,16 @@ import {
   removeCollectionLocal,
   sortCollections,
   upsertCollection,
+  writeCollections,
   type LibraryAccess,
 } from './libraryMemory';
 import { useLibrarySlice } from './useLibrary';
 import {
   addCollectionGrant,
   createCollectionLink,
+  disableCollectionPublicLink,
+  enableCollectionPublicLink,
+  getCollectionPublicLink,
   leaveSharedCollection,
   listCollectionGrants,
   listCollectionLinks,
@@ -43,6 +47,7 @@ import {
   type CollectionLinkHttpResult,
   type CollectionLinksBody,
   type GrantRole,
+  type PublicLinkHttpResult,
   type RemoteResult,
 } from './remote';
 import { withLocalWrite } from './localWrite';
@@ -65,10 +70,34 @@ export function collectionPushErrorMessage(result: RemoteResult, created = false
   return t('error.collectionSave');
 }
 
+/** Owned collection names are unique, ignoring case and outer spaces. */
+function rejectTakenName(trimmed: string, exceptId?: string): void {
+  const key = trimmed.toLowerCase();
+  const match = listCollections().find(
+    (c) =>
+      c.id !== exceptId &&
+      !isSharedCollection(c.id) &&
+      c.name.trim().toLowerCase() === key,
+  );
+  if (match) {
+    throw new Error(t('error.collectionNameTaken', { name: match.name }));
+  }
+}
+
 function saveError(result: RemoteResult, created = false): Error {
   return result === 'signedOut'
     ? new SessionExpiredError()
     : new Error(collectionPushErrorMessage(result, created));
+}
+
+function publicLinkResult(result: PublicLinkHttpResult): string | null {
+  if (result.kind === 'signedOut') {
+    throw new Error(t('error.sessionExpired'));
+  }
+  if (result.kind === 'error') {
+    throw new Error(result.message);
+  }
+  return result.url;
 }
 
 /** A link the share sheet just minted: the one-time URL and its sha256 id. */
@@ -175,6 +204,7 @@ export const collectionStore = {
           : t('error.collectionNameLong', { max: MAX_COLLECTION_NAME_LENGTH }),
       );
     }
+    rejectTakenName(trimmed);
     if (countOwnedNamedCollections() >= MAX_NAMED_COLLECTIONS) {
       throw new Error(t('error.collectionCap', { max: MAX_NAMED_COLLECTIONS }));
     }
@@ -204,6 +234,7 @@ export const collectionStore = {
           : t('error.collectionNameLong', { max: MAX_COLLECTION_NAME_LENGTH }),
       );
     }
+    rejectTakenName(trimmed, id);
     await pushCollection(
       compactCollection({ ...existing, name: trimmed, updatedAt: Date.now() }),
       existing,
@@ -389,6 +420,24 @@ export const collectionStore = {
     }
   },
 
+  /** The collection's public link, or null while it is not public. Owner only. */
+  async publicLink(id: string): Promise<string | null> {
+    rejectShared(id);
+    return publicLinkResult(await getCollectionPublicLink(id));
+  },
+
+  /** Turns the public link on; already on returns the same link. */
+  async enablePublicLink(id: string): Promise<string | null> {
+    rejectShared(id);
+    return publicLinkResult(await enableCollectionPublicLink(id));
+  },
+
+  /** Turns the public link off. Turning it on again makes a new one. */
+  async disablePublicLink(id: string): Promise<void> {
+    rejectShared(id);
+    publicLinkResult(await disableCollectionPublicLink(id));
+  },
+
   async moveRecipe(recipeId: string, dest: 'default' | string): Promise<void> {
     if (isSharedRecipe(recipeId) || (dest !== 'default' && isSharedCollection(dest))) {
       throw new Error(t('error.sharedViewOnly'));
@@ -534,6 +583,88 @@ export const collectionStore = {
           upsertCollection(collection);
         }
         return { value: { moved: 0 }, reconcile: false, error: err, reread: 'always' };
+      }
+    });
+  },
+
+  /**
+   * Creates one owned collection and files `recipeIds` into it as one push.
+   * Recipes leave their current owned collections in that same write.
+   * Every id must still be an owned recipe; a missing or shared id fails
+   * before anything is written. An empty list creates an empty collection.
+   * A duplicate name, the collection cap, or the recipe cap also fails first.
+   */
+  async createWithRecipes(
+    name: string,
+    recipeIds: readonly string[],
+  ): Promise<{ id: string; moved: number }> {
+    const trimmed = compactCollectionName(name);
+    if (trimmed === undefined) {
+      throw new Error(
+        name.trim() === ''
+          ? t('error.collectionNameEmpty')
+          : t('error.collectionNameLong', { max: MAX_COLLECTION_NAME_LENGTH }),
+      );
+    }
+    rejectTakenName(trimmed);
+    const owned = listCollections().filter((c) => !isSharedCollection(c.id));
+    if (countOwnedNamedCollections() >= MAX_NAMED_COLLECTIONS) {
+      throw new Error(t('error.collectionCap', { max: MAX_NAMED_COLLECTIONS }));
+    }
+
+    const kept: string[] = [];
+    const seen = new Set<string>();
+    for (const id of recipeIds) {
+      if (id === '' || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      if (isSharedRecipe(id) || !getRecipe(id)) {
+        throw new Error(t('assistant.moveRecipesGone'));
+      }
+      kept.push(id);
+    }
+    if (recipeIds.length > 0 && kept.length === 0) {
+      throw new Error(t('assistant.moveRecipesGone'));
+    }
+    if (wouldExceedRecipeIdCap(kept)) {
+      throw new Error(t('error.collectionFull'));
+    }
+
+    const now = Date.now();
+    const id = crypto.randomUUID();
+    const created = compactCollection({
+      id,
+      name: trimmed,
+      recipeIds: kept,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const stripped = moveRecipes(owned, kept, 'default', now).map(compactCollection);
+    const previous = stripped
+      .map((next) => owned.find((c) => c.id === next.id))
+      .filter((c): c is Collection => c !== undefined);
+    // The server applies push ops one by one, not in a transaction. The new
+    // collection goes first so a cap rejection lands before any source list
+    // is stripped; otherwise a failed create would leave the recipes unfiled.
+    const upserts = [created, ...stripped];
+
+    return await withLocalWrite(async () => {
+      writeCollections({ upserts });
+      try {
+        const result = await pushOps(
+          upserts.map((payload) => ({ kind: 'collection.put' as const, payload })),
+        );
+        if (result !== 'ok') {
+          throw saveError(result, true);
+        }
+        return { value: { id, moved: kept.length }, reconcile: true };
+      } catch (err) {
+        if (err instanceof SessionExpiredError) {
+          throw err;
+        }
+        writeCollections({ upserts: previous, removeIds: [id] });
+        return { value: { id, moved: 0 }, reconcile: false, error: err, reread: 'always' };
       }
     });
   },

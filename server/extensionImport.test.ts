@@ -10,6 +10,22 @@ import * as recipeImport from './recipeImport.ts';
 import { SESSION_HEADER_NAME, signSession } from './session.ts';
 import * as sync from './sync.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
+import { endlessBody } from '../test/endlessBody.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
 
 // Spied rather than replaced: the assertion that matters is that empty html
 // short-circuits *before* the import pipeline. Without this the tests pass with
@@ -233,7 +249,12 @@ describe('extensionImport translateTo', () => {
       title: 'UK Tomato soup',
       translated: true,
     });
-    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(page, deps, 'uk');
+    // The route passes a metered copy of the deps (server/llmBudget.ts).
+    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(
+      page,
+      expect.objectContaining({ model: deps.model, translator: deps.translator }),
+      'uk',
+    );
     expect(sync.applyPushOp).toHaveBeenCalledWith('sub-1', {
       kind: 'recipe.put',
       payload: expect.objectContaining({
@@ -258,7 +279,12 @@ describe('extensionImport translateTo', () => {
       title: 'Tomato soup',
       translated: false,
     });
-    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(page, deps, 'uk');
+    // The route passes a metered copy of the deps (server/llmBudget.ts).
+    expect(recipeImport.importFromHtml).toHaveBeenCalledWith(
+      page,
+      expect.objectContaining({ model: deps.model, translator: deps.translator }),
+      'uk',
+    );
     expect(sync.applyPushOp).toHaveBeenCalledWith('sub-1', {
       kind: 'recipe.put',
       payload: expect.objectContaining({
@@ -270,6 +296,13 @@ describe('extensionImport translateTo', () => {
   });
 });
 
+function importLogEntries(log: { mock: { calls: unknown[][] } }): Record<string, unknown>[] {
+  return log.mock.calls
+    .map(([message]) => String(message))
+    .filter((raw) => raw.startsWith('{"event":"import"'))
+    .map((raw) => JSON.parse(raw) as Record<string, unknown>);
+}
+
 describe('extensionImport log line', () => {
   beforeEach(() => {
     Object.assign(process.env, SESSION_ENV);
@@ -278,13 +311,6 @@ describe('extensionImport log line', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  function importLogEntries(log: { mock: { calls: unknown[][] } }): Record<string, unknown>[] {
-    return log.mock.calls
-      .map(([message]) => String(message))
-      .filter((raw) => raw.startsWith('{"event":"import"'))
-      .map((raw) => JSON.parse(raw) as Record<string, unknown>);
-  }
 
   it('logs the account and the tab address without its query, and the outcome', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -304,39 +330,14 @@ describe('extensionImport log line', () => {
         via: 'extension',
         url: 'https://example.com/soup',
         host: 'example.com',
+        source: 'text',
+        attempts: ['not_a_recipe'],
         outcome: 'not_a_recipe',
         status: 422,
         ms: expect.any(Number),
       },
     ]);
     expect(JSON.stringify(log.mock.calls)).not.toContain('k-99');
-  });
-
-  it('logs a Gemini throw and passes on only a sanitized error', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const deps: RecipeImportDeps = {
-      model: 'test-model',
-      ai: {
-        models: {
-          generateContent: () =>
-            Promise.reject(Object.assign(new Error('SECRET logged-in page text'), { status: 503 })),
-        },
-      },
-      translator: () => Promise.resolve({ ok: false, code: TRANSLATE_FAILED }),
-    };
-    const thrown = await extensionImport(
-      authedRequest({ url: 'https://example.com/soup', html: '<main><p>Soup.</p></main>' }),
-      deps,
-    ).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-    expect((thrown as Error).message).toBe('Import failed: Error (status 503); message withheld');
-    expect(String((thrown as Error).stack)).not.toContain('SECRET');
-    expect(importLogEntries(log)).toEqual([
-      expect.objectContaining({ via: 'extension', outcome: 'threw', errorStatus: 503, status: 500 }),
-    ]);
-    expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET');
   });
 
   it('logs a recipe too large to push as unusable', async () => {
@@ -350,5 +351,203 @@ describe('extensionImport log line', () => {
     expect(importLogEntries(log)).toEqual([
       expect.objectContaining({ via: 'extension', outcome: 'unusable', status: 502 }),
     ]);
+  });
+});
+
+describe('extensionImport body size', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('answers 413 and stops reading a body over the limit, and logs it as too_large', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(recipeImport.importFromHtml).mockClear();
+    const endless = endlessBody();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const { deps, calls } = fakeImportDeps(undefined);
+    const response = await extensionImport(
+      new Request('http://localhost/api/extension/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [SESSION_HEADER_NAME]: token },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'Page was too large to import.',
+      code: 'import-too-large',
+    });
+    expect(endless.cancelled()).toBe(false);
+    expect(endless.read()).toBeLessThan(5_000_000);
+    expect(recipeImport.importFromHtml).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+    expect(importLogEntries(log)).toEqual([
+      expect.objectContaining({ via: 'extension', outcome: 'too_large', status: 413 }),
+    ]);
+  });
+});
+
+describe('extensionImport warnings', () => {
+  const url = 'https://example.com/soup';
+
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+    vi.mocked(sync.applyPushOp).mockReset();
+    vi.mocked(sync.applyPushOp).mockResolvedValue({ applied: true });
+  });
+
+  afterEach(() => {
+    vi.mocked(sync.applyPushOp).mockReset();
+    if (realApplyPushOp) {
+      vi.mocked(sync.applyPushOp).mockImplementation(realApplyPushOp);
+    }
+  });
+
+  it('answers a Gemini throw as import-model-failed, with no error text in the body or the log', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const deps: RecipeImportDeps = {
+      model: 'test-model',
+      ai: {
+        models: {
+          generateContent: () =>
+            Promise.reject(Object.assign(new Error('SECRET logged-in page text'), { status: 503 })),
+        },
+      },
+      translator: () => Promise.resolve({ ok: false, code: TRANSLATE_FAILED }),
+    };
+    const response = await extensionImport(
+      authedRequest({ url, html: '<main><p>Simmer the tomatoes.</p></main>' }),
+      deps,
+    );
+    expect(response.status).toBe(502);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ code: 'import-model-failed' });
+    expect(JSON.stringify(body)).not.toContain('SECRET');
+    expect(sync.applyPushOp).not.toHaveBeenCalled();
+    expect(importLogEntries(log)).toEqual([
+      expect.objectContaining({
+        via: 'extension',
+        attempts: ['threw'],
+        outcome: 'model_error',
+        errorStatus: 503,
+        status: 502,
+      }),
+    ]);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET');
+  });
+
+  it('saves the warnings on the recipe as importCheck', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { deps } = fakeImportDeps(
+      JSON.stringify({
+        title: 'Tomato soup',
+        servings: 4,
+        ingredientSections: [{ items: [{ item: 'tomatoes' }] }],
+        steps: [],
+        tags: [],
+        instructionsOnPage: false,
+      }),
+    );
+    const response = await extensionImport(
+      authedRequest({ url, html: '<main><p>You need tomatoes. Watch the video.</p></main>' }),
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect(sync.applyPushOp).toHaveBeenCalledWith('sub-1', {
+      kind: 'recipe.put',
+      payload: expect.objectContaining({
+        importCheck: { at: expect.any(Number), warnings: [{ code: 'INSTRUCTIONS_NOT_ON_PAGE' }] },
+      }),
+    });
+  });
+
+  it('saves a clean import without importCheck', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { deps } = fakeImportDeps(
+      JSON.stringify({
+        title: 'Tomato soup',
+        servings: 4,
+        ingredientSections: [{ items: [{ item: 'tomatoes' }] }],
+        steps: [{ text: 'Simmer.' }, { text: 'Blend.' }],
+        tags: [],
+      }),
+    );
+    await extensionImport(
+      authedRequest({ url, html: '<main><p>Simmer the tomatoes. Blend.</p></main>' }),
+      deps,
+    );
+    const payload = vi.mocked(sync.applyPushOp).mock.calls[0][1].payload;
+    expect(payload).not.toHaveProperty('importCheck');
+  });
+});
+
+describe('extensionImport when the client hangs up mid-upload', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('answers 400 and logs aborted, never a 500, a throw, or the error', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(recipeImport.importFromHtml).mockClear();
+    const token = signSession({ sub: 'sub-1', email: 'allowed@example.com' }, Date.now());
+    const response = await extensionImport(
+      abortedRequest('http://localhost/api/extension/import', { [SESSION_HEADER_NAME]: token }),
+      fakeImportDeps(undefined).deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'bad-request' });
+    expect(recipeImport.importFromHtml).not.toHaveBeenCalled();
+    expect(importLogEntries(log)).toEqual([
+      { event: 'import', sub: 'sub-1', via: 'extension', outcome: 'aborted', status: 400, ms: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('logs a body it cannot start reading as bad_request, not aborted', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const req = authedRequest({ url: 'https://example.com/soup', html: '<main>Soup.</main>' });
+    req.body?.getReader();
+    const response = await extensionImport(req, fakeImportDeps(undefined).deps);
+    expect(response.status).toBe(400);
+    expect(importLogEntries(log)).toEqual([
+      expect.objectContaining({ outcome: 'bad_request', status: 400 }),
+    ]);
+  });
+});
+
+describe('extensionImport daily AI budget', () => {
+  beforeEach(() => {
+    Object.assign(process.env, SESSION_ENV);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('refuses over the budget, readable by the extension, without calling the model', async () => {
+    llmUsage.spent.set(`sub-1/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const { deps, calls } = fakeImportDeps('{}');
+    const origin = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const req = authedRequest({ url: 'https://example.com/soup', html: '<p>Simmer.</p>' });
+    req.headers.set('origin', origin);
+    const response = await extensionImport(req, deps);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(response.headers.get('Retry-After')).not.toBeNull();
+    expect(await response.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toHaveLength(0);
   });
 });

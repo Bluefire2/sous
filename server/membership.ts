@@ -100,7 +100,21 @@ async function memberFromSession(sessionResult: ReadSessionResult): Promise<Requ
   if (sessionResult.status !== 'ok') {
     return { kind: 'denied' };
   }
-  const { sub, email } = sessionResult.session;
+  return memberFromIdentity(sessionResult.session);
+}
+
+/**
+ * The admission decision for an identity that has already been authenticated:
+ * a verified session cookie, or a live MCP grant (`server/mcp/resourceAuth.ts`),
+ * which carries the `sub` and email of the session that consented. Owners
+ * short-circuit before any member read; members go through the 60 s
+ * active-member cache. Denied is never mixed with unknown.
+ */
+export async function memberFromIdentity(identity: {
+  sub: string;
+  email: string;
+}): Promise<RequireMemberResult> {
+  const { sub, email } = identity;
   const allowedRaw = allowedEmails();
   const ownerCheck = accessDecision({
     email,
@@ -215,6 +229,30 @@ export function storeUnavailable(): Response {
   });
 }
 
+/**
+ * `readBoundedText` throws this when the request body fails partway. In the
+ * server the body is `Readable.toWeb(nodeReq)`, which errors when the client
+ * closes the connection mid-upload (Node's `Error('aborted')`, ECONNRESET):
+ * the client's doing, not a server failure. The message is fixed and the
+ * original error is not kept, so it is safe to log.
+ */
+export class RequestBodyError extends Error {
+  constructor() {
+    super('Request body could not be read');
+    this.name = 'RequestBodyError';
+  }
+}
+
+/**
+ * The body as text, or null when it is longer than `limit` bytes. Throws
+ * `RequestBodyError` when the body fails. Past the limit it stops reading and
+ * releases the body without cancelling it: in the server, cancelling
+ * `Readable.toWeb(nodeReq)` aborts the request, and Node closes the connection
+ * under the arriving upload, so a client still uploading usually sees a reset
+ * instead of the 413. The dispatcher (`dispatchFetch` in
+ * `scripts/server.ts`) drops what is left, within a bound, before it answers.
+ * Nothing past the limit is kept here.
+ */
 export async function readBoundedText(req: Request, limit: number): Promise<string | null> {
   const contentLength = req.headers.get('content-length');
   if (contentLength !== null) {
@@ -234,14 +272,16 @@ export async function readBoundedText(req: Request, limit: number): Promise<stri
   let total = 0;
 
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await reader.read().catch(() => {
+      throw new RequestBodyError();
+    });
     if (done) {
       break;
     }
     if (value) {
       total += value.byteLength;
       if (total > limit) {
-        await reader.cancel();
+        reader.releaseLock();
         return null;
       }
       chunks.push(value);

@@ -4,6 +4,7 @@ import {
   type Content,
   type GenerateContentParameters,
   type GenerateContentResponse,
+  type GenerateContentResponseUsageMetadata,
   type Part,
   type Schema,
   Type,
@@ -125,10 +126,29 @@ function clonePart(part: Part): Part {
   return structuredClone(part);
 }
 
+/**
+ * A high estimate of a step's prompt tokens, for a stream that ended before
+ * it reported usage: one token per character of the request (no script uses
+ * more), tool declarations included.
+ */
+export function estimatedStepPromptTokens(
+  systemInstruction: string,
+  contents: Content[],
+  tools: unknown = [],
+): number {
+  return systemInstruction.length + JSON.stringify(contents).length + JSON.stringify(tools).length;
+}
+
 export function googleModel(opts: {
   apiKey: string;
   model: string;
   generate?: GenerateFn;
+  /**
+   * Called once per step when its stream ends, with the last usage it
+   * reported, or an estimate when it reported none (a stream cut off early
+   * is still billed for its prompt and what it already wrote).
+   */
+  onUsage?: (model: string, usage: GenerateContentResponseUsageMetadata) => void;
 }): ModelClient {
   const generate: GenerateFn =
     opts.generate ??
@@ -172,8 +192,28 @@ export function googleModel(opts: {
       const yieldedCallKeys = new Set<string>();
       let streamDone = false;
 
+      let usage: GenerateContentResponseUsageMetadata | undefined;
+      let streamedChars = 0;
+
       async function* eventGenerator(): AsyncGenerator<ModelStepEvent> {
+        try {
+          yield* streamEvents();
+        } finally {
+          opts.onUsage?.(
+            opts.model,
+            usage ?? {
+              promptTokenCount: estimatedStepPromptTokens(request.systemInstruction, contents, request.tools),
+              candidatesTokenCount: streamedChars,
+            },
+          );
+        }
+      }
+
+      async function* streamEvents(): AsyncGenerator<ModelStepEvent> {
         for await (const chunk of iterable) {
+          if (chunk.usageMetadata) {
+            usage = chunk.usageMetadata;
+          }
           if (chunk.promptFeedback?.blockReason) {
             promptBlocked = true;
           }
@@ -187,6 +227,7 @@ export function googleModel(opts: {
               if (part.functionCall?.name) {
                 sawCalls = true;
                 const fc = part.functionCall;
+                streamedChars += JSON.stringify(fc.args ?? {}).length;
                 const key = fc.id ?? `${fc.name}:${yieldedCallKeys.size}`;
                 if (!yieldedCallKeys.has(key)) {
                   yieldedCallKeys.add(key);
@@ -206,6 +247,7 @@ export function googleModel(opts: {
           // `chunk.text` is this chunk's new text, matching api/chat.ts.
           const chunkText = chunk.text;
           if (chunkText && chunkText.length > 0) {
+            streamedChars += chunkText.length;
             sawText = true;
             yield { kind: 'text', d: chunkText };
           }

@@ -1,3 +1,9 @@
+export function chipClass(active: boolean): string {
+  return active
+    ? 'rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-page'
+    : 'rounded-full bg-surface-muted px-3 py-1.5 text-sm text-ink-muted hover:bg-surface hover:text-ink';
+}
+
 export const inputFocus =
   'outline-none focus:border-ink-subtle focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
 

@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { useLocale, useT } from '../i18n';
 import { lessonInNotes } from '../lib/cookLogShape';
 import { cookLogStore } from '../lib/cookLogStore';
-import { usePhotoUrl } from '../lib/photoStore';
 import type { CookLog, Recipe } from '../lib/types';
 import { addBtn, ghostBtn } from '../lib/uiClasses';
+import { StoredPhotoImage } from './BlobImage';
 
 /** Built from the date's parts, so no timezone can move it to another day. */
 function formatCookedOn(cookedOn: string, locale: string): string {
@@ -19,10 +19,12 @@ function formatCookedOn(cookedOn: string, locale: string): string {
 }
 
 function CookPhoto({ photoId }: { photoId: string }) {
-  const url = usePhotoUrl(photoId);
-  if (!url) return null;
   return (
-    <img src={url} alt="" className="aspect-square w-full rounded-xl object-cover shadow-sm" />
+    <StoredPhotoImage
+      photoId={photoId}
+      alt=""
+      className="aspect-square w-full rounded-xl object-cover shadow-sm"
+    />
   );
 }
 

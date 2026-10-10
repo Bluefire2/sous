@@ -12,15 +12,33 @@
     "needsData": true
   },
   {
+    "id": "collections-index",
+    "route": "/collections",
+    "setup": "Signed in, opened from the Collections label on a library that already has at least one named collection. The screen lists Recipes and each collection as a row with a recipe count, plus New collection. Do not press New collection. Do not create, rename, share, or delete. If the account has no named collection, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "library-populated",
     "route": "/",
-    "setup": "Signed in on the Recipes list (/) or an own named collection (/collections/<id>) that already shows at least one recipe card. Prefer / when it has cards. Do not create a recipe. If nothing is listed, mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite.",
+    "setup": "Signed in on the Recipes list (/) or an own named collection (/collections/<id>) that already shows at least one recipe card. Prefer / when it has cards. The collections section sits on the page background between the header and search: a Collections label with a folder icon (it links to the index), New collection on the right, and one sideways row of chips starting with Recipes. On an owned named collection, a share icon (three connected nodes) and a vertical ellipsis sit beside New collection; do not open the ellipsis here (that menu is library-collection-menu). There is no card around the section. Do not press New collection, Share, Rename, or Delete, and do not create a recipe. If nothing is listed, mark skipped: needs data. A signed-in header shows the Ask (chat bubble) and Invite (person with a plus) icons before Cooks; their names are aria-labels. Do not click Invite. Beside the search box is a Sort chip with a down chevron (its menu is library-sort-menu; do not open it here). A card for a recipe you have logged a cook of shows a small muted line under the description, \"Last cooked\" with a relative time (\"Last cooked 3 days ago\", or \"Last cooked today\"); a recipe never cooked shows no such line. A card's tags are small chips; each is a button whose aria-label says it filters the list by that tag. Do not tap a tag here. Below the last card, a centered muted line reads \"Missing something?\" followed by a Suggest a feature link; scroll to it and check it fits on one or two lines. Do not open it here.",
+    "needsData": true
+  },
+  {
+    "id": "library-show-more",
+    "route": "/",
+    "setup": "Signed in on the Recipes list with more than 20 recipes, so only the first 20 cards show. Scroll to the bottom of the list. Under the last card is a Show more button with the number of recipes it adds (\"Show 12 more\"), and under it a small muted line with how many are showing out of how many (\"Showing 20 of 32\"). Judge the button and the line together, as one control and its caption. Do not press Show more. If the list has 20 recipes or fewer, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "library-collection-menu",
+    "route": "/collections/:collectionId",
+    "setup": "Signed in on one of your own named collections (not a folder shared with you, and not the Recipes list). The collections section is on the page background. Beside New collection is a share icon (three connected nodes) and a vertical ellipsis. Open the ellipsis. The menu lists Rename and Delete, with Delete in the danger color. Do not press the share icon, Rename, or Delete, and do not press New collection. If you have no own named collection, mark skipped: needs data. A signed-in header shows the Ask and Invite icons before Cooks. Do not click Invite.",
     "needsData": true
   },
   {
     "id": "library-select",
     "route": "/",
-    "setup": "Signed in on the Recipes list or an own named collection that already shows at least one recipe card. Select is on, so each own recipe has a checkbox, and a bar shows how many are selected, Select all, Move, and Cancel. Check at least one recipe so Move is enabled. Do not tap Move and do not change which collection a recipe is in. If the list is empty or this is a shared collection, mark skipped: needs data.",
+    "setup": "Signed in on the Recipes list or an own named collection that already shows at least one recipe card. Select is on, so a header checkbox reads Select all, each own recipe has a checkbox, and a bar shows how many are selected, Select all, Move, and Cancel. Check one own recipe so the header box is indeterminate and Move is enabled, then use the header checkbox to select every own recipe so the bar's button reads Select none. Do not tap Move and do not change which collection a recipe is in. If the list is empty or this is a shared collection, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -56,13 +74,67 @@
   {
     "id": "settings",
     "route": "/settings",
-    "setup": "Settings while signed in, with the language picker visible under Appearance. Do not export, import a backup, refresh in order to force a toast, or sign out.",
+    "setup": "Settings while signed in, with the language picker visible under Appearance. Scroll to the Feedback section above the About, Privacy, and Terms links; it has one line of text and a Suggest a feature button. Do not export, import a backup, refresh in order to force a toast, or sign out.",
+    "needsData": false
+  },
+  {
+    "id": "settings-cooking-changed",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to the Cooking section (after Appearance, before Language): a heading, a muted line saying these settings apply to this device only, a keep-the-screen-awake checkbox that has been unchecked, a Recipe text size label, and two buttons, Normal and Large, with Large selected. Both settings are stored only in this browser. Do not export, import a backup, or sign out.",
+    "needsData": false
+  },
+  {
+    "id": "suggest",
+    "route": "/suggest",
+    "setup": "Signed in, Suggest a feature page opened from the library link (back link says Library). Shows an intro line, the Your idea box with its placeholder, the email-me checkbox with its hint, a collapsed \"What's included\" disclosure (open it), and a disabled Send suggestion button. Type at least 3850 characters (e.g. repeat a short sentence) so the characters-left count appears under the box, then clear it. Do not press Send.",
+    "needsData": false
+  },
+  {
+    "id": "suggest-sent",
+    "route": "/suggest",
+    "setup": "Signed in, after sending a suggestion: the form is replaced by the thanks line, a back link button, and Suggest something else. Only reach this against a dev server using the Firestore emulator (FIRESTORE_EMULATOR_HOST); against real Firestore, mark skipped: needs data rather than sending.",
+    "needsData": true
+  },
+  {
+    "id": "suggest-signed-out",
+    "route": "/suggest",
+    "setup": "Signed out, open /suggest directly: the title, a sentence asking you to sign in, and the Google sign-in button. Do not press it.",
     "needsData": false
   },
   {
     "id": "settings-invite-link",
     "route": "/settings",
     "setup": "Settings while signed in as a non-owner member, after Create link, so the new invite URL and Copy button are showing. Creating the link writes one unused invite. If this session is an owner, the control is absent — mark skipped: needs data. Do not sign out.",
+    "needsData": true
+  },
+  {
+    "id": "settings-connected-apps-empty",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Connected apps (after Library, before Appearance), in an account with no connected AI apps: the intro sentence, \"No apps connected.\", then the server address label, the read-only https://…/mcp field, and Copy. Copy only touches the clipboard. Do not connect an app to change this state. If the account already has a connected app, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "settings-connected-apps-list",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Connected apps, in an account with at least one connected AI app (connected from Claude or another MCP client through the consent page at /oauth/consent). Each row shows the app's host, a quoted \"Calls itself …\" line when the app named itself, Can read or Can read and edit, Connected … and Last used … times, and a Disconnect button; the server address label, field, and Copy follow the list. Do not press Disconnect (it revokes the app). If no app is connected, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "settings-connected-apps-disconnect-error",
+    "route": "/settings",
+    "setup": "Settings while signed in, Connected apps showing a list, after Disconnect failed: the row stays and a red \"Couldn't disconnect <host>. Try again.\" line shows under the list. Reaching it needs a revoke request that fails (for example the API dev server stopped after the list loaded); a successful press revokes the app, so do not press Disconnect against a working server. If the state cannot be reached without revoking, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "settings-kitchen-profile",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to Kitchen profile (after Library, before Connected apps): the intro sentence, the Allergies chips (14, Eggs selected for the member), the Diet chips (7), four labelled boxes with placeholders or saved text (foods to never include, dislikes, equipment, anything else), and Save. After pressing Save, a muted Saved shows beside the button. Only press Save against a dev server using the Firestore emulator (FIRESTORE_EMULATOR_HOST); against real Firestore, capture without saving.",
+    "needsData": false
+  },
+  {
+    "id": "settings-kitchen-profile-save-error",
+    "route": "/settings",
+    "setup": "Settings while signed in, Kitchen profile after Save failed: the form keeps what was entered and a red line beside Save says the kitchen profile could not be saved. Reaching it needs a save request that fails (for example the API dev server stopped after the page loaded). If the state cannot be reached, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -78,58 +150,172 @@
     "needsData": true
   },
   {
+    "id": "library-roll",
+    "route": "/",
+    "setup": "Signed in on the Recipes list with at least two recipes showing, so a die icon (aria-label \"Pick a random recipe\") sits beside Select. Press it and wait about a second for the die to stop spinning. The sheet shows a die and the title, a muted recipe count for the pool, then one randomly picked recipe (title, prep and cook times, description), Open recipe, and Roll again. Judge the sheet's own copy; the recipe text is user data. Do not press Open recipe. If fewer than two recipes are listed, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "library-language-menu",
+    "route": "/",
+    "setup": "On the Recipes list, signed in or out. The rightmost header control shows the current UI language's short label (EN, УКР, РУС, or 中文) with a down chevron; its name is an aria-label. Tap it so the menu under it lists every UI language by its own name, with the current one in bold and a check mark. The trigger label is the UI language's own short name, and each menu item names its language in that language, by design; judge them, the aria-label, and the header around it. Choosing a language only writes cook.locale and is allowed.",
+    "needsData": false
+  },
+  {
+    "id": "library-sort-menu",
+    "route": "/collections/:collectionId",
+    "setup": "Signed in on one of your own named collections with at least two recipes, one of which you have logged a cook of. Beside the search box, after Select and All collections (wrapped under the search on a narrow screen), is a Sort chip with a down chevron; its aria-label names the current order (\"Sort: Recently updated\"). Tap it so the menu under it lists four orders: Recently updated (the default, in bold with a check mark), Title A–Z, Newest added, and Last cooked; the menu's group label is an aria-label. Judge the four items as a parallel set of list orders, and the chip beside the search. The cooked recipe's card shows a small muted line under its description, \"Last cooked\" with a relative time (\"Last cooked 3 days ago\"); judge it beside the menu's Last cooked item. Choosing an order only reorders the list on this device and is allowed. If no collection has two recipes and a logged cook, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "import-idle",
     "route": "/import",
-    "setup": "Import with an empty textarea, the bulk-import checkbox off, no photo attached, and no preview. The Add photos button is visible. Open /import (not under /collections/…/import). Do not extract.",
+    "setup": "Import with an empty textarea, the bulk-import checkbox off, no photo attached, and no preview. The Add photos button is visible. Open /import (not under /collections/…/import). Under the title, Choose a collection is showing. Do not press it, and do not extract.",
     "needsData": false
   },
   {
     "id": "import-photos",
     "route": "/import",
-    "setup": "Import with bulk off and one photo attached, so the thumbnail, its remove control, and the notes placeholder are showing. Do not extract. Adding a photo does not call Gemini and writes nothing.",
+    "setup": "Import with bulk off and one photo attached, so the thumbnail, its remove control, and the notes placeholder are showing. Choose a collection stays under the title. Do not press it, and do not extract. Adding a photo does not call Gemini and writes nothing.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-idle",
+    "route": "/import",
+    "setup": "Import with the Generate mode selected in the Import / Generate switch under the title: the brief textarea with its placeholder, the hint that the recipe is AI-written, the underlined link line pointing to the kitchen profile for allergies and diets, the Search the web checkbox (unchecked) with its hint, and the Generate recipe button. Nothing typed, nothing extracted.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-preview",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Search the web checked, Generate recipe pressed with the model call mocked: the preview shows the \"Pages Sous used\" list (three links, the last one labelled as an untitled page) above the language line and the editable recipe form, with the thumbs up / down rating row at the bottom.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-profile-unavailable",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the request mocked to answer 503 import-profile-unavailable: the error line under the form says the kitchen profile could not be read, so nothing was generated. Against a real server this needs the profile read to fail; mark skipped: needs data rather than breaking Firestore.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-no-recipe",
+    "route": "/import",
+    "setup": "Generate mode, a brief that is not about food, Generate recipe pressed with the model call mocked to answer 422 import-no-recipe-brief: the error line under the form says a recipe could not be made from that, and the import report card is offered with its note field and its What's included list open (the list names the idea that was typed).",
+    "needsData": false
+  },
+  {
+    "id": "import-create-writing",
+    "route": "/import",
+    "setup": "Generate mode, a brief typed, Generate recipe pressed with the model call mocked to never answer: the button reads Generating… with its spinner, the textarea is read-only, and the status line under the button says the recipe is being generated.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-too-long",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 400 import-brief-too-long: the error line says the idea is too long for 2,000 characters.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-rate-limited",
+    "route": "/import",
+    "setup": "Generate mode with Search the web checked, Generate recipe pressed with the call mocked to answer 429 import-search-rate-limited: the error line says there were too many web searches and suggests turning Search the web off.",
+    "needsData": false
+  },
+  {
+    "id": "import-llm-budget",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 429 llm-budget-exceeded: the error line says today's limit for Sous's AI features is reached and resets at midnight UTC, with no offer to send an import report. Every import mode shows the same line.",
+    "needsData": false
+  },
+  {
+    "id": "import-create-failed",
+    "route": "/import",
+    "setup": "Generate mode, Generate recipe pressed with the call mocked to answer 502 import-generate-failed: the error line says the recipe could not be written, and the import report card is offered.",
     "needsData": false
   },
   {
     "id": "import-bulk",
     "route": "/import",
-    "setup": "Import with the bulk-import checkbox on, so the bulk placeholder and hint are visible. Do not paste links and do not extract. Bulk extract saves recipes and has no preview.",
+    "setup": "Import with the bulk-import checkbox on, so the bulk placeholder and hint are visible. Choose a collection stays under the title. Do not press it, do not paste links, and do not extract. Bulk extract saves recipes and has no preview.",
     "needsData": false
   },
   {
     "id": "import-preview",
     "route": "/import",
-    "setup": "From /import with bulk off (not under /collections/…/import), extract one recipe (a single https URL, or pasted recipe text) and stop when the \"Fix it here before saving\" banner and the form are showing. Do not press Save. Extraction calls Gemini and writes nothing. The guessed-language line, translate checkbox, failure notice, and pasted-text hint are separate entries.",
+    "setup": "From /import with bulk off (not under /collections/…/import), extract one recipe (a single https URL, or pasted recipe text) and stop when the form is showing. A clean import shows no warning box above the form. Choose a collection stays under the title. Do not press it, and do not press Save. Extraction calls Gemini and writes nothing. The guessed-language line, translate checkbox, failure notice, pasted-text hint, and import warnings are separate entries.",
     "needsData": false
   },
   {
     "id": "import-preview-guessed-language",
     "route": "/import",
-    "setup": "From /import with bulk off (not under /collections/…/import), extract one recipe whose language the import can guess (a single https URL). Stop when the guessed-language line (\"Looks like … Change it if that's wrong.\") and its language select are showing above the form. Do not press Save. Extraction calls Gemini and writes nothing.",
+    "setup": "From /import with bulk off (not under /collections/…/import), extract one recipe whose language the import can guess (a single https URL). Stop when the guessed-language line (\"Looks like … Change it if that's wrong.\") and its language select are showing above the form. Choose a collection stays under the title. Do not press it, and do not press Save. Extraction calls Gemini and writes nothing.",
     "needsData": false
   },
   {
     "id": "import-preview-translate-on",
     "route": "/import",
-    "setup": "Import preview for a recipe whose language differs from the UI language, with the \"Translate into …\" checkbox checked. The form shows the translated text. Do not press Save. If the extracted language matches the UI language, change the guess to another language and leave the checkbox checked. Extraction calls Gemini and writes nothing.",
+    "setup": "Import preview for a recipe whose language differs from the UI language, with the \"Translate into …\" checkbox checked. The form shows the translated text. Choose a collection stays under the title. Do not press it, and do not press Save. If the extracted language matches the UI language, change the guess to another language and leave the checkbox checked. Extraction calls Gemini and writes nothing.",
     "needsData": false
   },
   {
     "id": "import-preview-translate-failed",
     "route": "/import",
-    "setup": "Import preview when translation failed: the notice \"Couldn't translate this recipe. You can save the original.\" is showing, the translate checkbox is absent, and the form shows the original. Do not press Save. If this session cannot produce a failed translation, mark skipped: needs data.",
+    "setup": "Import preview when translation failed: the notice \"Couldn't translate this recipe. You can save the original.\" is showing, the translate checkbox is absent, and the form shows the original. Choose a collection stays under the title. Do not press it, and do not press Save. If this session cannot produce a failed translation, mark skipped: needs data.",
     "needsData": true
   },
   {
     "id": "import-preview-pasted-hint",
     "route": "/import",
-    "setup": "From /import with bulk off, paste recipe text (not a URL) in a language that differs from the UI language and extract. The translate checkbox is checked and its hint \"The original text won't be kept.\" is showing, with notice styling on the guessed-language line. Do not press Save. Extraction calls Gemini and writes nothing.",
+    "setup": "From /import with bulk off, paste recipe text (not a URL) in a language that differs from the UI language and extract. The translate checkbox is checked and its hint \"The original text won't be kept.\" is showing, with notice styling on the guessed-language line. Choose a collection stays under the title. Do not press it, and do not press Save. Extraction calls Gemini and writes nothing.",
     "needsData": false
   },
   {
     "id": "import-bulk-translate",
     "route": "/import",
-    "setup": "Import with the bulk-import checkbox on, so the batch \"Translate into …\" checkbox is visible and checked. Do not paste links and do not extract. Bulk extract saves recipes.",
+    "setup": "Import with the bulk-import checkbox on, so the batch \"Translate into …\" checkbox is visible and checked. Choose a collection stays under the title. Do not press it, do not paste links, and do not extract. Bulk extract saves recipes.",
     "needsData": false
+  },
+  {
+    "id": "import-preview-warnings",
+    "route": "/import",
+    "setup": "From /import with bulk off, paste recipe text that lists ingredients but has no method, for example \"Tomato soup\\n6 tomatoes\\n1 onion\\nsalt\", and extract. Stop when the \"Check these before saving:\" box with a specific warning (such as no instructions found) shows above the form. Choose a collection stays under the title. Do not press it, and do not press Save. Extraction calls Gemini and writes nothing. If the import returns no warning, mark skipped: needs data.",
+    "needsData": false
+  },
+  {
+    "id": "import-error-model-failed",
+    "route": "/import",
+    "setup": "The import error \"Couldn't read that recipe — try again.\" under the textarea, which shows when the model call fails. Choose a collection stays under the title. Do not press it. It cannot be produced on demand; if it does not happen during the run, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "import-bulk-summary",
+    "route": "/import",
+    "setup": "After a bulk import finished: the \"{n} imported\" heading, the \"need attention\" and \"failed\" filter buttons, rows with a warning line or a \"Couldn't import this recipe.\" line with its own Retry, and Show all after a filter is pressed. The destination line stays under the title. Do not press Change or Choose a collection. Bulk import saves recipes, so the review does not run one; capture this only if a bulk summary is already on screen from the person running the review, otherwise mark skipped: needs data. Do not press Retry or Try again.",
+    "needsData": true
+  },
+  {
+    "id": "import-failed-feedback",
+    "route": "/import",
+    "setup": "From /import with bulk off, paste https://example.com/ and press Extract recipe. Stop when the error and the \"Help fix this import\" card show under it. Open \"Add a note (optional)\" and \"What's included\". Choose a collection stays under the title. Do not press it. Do not press Send report: it stores a report in production Firestore. The sent and could-not-send states are not captured (mark skipped: writes data). Extraction calls Gemini and writes nothing.",
+    "needsData": false
+  },
+  {
+    "id": "import-preview-feedback",
+    "route": "/import",
+    "setup": "From /import with bulk off, paste recipe text that has a title and ingredients but no steps (for example \"Pancakes\\n\\nIngredients:\\n- 2 eggs\\n- 1 cup flour\\n- 1 cup milk\") and press Extract recipe. Stop when the preview shows the warning box and, right below it, the \"Help fix this import\" card. Open \"Add a note (optional)\" and \"What's included\". Choose a collection stays under the title. Do not press it. If no warning box appears, mark skipped: needs data. Do not press Send report or Save.",
+    "needsData": true
+  },
+  {
+    "id": "import-preview-rating",
+    "route": "/import",
+    "setup": "From /import with bulk off, extract one clean recipe (a single https recipe URL, or full recipe text with steps). Scroll below the form to the \"How did this import go?\" row with thumbs up and down; their names are aria-labels. Capture it, then press thumbs down and capture the card that replaces the row. Choose a collection stays under the title. Do not press it. Do not press thumbs up, Send report, or Save.",
+    "needsData": false
+  },
+  {
+    "id": "import-bulk-feedback",
+    "route": "/import",
+    "setup": "After a bulk import finished with at least one failed or needs-attention row: press that row's \"Report a problem\" and capture the expanded card. The destination line stays under the title. Do not press Change or Choose a collection. Bulk import saves recipes, so the review does not run one; capture this only if a bulk summary is already on screen from the person running the review, otherwise mark skipped: needs data. Do not press Send report, Retry, or Try again.",
+    "needsData": true
   },
   {
     "id": "recipe-view-translate-labelled",
@@ -170,7 +356,31 @@
   {
     "id": "recipe-view",
     "route": "/recipe/:id",
-    "setup": "An owned recipe as it loads: title, ingredients, and steps. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "setup": "An owned recipe as it loads: title, ingredients, and steps. The top row has the Library back link on the left and Share and Edit on the right. The translate chip may sit on the prep/cook line. Do not change servings, check ingredients, or advance steps. Do not tap the translate chip or Share. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-large-text",
+    "route": "/recipe/:id",
+    "setup": "The same owned recipe with Settings → Cooking → Recipe text size set to Large on this device: ingredient and step rows are one size larger than usual, and the current step larger still; headings, the servings control, and the top row keep their usual size. Check that the larger rows and the servings label still fit without clipping or awkward wrapping. Do not change servings, check ingredients, or advance steps. Recipe content is not judged. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-import-warnings",
+    "route": "/recipe/<id>",
+    "setup": "An own recipe (or one shared with you as editor) that was imported with warnings and not dismissed, so the warning box shows under the title with Retry import, View original, and Dismiss. Do not press Dismiss (it writes) and do not confirm a replacement. If no recipe in the account has an undismissed import warning, mark skipped: needs data. A recipe shared with you as viewer never shows the box.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-variants",
+    "route": "/recipe/:id",
+    "setup": "A recipe that has other variants (one saved from Ask with Save as variant, or a variant of one), so a Variants row shows under the title with one chip per variant: the original first, labelled as the original, and the open recipe highlighted. Do not tap a chip. If no recipe in the account has a variant, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-import-retry-sheet",
+    "route": "/recipe/<id>",
+    "setup": "From recipe-view-import-warnings, press Retry import (it calls Gemini and writes nothing) and wait for the \"Replace the ingredients and steps with the new import?\" sheet, with its body, any \"The new import has these issues too:\" list, and Replace and Cancel. Capture it, then press Cancel. Never press Replace: it overwrites the recipe.",
     "needsData": true
   },
   {
@@ -183,6 +393,18 @@
     "id": "recipe-view-your-cooks",
     "route": "/recipe/:id",
     "setup": "On an owned recipe, scroll to the \"Your cooks\" section (heading plus Log a cook; cards if this recipe already has logs). This is the RecipeView cook-log state. The section is absent on a shared recipe. Do not log a cook. Do not tap the translate chip. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-share-copied",
+    "route": "/recipe/:id",
+    "setup": "An owned recipe in a browser with no system share sheet: Share in the top row copied the recipe as plain text, and a dark pill near the top says the recipe was copied. Share only reads the recipe; it writes nothing. On a phone Share opens the system share sheet instead, which is not captured. If there is no owned recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-view-share-copy-failed",
+    "route": "/recipe/:id",
+    "setup": "As recipe-view-share-copied, but the clipboard refused the write, so a red pill near the top says the recipe could not be copied. Share writes nothing. If the clipboard accepts the write, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -212,19 +434,19 @@
   {
     "id": "share-collection-sheet",
     "route": "/collections/:collectionId",
-    "setup": "Open one of your own named collections (not a shared-with-you folder) and tap Share. Under the title, two buttons: \"By email\" (pressed) and \"With a link\". Do not press \"With a link\"; the link controls are a separate screen. The sheet shows a two-sentence intro about editors and who can delete, the email row with a role menu (Viewer / Editor) and the Share button, then a \"People with access\" heading. The first row is your own email with an Owner badge. Each other row shows an email, a role menu (Viewer / Editor) and Remove; on a phone the email is on its own line above the controls. With nobody else added the list says \"Nobody else can see this yet.\" below the Owner row. Opening the sheet only reads the grant list. Prefer a collection whose sheet says \"Nobody else can see this yet.\" Do not type an email, and do not add, change a role, or remove a person. If every own collection already lists grantees, redact those emails before judging (your own email on the Owner row is fine), or mark skipped: shows another member's data. If you have no own named collection, mark skipped: needs data. Do not create one.",
+    "setup": "Open one of your own named collections (not a shared-with-you folder), tap the share icon beside New collection (three connected nodes; the ellipsis next to it opens Rename and Delete). Under the title, three buttons: \"By email\" (pressed), \"With a link\", and \"Public\". Do not press \"With a link\" or \"Public\"; their controls are separate screens. The sheet shows a two-sentence intro about editors and who can delete, the email row with a role menu (Viewer / Editor) and the Share button, then a \"People with access\" heading. The first row is your own email with an Owner badge. Each other row shows an email, a role menu (Viewer / Editor) and Remove; on a phone the email is on its own line above the controls. With nobody else added the list says \"Nobody else can see this yet.\" below the Owner row. Opening the sheet only reads the grant list. Prefer a collection whose sheet says \"Nobody else can see this yet.\" Do not type an email, and do not add, change a role, or remove a person. If every own collection already lists grantees, redact those emails before judging (your own email on the Owner row is fine), or mark skipped: shows another member's data. If you have no own named collection, mark skipped: needs data. Do not create one.",
     "needsData": true
   },
   {
     "id": "share-collection-sheet-links",
     "route": "/collections/:collectionId",
-    "setup": "In the Share sheet of one of your own named collections, press \"With a link\" (it is not pressed when the sheet opens). \"By email\" stays visible and is not pressed. There is no separate \"Share by link\" heading. The sheet shows the sentence about joining until you revoke the link or 7 days pass, the role menu (Viewer / Editor) for people who join by link, the Copy link button, and the live-link list. The email form and the people list are not on this screen. Opening the sheet only reads the link list. With no live links the list says \"No live links.\"; if the collection already has live links, each row shows Viewer link or Editor link, an \"expires in …\" line, and Revoke, and one sentence under the list says someone you remove can still rejoin with a live link until it is revoked; capture that too. Link errors (for example the live-link cap) show under the Copy link row. Do not press Copy link (it creates a link) and do not press Revoke. If you have no own named collection, mark skipped: needs data.",
+    "setup": "In the Share sheet of one of your own named collections, press \"With a link\" (it is not pressed when the sheet opens). \"By email\" and \"Public\" stay visible and are not pressed. There is no separate \"Share by link\" heading. The sheet shows the sentence about joining until you revoke the link or 7 days pass, the role menu (Viewer / Editor) for people who join by link, the Copy link button, and the live-link list. The email form and the people list are not on this screen. Opening the sheet only reads the link list. With no live links the list says \"No live links.\"; if the collection already has live links, each row shows Viewer link or Editor link, an \"expires in …\" line, and Revoke, and one sentence under the list says someone you remove can still rejoin with a live link until it is revoked; capture that too. Link errors (for example the live-link cap) show under the Copy link row. Do not press Copy link (it creates a link) and do not press Revoke. If you have no own named collection, mark skipped: needs data.",
     "needsData": true
   },
   {
     "id": "share-collection-sheet-offline",
     "route": "/collections/:collectionId",
-    "setup": "The Share sheet of one of your own named collections opened while the browser is offline (DevTools Network: Offline, or switch the network off after the collection screen has loaded, then tap Share). \"By email\" is pressed. The link list is not on this screen. The \"People with access\" list shows the Owner row and then \"You're offline. Try again when you're back online.\" with a Try again button, and does not say \"Nobody else can see this yet.\" Then type a placeholder address (for example someone@example.invalid) and press Share: while offline no request reaches the server, so nothing is written, and the same offline sentence shows under the email field. Do not press \"With a link\", do not go back online while the address is typed, and do not press Try again online. If the run cannot go offline, mark skipped: needs data.",
+    "setup": "The Share sheet of one of your own named collections opened while the browser is offline (DevTools Network: Offline, or switch the network off after the collection screen has loaded, then tap the share icon beside New collection (three connected nodes)). \"By email\" is pressed. The link list is not on this screen. The \"People with access\" list shows the Owner row and then \"You're offline. Try again when you're back online.\" with a Try again button, and does not say \"Nobody else can see this yet.\" Then type a placeholder address (for example someone@example.invalid) and press Share: while offline no request reaches the server, so nothing is written, and the same offline sentence shows under the email field. Do not press \"With a link\", do not go back online while the address is typed, and do not press Try again online. If the run cannot go offline, mark skipped: needs data.",
     "needsData": true
   },
   {
@@ -236,13 +458,25 @@
   {
     "id": "share-collection-sheet-link-minted",
     "route": "/collections/:collectionId",
-    "setup": "The shown-once link: open Share, press \"With a link\", then press Copy link. The sheet shows the new URL in a read-only field with \"Copy this now. It will not be shown again.\" (or \"Copied. It will not be shown again.\" when the clipboard write worked) and a Copy / Copied button, and the new row appears in the live-link list with the one-sentence rejoin warning under it. Reaching it writes a collection link to production, so capture it only when the person who starts the run opts in for that run (for example \"include minted link\"): press Copy link once, on one own named collection with no grantees, capture, then press Revoke on that row, and list the link created and revoked in the report. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL.",
+    "setup": "The shown-once link: tap the share icon beside New collection (three connected nodes), press \"With a link\", then press Copy link. The sheet shows the new URL in a read-only field with \"Copy this now. It will not be shown again.\" (or \"Copied. It will not be shown again.\" when the clipboard write worked) and a Copy / Copied button, and the new row appears in the live-link list with the one-sentence rejoin warning under it. Reaching it writes a collection link to production, so capture it only when the person who starts the run opts in for that run (for example \"include minted link\"): press Copy link once, on one own named collection with no grantees, capture, then press Revoke on that row, and list the link created and revoked in the report. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL.",
     "needsData": true
+  },
+  {
+    "id": "import-from-collection",
+    "route": "/collections/:collectionId/import",
+    "setup": "Open import from one of your own named collections (the path is /collections/<id>/import, not /import). The empty form is showing, bulk is off, and under the title the line Import into {name} is showing with Change. Do not press Change, do not extract, and do not save. If you have no own named collection, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "import-destination-sheet",
+    "route": "/import",
+    "setup": "From /import (not under /collections/…/import), with the empty import form showing, press Choose a collection. The sheet title is Import into, with No collection, any collections, and Create collection. Capture the sheet, then Cancel. Do not pick No collection, pick a collection, or create one. Nothing is written.",
+    "needsData": false
   },
   {
     "id": "save-to-collection-sheet",
     "route": "/import",
-    "setup": "After the import preview is showing (import-preview: /import, bulk off, not under /collections/…/import), press Save. The Save to collection sheet opens and nothing is written until a destination is chosen. Capture the sheet, then Cancel. Do not pick Recipes, pick a collection, or create one. Do not reach this sheet from bulk import.",
+    "setup": "After the import preview is showing (import-preview: /import, bulk off, not under /collections/…/import), press Save. The Save to collection sheet opens and nothing is written until a destination is chosen. Choose a collection stays under the title; do not press it. Capture the sheet, then Cancel. Do not pick No collection, pick a collection, or create one. Do not reach this sheet from bulk import.",
     "needsData": false
   },
   {
@@ -272,13 +506,13 @@
   {
     "id": "recipe-view-shared",
     "route": "/recipe/:id",
-    "setup": "Open a recipe from a viewer share (no Edit link). Under the Library / Edit row a muted strip says who shared it and \"View only.\" (\"Shared with you by … View only.\", or \"Shared with you. View only.\" when the owner's email is unknown). The translate chip works the same as on an owned recipe. Do not change servings, checks, or steps. Do not tap the translate chip. If there is no viewer share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
+    "setup": "Open a recipe from a viewer share (no Edit link; Share still shows, since it only reads). Under the Library / Edit row a muted strip says who shared it and \"View only.\" (\"Shared with you by … View only.\", or \"Shared with you. View only.\" when the owner's email is unknown). The translate chip works the same as on an owned recipe. Do not change servings, checks, or steps. Do not tap the translate chip. If there is no viewer share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
     "needsData": true
   },
   {
     "id": "recipe-view-shared-editor",
     "route": "/recipe/:id",
-    "setup": "Open a recipe from a collection shared with you as an editor. Under the Library / Edit row the muted strip says who shared it and \"You can edit this recipe.\" (or \"Shared with you. You can edit this recipe.\" when the owner's email is unknown), and the Edit link is showing. Do not tap Edit, do not change servings, checks, or steps, and do not tap the translate chip. If there is no editor share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
+    "setup": "Open a recipe from a collection shared with you as an editor. Under the Library / Edit row the muted strip says who shared it and \"You can edit this recipe.\" (or \"Shared with you. You can edit this recipe.\" when the owner's email is unknown), and Share and the Edit link are showing. Do not tap Edit or Share, do not change servings, checks, or steps, and do not tap the translate chip. If there is no editor share, mark skipped: needs data. Recipe content and the owner's email are another member's data: redact them before judging, or mark skipped: shows another member's data. The review never creates a share.",
     "needsData": true
   },
   {
@@ -324,6 +558,12 @@
     "needsData": false
   },
   {
+    "id": "assistant-llm-budget",
+    "route": "/assistant",
+    "setup": "One question sent with /api/agent mocked to answer 429 llm-budget-exceeded: the assistant shows that today's limit for Sous's AI features is reached and resets at midnight UTC.",
+    "needsData": true
+  },
+  {
     "id": "assistant-empty",
     "route": "/assistant",
     "setup": "Signed in with an empty assistant thread, so the two starter prompts, the note that only your own recipes are searched, the composer, Send, and Clear are showing. Do not send a message.",
@@ -354,6 +594,24 @@
     "needsData": true
   },
   {
+    "id": "assistant-collection-create",
+    "route": "/assistant",
+    "setup": "Signed in, with a collection-create card already on screen showing the pending Create state (heading, the line that recipes leave their current collections when recipes are included, preview rows, and the Create button). If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "assistant-collection-create-applied",
+    "route": "/assistant",
+    "setup": "Signed in, with a collection-create card already on screen showing the applied sentence after Create. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "assistant-collection-create-error",
+    "route": "/assistant",
+    "setup": "Signed in, with a collection-create card already on screen showing an error line after a failed create. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
+    "needsData": true
+  },
+  {
     "id": "assistant-collection-move-error",
     "route": "/assistant",
     "setup": "Signed in, with a collection-move card already on screen showing an error line after a failed move. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
@@ -369,6 +627,78 @@
     "id": "assistant-tool-chip",
     "route": "/assistant",
     "setup": "Signed in, with a reply in progress and a tool chip under the question, such as Searching recipes… or Reading collections…. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "share-collection-sheet-public",
+    "route": "/collections/:collectionId",
+    "setup": "In the Share sheet of one of your own named collections, press \"Public\" (the third button, not pressed when the sheet opens). The pane shows a sentence that anyone with the link can read the recipes without signing in but cannot change anything or use the assistant, and that the link works until you turn it off. If the collection is not public it then says \"This collection is not public.\" and shows a \"Create public link\" button: do not press it (it writes). If the collection is already public it shows a \"Public link\" label, the URL in a read-only field, Copy, a red \"Turn off\" button, and a sentence that turning it off stops the link at once and turning it on again gives a new link: capture that too, but do not press Turn off. Opening the pane only reads. If you have no own named collection, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "public-collection",
+    "route": "/p/:token",
+    "setup": "Reaching it needs a public link on one of your own named collections. Creating one writes to production, so do it only when the person who starts the run opts in for that run (for example \"include public link\"): open Share on one own named collection with no grantees, press \"Public\", then \"Create public link\", and list the link created in the report. After the run, press \"Turn off\" in the same pane and list that too. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL. Open the link in a private window (signed out). The header shows \"Sous\", a grayed chat-bubble button, a \"Sign in\" link, and the language menu. Hover the gray chat bubble (or focus it with Tab): a dark tooltip says to sign in to use the assistant and translation; capture it. Below the header: the collection name, \"Public collection\", and the recipe cards (or \"No recipes in this collection yet.\"). Do not press Sign in. The recipes are your own, so no redaction is needed.",
+    "needsData": true
+  },
+  {
+    "id": "public-collection-locked-sheet",
+    "route": "/p/:token",
+    "setup": "On the signed-out public collection page (see public-collection; same opt-in), tap the gray chat bubble. A sheet opens with a title about signing in to use the assistant, a paragraph saying asking, translating, and the library assistant are for Sous members and that Sous is invitation-only (sign in with Google, then request access), a \"Sign in with Google\" button, and \"Not now\". Do not press Sign in with Google.",
+    "needsData": true
+  },
+  {
+    "id": "public-collection-member",
+    "route": "/p/:token",
+    "setup": "The same public link opened while signed in (see public-collection; same opt-in). The header has the gray chat bubble and the language menu but no Sign in link, and under \"Public collection\" there is an \"Add to my library\" button. Hover the chat bubble: the tooltip says to add the collection to your library to use the assistant and translation. Then tap the chat bubble: the sheet title says to add the collection first, a paragraph explains it appears next to your own collections and can be left at any time, with \"Add to my library\" and \"Not now\". Do not press Add to my library.",
+    "needsData": true
+  },
+  {
+    "id": "public-recipe",
+    "route": "/p/:token/r/:recipeId",
+    "setup": "From the signed-out public collection page (see public-collection; same opt-in), open a recipe. The top row is a back link with the collection name, then \"Share\" and \"Sign in\". Below: the photo if any, title, times, Ingredients with the servings stepper, Steps, Notes, and at the bottom right a grayed \"Ask\" pill. Prefer a recipe whose language differs from the UI language (or one with no language set) so a grayed translate chip shows under the title; hover it and capture the tooltip, then hover the Ask pill and capture its tooltip (it opens upward). Changing servings, ticking ingredients, or tapping steps is fine here: it stays in the page and writes nothing.",
+    "needsData": true
+  },
+  {
+    "id": "public-link-missing",
+    "route": "/p/:token",
+    "setup": "Open /p/ followed by any 43 letters (for example /p/ and \"a\" 43 times) in a signed-out window. No such link exists, so the page shows \"Sous\", Sign in, the language menu (no chat bubble: the page cannot tell what kind of link it was), and one sentence saying the link does not work and may have been turned off, or what it shared deleted. Needs no data and writes nothing.",
+    "needsData": false
+  },
+  {
+    "id": "share-recipe-sheet",
+    "route": "/recipe/:id",
+    "setup": "On one of your own recipes (not one shared with you), press \"Share\" at the top. A sheet opens titled Share and the recipe name, with two buttons, \"As text\" (pressed) and \"As a link\". Below: a sentence that this sends the recipe itself as text through the device's share menu or the clipboard, a \"Send as text\" button, and \"Done\". Do not press Send as text. If you have no own recipe, mark skipped: needs data.",
+    "needsData": true
+  },
+  {
+    "id": "share-recipe-sheet-link",
+    "route": "/recipe/:id",
+    "setup": "In the same sheet (see share-recipe-sheet), press \"As a link\". The pane shows a sentence that anyone with the link can read the recipe without signing in, that Sous members can save a copy of their own, that nobody can change yours, and that the link shows your Google name and works until you turn it off. If the recipe has no link it then says \"This recipe has no link.\" and shows a \"Create link\" button: do not press it (it writes). If it already has one it shows a \"Recipe link\" label, the URL in a read-only field, Copy, a red \"Turn off\" button, and a sentence that turning it off stops the link at once, and that turning it on again gives a new link from which someone who already saved a copy can save a second one: capture that too, but do not press Turn off. Opening the pane only reads.",
+    "needsData": true
+  },
+  {
+    "id": "public-shared-recipe",
+    "route": "/p/:token",
+    "setup": "Reaching it needs a recipe link on one of your own recipes. Creating one writes to production, so do it only when the person who starts the run opts in for that run (for example \"include recipe link\"): open Share on one own recipe, press \"As a link\", then \"Create link\", and list the link created in the report. After the run, press \"Turn off\" in the same pane and list that too. Without the opt-in, mark skipped: needs opt-in. Never paste or share the URL. Open the link in a private window (signed out). The header shows \"Sous\", \"Share\", a \"Sign in\" link, and the language menu. Under it a gray box says \"Shared by\" and your Google name, and a line that Sous members can sign in to save a copy of their own. Then the recipe: title, a grayed translate chip if the recipe's language differs from the UI language, Ingredients, Steps, Notes, and a grayed \"Ask\" pill at the bottom right; hover it and capture the tooltip. Do not press Sign in.",
+    "needsData": true
+  },
+  {
+    "id": "public-shared-recipe-member",
+    "route": "/p/:token",
+    "setup": "The same recipe link opened while signed in as a member other than its owner (see public-shared-recipe; same opt-in). There is no Sign in link. The gray box says \"Shared by\" and the name, then a \"Save a copy to my library\" button and a line that the copy is yours to change and later edits to the original won't reach it. Hover the grayed Ask pill: the tooltip says to save a copy to your library to use the assistant and translation. Do not press Save a copy.",
+    "needsData": true
+  },
+  {
+    "id": "public-shared-recipe-locked-sheet",
+    "route": "/p/:token",
+    "setup": "On the signed-in recipe link page (see public-shared-recipe-member), tap the grayed Ask pill. A sheet opens titled \"Save a copy first\", with a paragraph that asking about or translating the recipe needs a copy in your library, that the copy is yours to change and edits to the original won't reach it, a \"Save a copy to my library\" button, and \"Not now\". Do not press Save a copy.",
+    "needsData": true
+  },
+  {
+    "id": "recipe-saved-from",
+    "route": "/recipe/:id",
+    "setup": "A recipe you saved from someone else's recipe link. Under the top row, above the title, a muted line says who shared it and the date it was saved, for example \"Shared by Max Member · saved 8 Oct 2026\". Saving a copy writes to production; if you have no such recipe, mark skipped: needs data.",
     "needsData": true
   }
 ]

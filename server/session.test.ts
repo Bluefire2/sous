@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   COLLECTION_LINK_COOKIE_NAME,
   INVITE_COOKIE_NAME,
+  MCP_AUTHZ_COOKIE_NAME,
   OAUTH_COOKIE_NAME,
   clearedCollectionLinkCookie,
+  clearedMcpAuthzCookie,
   clearedSessionCookie,
   collectionLinkCookie,
   inviteCookie,
+  mcpAuthzCookie,
   oauthCookie,
   readCookie,
   readHeaderSession,
@@ -18,11 +21,13 @@ import {
   signAuthTx,
   signCollectionLinkTx,
   signInviteTx,
+  signMcpAuthzTx,
   signSession,
   verifyAccessRequestTx,
   verifyAuthTx,
   verifyCollectionLinkTx,
   verifyInviteTx,
+  verifyMcpAuthzTx,
   verifySession,
 } from './session.ts';
 
@@ -447,5 +452,69 @@ describe('signCollectionLinkTx / verifyCollectionLinkTx', () => {
     expect(clearedCollectionLinkCookie({ secure: false })).toContain('Path=/c');
     expect(COLLECTION_LINK_COOKIE_NAME).not.toBe(INVITE_COOKIE_NAME);
     expect(COLLECTION_LINK_COOKIE_NAME).not.toBe(OAUTH_COOKIE_NAME);
+  });
+});
+
+describe('signMcpAuthzTx / verifyMcpAuthzTx', () => {
+  const tx = {
+    clientId: 'https://claude.ai/oauth/claude-code-client-metadata',
+    redirectUri: 'http://localhost:3118/callback',
+    state: 'st',
+    codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+    scopes: ['recipes:read'],
+    nonce: 'nonce-1',
+  };
+
+  it('round-trips the request for 10 minutes, with and without state', () => {
+    const now = nowMs();
+    expect(verifyMcpAuthzTx(signMcpAuthzTx(tx, now), now)).toEqual({
+      ...tx,
+      iat: now,
+      exp: now + 10 * 60 * 1000,
+    });
+    const { state: _state, ...stateless } = tx;
+    expect(verifyMcpAuthzTx(signMcpAuthzTx(stateless, now), now)).not.toHaveProperty('state');
+    expect(verifyMcpAuthzTx(signMcpAuthzTx(tx, now), now + 11 * 60 * 1000)).toBeNull();
+  });
+
+  it('is its own family: session, oauth, invite, clink, and accessreq do not cross', () => {
+    const now = nowMs();
+    const authz = signMcpAuthzTx(tx, now);
+    expect(verifySession(authz, now)).toBeNull();
+    expect(verifyAuthTx(authz, now)).toBeNull();
+    expect(verifyInviteTx(authz, now)).toBeNull();
+    expect(verifyCollectionLinkTx(authz, now)).toBeNull();
+    expect(verifyAccessRequestTx(authz, now)).toBeNull();
+    const id = 'a'.repeat(64);
+    for (const other of [
+      signSession({ sub: 's', email: 'a@b.c' }, now),
+      signAuthTx({ state: 's', nonce: 'n', verifier: 'v', returnTo: '/' }, now),
+      signInviteTx({ id }, now),
+      signCollectionLinkTx({ id }, now),
+      signAccessRequestTx({ sub: 's', email: 'a@b.c' }, now),
+    ]) {
+      expect(verifyMcpAuthzTx(other, now)).toBeNull();
+    }
+  });
+
+  it('rejects a tampered payload', () => {
+    const [payload, signature] = signMcpAuthzTx(tx, nowMs()).split('.');
+    const forged = Buffer.from(
+      JSON.stringify({ ...JSON.parse(Buffer.from(payload!, 'base64url').toString()), scopes: ['recipes:write'] }),
+    ).toString('base64url');
+    expect(verifyMcpAuthzTx(`${forged}.${signature}`, nowMs())).toBeNull();
+  });
+
+  it('scopes the hop cookie to /oauth, HttpOnly, Lax, 10 minutes', () => {
+    const cookie = mcpAuthzCookie('tok', { secure: true });
+    expect(cookie.startsWith(`${MCP_AUTHZ_COOKIE_NAME}=tok;`)).toBe(true);
+    expect(cookie).toContain('Path=/oauth');
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('SameSite=Lax');
+    expect(cookie).toContain('Max-Age=600');
+    expect(cookie).toContain('Secure');
+    expect(clearedMcpAuthzCookie({ secure: false })).toContain('Max-Age=0');
+    expect(clearedMcpAuthzCookie({ secure: false })).toContain('Path=/oauth');
+    expect(new Set([MCP_AUTHZ_COOKIE_NAME, COLLECTION_LINK_COOKIE_NAME, INVITE_COOKIE_NAME, OAUTH_COOKIE_NAME]).size).toBe(4);
   });
 });

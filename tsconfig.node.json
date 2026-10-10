@@ -25,6 +25,7 @@
     "evals",
     "scripts",
     "server",
-    "test"
+    "test",
+    "testing"
   ]
 }

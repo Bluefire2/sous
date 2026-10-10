@@ -10,8 +10,10 @@ import {
   clearLibrary,
   countOwnedNamedCollections,
   getCollection,
+  getCollectionOrigin,
   listCollections,
   removeCollectionLocal,
+  subscribe,
   upsertCollection,
   upsertRecipe,
 } from './libraryMemory';
@@ -136,6 +138,39 @@ describe('collectionStore.create cap', () => {
       `You can have up to ${MAX_NAMED_COLLECTIONS} collections.`,
     );
     expect(pushOps).not.toHaveBeenCalled();
+  });
+});
+
+describe('collectionStore owned name uniqueness', () => {
+  it('create refuses an owned name in any case and allows a shared one', async () => {
+    upsertCollection(collection('c1', 'Soups'));
+    installSharedRows({
+      recipes: new Map(),
+      collections: new Map([['shared', collection('shared', 'Stews')]]),
+      remotePhotoIds: new Set(),
+      recipeOrigins: new Map(),
+      collectionOrigins: new Map([['shared', { kind: 'shared', ownerSub: 'alice' }]]),
+    });
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await expect(collectionStore.create('  soups ')).rejects.toThrow(
+      t('error.collectionNameTaken', { name: 'Soups' }),
+    );
+    expect(pushOps).not.toHaveBeenCalled();
+    expect((await collectionStore.create('Stews')).name).toBe('Stews');
+  });
+
+  it('rename refuses another owned name but allows recasing its own', async () => {
+    upsertCollection(collection('c1', 'Soups'));
+    upsertCollection(collection('c2', 'Stews'));
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    await expect(collectionStore.rename('c2', 'SOUPS')).rejects.toThrow(
+      t('error.collectionNameTaken', { name: 'Soups' }),
+    );
+    expect(pushOps).not.toHaveBeenCalled();
+    await collectionStore.rename('c1', 'soups');
+    expect(getCollection('c1')?.name).toBe('soups');
   });
 });
 
@@ -634,6 +669,149 @@ describe('collectionStore.moveRecipes', () => {
     expect(getCollection('c2')?.recipeIds).toEqual(full);
 
     await expect(collectionStore.moveRecipes([present], 'c2')).resolves.toEqual({ moved: 0 });
+    expect(pushOps).not.toHaveBeenCalled();
+  });
+});
+
+describe('collectionStore.createWithRecipes', () => {
+  function minimalRecipe(id: string) {
+    return {
+      id,
+      title: id,
+      servings: 1,
+      ingredientSections: [{ items: [{ item: 'x' }] }],
+      steps: [{ text: 'x' }],
+      tags: [],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+  }
+
+  beforeEach(() => {
+    setRereadQuietForTests(0);
+  });
+
+  afterEach(() => {
+    resetRereadScheduleForTests();
+  });
+
+  it('creates an empty collection in one push', async () => {
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    const created = await collectionStore.createWithRecipes('  Soups  ', []);
+
+    expect(created.moved).toBe(0);
+    expect(pushOps).toHaveBeenCalledTimes(1);
+    const ops = vi.mocked(pushOps).mock.calls[0]?.[0];
+    expect(ops).toEqual([
+      {
+        kind: 'collection.put',
+        payload: expect.objectContaining({
+          id: created.id,
+          name: 'Soups',
+          recipeIds: [],
+        }),
+      },
+    ]);
+    expect(getCollection(created.id)?.name).toBe('Soups');
+    expect(getCollectionOrigin(created.id)).toEqual({ kind: 'own' });
+  });
+
+  it('files recipes and strips their old collections in one publish and one push', async () => {
+    upsertRecipe(minimalRecipe('r1'));
+    upsertRecipe(minimalRecipe('r2'));
+    upsertCollection({ ...collection('c1', 'Weeknight'), recipeIds: ['r1'] });
+    const shared = { ...collection('shared', 'Theirs'), recipeIds: ['r1'] };
+    installSharedRows({
+      recipes: new Map(),
+      collections: new Map([[shared.id, shared]]),
+      remotePhotoIds: new Set(),
+      recipeOrigins: new Map(),
+      collectionOrigins: new Map([['shared', { kind: 'shared', ownerSub: 'alice' }]]),
+    });
+    vi.mocked(pushOps).mockResolvedValue('ok');
+
+    let publishes = 0;
+    const unsubscribe = subscribe(() => {
+      publishes += 1;
+    });
+    const created = await collectionStore.createWithRecipes('Soups', ['r1', 'r2']);
+    unsubscribe();
+
+    expect(publishes).toBe(1);
+    expect(created.moved).toBe(2);
+    expect(pushOps).toHaveBeenCalledTimes(1);
+    const ops = vi.mocked(pushOps).mock.calls[0]?.[0] ?? [];
+    expect(ops.map((op) => op.kind)).toEqual(['collection.put', 'collection.put']);
+    // The server applies ops one by one; the create must land before any strip.
+    expect(ops.map((op) => (op.payload as { id: string }).id)).toEqual([created.id, 'c1']);
+    expect(getCollection('c1')?.recipeIds).toEqual([]);
+    expect(getCollection(created.id)?.recipeIds).toEqual(['r1', 'r2']);
+    expect(getCollection('shared')?.recipeIds).toEqual(['r1']);
+  });
+
+  it('rolls the new collection back when the push fails', async () => {
+    upsertRecipe(minimalRecipe('r1'));
+    upsertCollection({ ...collection('c1', 'Weeknight'), recipeIds: ['r1'] });
+    vi.mocked(pushOps).mockResolvedValue('error');
+    vi.mocked(pullAfterLocalWrite).mockResolvedValue('ok');
+
+    await expect(collectionStore.createWithRecipes('Soups', ['r1'])).rejects.toThrow(
+      t('error.collectionSave'),
+    );
+
+    expect(getCollection('c1')?.recipeIds).toEqual(['r1']);
+    expect(listCollections().some((c) => c.name === 'Soups')).toBe(false);
+    await vi.waitFor(() => {
+      expect(pullAfterLocalWrite).toHaveBeenCalled();
+    });
+  });
+
+  it('does not reread after sign-out', async () => {
+    async function signOut(): Promise<'signedOut'> {
+      clearLibrary();
+      return 'signedOut';
+    }
+    upsertRecipe(minimalRecipe('r1'));
+    vi.mocked(pushOps).mockImplementation(signOut);
+
+    await expect(collectionStore.createWithRecipes('Soups', ['r1'])).rejects.toThrow(
+      t('error.sessionExpired'),
+    );
+
+    expect(pullAfterLocalWrite).not.toHaveBeenCalled();
+  });
+
+  it('refuses a name that already exists', async () => {
+    upsertCollection(collection('c1', 'Soups'));
+
+    await expect(collectionStore.createWithRecipes('soups', [])).rejects.toThrow(
+      t('error.collectionNameTaken', { name: 'Soups' }),
+    );
+    expect(pushOps).not.toHaveBeenCalled();
+    expect(listCollections()).toHaveLength(1);
+  });
+
+  it('refuses when any recipe is missing and writes nothing', async () => {
+    upsertRecipe(minimalRecipe('r1'));
+    upsertCollection({ ...collection('c1', 'Weeknight'), recipeIds: ['r1'] });
+
+    await expect(collectionStore.createWithRecipes('Soups', ['r1', 'gone'])).rejects.toThrow(
+      t('assistant.moveRecipesGone'),
+    );
+    expect(pushOps).not.toHaveBeenCalled();
+    expect(getCollection('c1')?.recipeIds).toEqual(['r1']);
+    expect(listCollections().some((c) => c.name === 'Soups')).toBe(false);
+  });
+
+  it('refuses when owned collections are already at the cap', async () => {
+    for (let i = 0; i < MAX_NAMED_COLLECTIONS; i += 1) {
+      upsertCollection(collection(`owned-${i}`, `Owned ${i}`));
+    }
+
+    await expect(collectionStore.createWithRecipes('Soups', [])).rejects.toThrow(
+      t('error.collectionCap', { max: MAX_NAMED_COLLECTIONS }),
+    );
     expect(pushOps).not.toHaveBeenCalled();
   });
 });

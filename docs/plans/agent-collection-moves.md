@@ -4,7 +4,7 @@
 
 Review fixes on the same branch: explicit `recipeIds` are deduped; an unknown `fromCollectionId` is an unknown source, and an owned collection named Recipes beats the unfiled alias; `sources` freezes each recipe's proposal-time collection so the card does not relabel rows from live membership after Move; replay drops `recipeIds` and `sources` and `revalidate` accepts that summary; a destination keeps ids it already lists in place.
 
-**Trust boundary:** `propose_collection_move` emits a `collection_move` proposal card only. The user taps Move on the client; `collectionStore.moveRecipes` applies the change through the existing sync path. The agent loop never writes membership. There is no `create` argument — missing collections must be created in the app.
+**Trust boundary:** `propose_collection_move` emits a `collection_move` proposal card only. The user taps Move on the client; `collectionStore.moveRecipes` applies the change through the existing sync path. The agent loop never writes membership. There is no `create` argument on this tool. Creating a collection is a separate card, `propose_create_collection` (`docs/plans/agent-create-collection.md`).
 
 ## Steps
 

@@ -4,10 +4,12 @@
  * written only for the caller's own live recipe. The provider call is outside
  * that transaction. Shared recipes and unknown ids are translated and not stored.
  */
+import { admitLlm, llmRefusal, meteredAi } from './llmBudget.ts';
 import { SUPPORTED_LOCALES, normalizeLang, toSupportedLocale } from './lang.ts';
 import {
   membershipUnauthorized,
   membershipUnavailable,
+  readBoundedText,
   requireMember,
 } from './membership.ts';
 import {
@@ -34,6 +36,15 @@ import {
   validateTranslatedSegments,
   type GeminiTranslateDeps,
 } from './translate.ts';
+
+/**
+ * Request body limit in bytes. The body carries the whole recipe, and a
+ * stored recipe is under 200 000 JSON chars (`validateRecipePut`), at most
+ * 600 000 UTF-8 bytes, so every recipe that can be translated fits. The
+ * text actually sent to the provider is capped far lower by
+ * `translationExceedsCaps`; this only stops a body being buffered unbounded.
+ */
+const MAX_TRANSLATE_BODY_BYTES = 1_000_000;
 
 const BAD_REQUEST = 'Bad request';
 const TOO_LARGE = 'This recipe is too long to translate.';
@@ -195,9 +206,18 @@ export async function translatePost(
     return membershipUnavailable();
   }
 
+  let raw: string | null;
+  try {
+    raw = await readBoundedText(req, MAX_TRANSLATE_BODY_BYTES);
+  } catch {
+    return jsonError(400, TRANSLATE_BAD_REQUEST, BAD_REQUEST);
+  }
+  if (raw === null) {
+    return jsonError(413, TRANSLATE_TOO_LARGE, TOO_LARGE);
+  }
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return jsonError(400, TRANSLATE_BAD_REQUEST, BAD_REQUEST);
   }
@@ -243,14 +263,23 @@ export async function translatePost(
     return jsonError(429, TRANSLATE_RATE_LIMITED, RATE_LIMITED);
   }
 
-  const outcome = await translateSegments(
-    {
-      segments: parsed.segments,
-      target: parsed.target,
-      sourceLang: parsed.sourceLang,
-    },
-    built.deps,
-  );
+  const admission = await admitLlm(access.sub, 'translate');
+  if (admission.kind !== 'ok') {
+    return llmRefusal(admission);
+  }
+  let outcome: Awaited<ReturnType<typeof translateSegments>>;
+  try {
+    outcome = await translateSegments(
+      {
+        segments: parsed.segments,
+        target: parsed.target,
+        sourceLang: parsed.sourceLang,
+      },
+      { ...built.deps, ai: meteredAi(built.deps.ai, admission.meter) },
+    );
+  } finally {
+    admission.meter.release();
+  }
   if (!outcome.ok) {
     if (outcome.code === TRANSLATE_PROVIDER_UNAVAILABLE) {
       return jsonError(503, outcome.code, PROVIDER_UNAVAILABLE);

@@ -32,12 +32,12 @@ IAM can take a few minutes to propagate.
 
 ## If `google-github-actions/auth` rejects the credential
 
-GitHub's OIDC `repository` claim is `Bluefire2/cook` (canonical owner
-casing). A condition of `assertion.repository == 'bluefire2/cook'` is
+GitHub's OIDC `repository` claim is `Bluefire2/sous` (canonical owner
+casing). A condition of `assertion.repository == 'bluefire2/sous'` is
 rejected as `unauthorized_client` / "The given credential is rejected by
 the attribute condition." Lower-case both the condition and the mapped
 `attribute.repository` so the existing
-`principalSet://…/attribute.repository/bluefire2/cook` binding still
+`principalSet://…/attribute.repository/bluefire2/sous` binding still
 matches.
 
 If the provider already exists, update it (do not recreate):
@@ -46,7 +46,7 @@ If the provider already exists, update it (do not recreate):
 $gcloud = "C:\Users\chern\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
 $P = 'cooking-assistant-508423'
 
-& $gcloud iam workload-identity-pools providers update-oidc github-actions --project=$P --location=global --workload-identity-pool=github --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/cook'"
+& $gcloud iam workload-identity-pools providers update-oidc github-actions --project=$P --location=global --workload-identity-pool=github --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/sous'"
 ```
 
 ```bash
@@ -56,7 +56,7 @@ gcloud iam workload-identity-pools providers update-oidc github-actions \
   --location=global \
   --workload-identity-pool=github \
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" \
-  --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/cook'"
+  --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/sous'"
 ```
 
 Wait about five minutes (WIF provider updates are eventually consistent),
@@ -73,7 +73,7 @@ $gcloud = "C:\Users\chern\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gc
 $P = 'cooking-assistant-508423'
 $PROJECT_NUMBER = '62867274312'
 $SA = "sous-github-deploy@${P}.iam.gserviceaccount.com"
-$REPO = 'bluefire2/cook'
+$REPO = 'bluefire2/sous'
 
 & $gcloud config get account
 
@@ -86,7 +86,7 @@ $REPO = 'bluefire2/cook'
 
 & $gcloud iam workload-identity-pools create github --project=$P --location=global --display-name="GitHub Actions Pool"
 
-& $gcloud iam workload-identity-pools providers create-oidc github-actions --project=$P --location=global --workload-identity-pool=github --display-name="GitHub Actions" --issuer-uri=https://token.actions.githubusercontent.com --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/cook'"
+& $gcloud iam workload-identity-pools providers create-oidc github-actions --project=$P --location=global --workload-identity-pool=github --display-name="GitHub Actions" --issuer-uri=https://token.actions.githubusercontent.com --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/sous'"
 
 & $gcloud iam service-accounts add-iam-policy-binding $SA --project=$P --role=roles/iam.workloadIdentityUser --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${REPO}"
 
@@ -144,7 +144,7 @@ command -v gcloud >/dev/null 2>&1 || { echo "gcloud not found; add the Cloud SDK
 PROJECT=cooking-assistant-508423
 PROJECT_NUMBER=62867274312
 SA=sous-github-deploy@${PROJECT}.iam.gserviceaccount.com
-REPO=bluefire2/cook
+REPO=bluefire2/sous
 
 gcloud services enable iamcredentials.googleapis.com sts.googleapis.com iam.googleapis.com --project="$PROJECT"
 
@@ -165,7 +165,7 @@ gcloud iam workload-identity-pools providers create-oidc github-actions \
   --display-name="GitHub Actions" \
   --issuer-uri=https://token.actions.githubusercontent.com \
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository.lowerAscii(),attribute.repository_owner=assertion.repository_owner.lowerAscii()" \
-  --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/cook'"
+  --attribute-condition="assertion.repository.lowerAscii() == 'bluefire2/sous'"
 
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --project="$PROJECT" \

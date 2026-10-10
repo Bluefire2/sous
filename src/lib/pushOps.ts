@@ -14,7 +14,7 @@ export type PushOp =
   | { kind: 'chat.clearForRecipe'; payload: { recipeId: string; at: number } }
   | {
       kind: 'cookState.put';
-      payload: import('./useCookState').CookStateRow & { updatedAt: number };
+      payload: import('./types').CookStateRow & { updatedAt: number };
     }
   | { kind: 'photo.delete'; payload: { id: string; updatedAt: number } }
   | { kind: 'collection.put'; payload: import('./types').Collection }

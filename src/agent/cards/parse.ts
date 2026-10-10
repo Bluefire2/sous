@@ -25,6 +25,28 @@ export const COLLECTION_MOVE_MAX_IDS = 500;
 export const COLLECTION_MOVE_PREVIEW_LIMIT = 8;
 export const COLLECTION_MOVE_TITLE_MAX = 120;
 
+/**
+ * Locked to the server card by `test/agentCardContract.test.ts`.
+ * This file cannot import the server card or the collection caps.
+ */
+export const COLLECTION_CREATE_MAX_EXPLICIT_IDS = 100;
+export const COLLECTION_CREATE_PREVIEW_LIMIT = 8;
+export const COLLECTION_CREATE_TITLE_MAX = 120;
+export const COLLECTION_CREATE_NAME_MAX = 80;
+
+export type CollectionCreateData = {
+  name: string;
+  recipeIds: string[];
+  /** Proposal-time source of every filed recipe. Replay omits this. */
+  sources: { id: string; from: CollectionMoveFrom }[];
+  preview: {
+    id: string;
+    title: string;
+    from: CollectionMoveFrom;
+  }[];
+  total: number;
+};
+
 export type ShoppingListData = {
   title: string;
   recipes: { id: string; title: string; servings: number }[];
@@ -297,4 +319,89 @@ export function parseCollectionMove(v: number, data: unknown): CollectionMoveDat
   }
 
   return { destination, recipeIds, sources, preview, total };
+}
+
+export function parseCollectionCreate(v: number, data: unknown): CollectionCreateData | undefined {
+  if (v !== 1 || !isPlainObject(data)) {
+    return undefined;
+  }
+
+  const nameRaw = data.name;
+  if (typeof nameRaw !== 'string') {
+    return undefined;
+  }
+  const name = nameRaw.trim();
+  if (name === '' || name.length > COLLECTION_CREATE_NAME_MAX) {
+    return undefined;
+  }
+
+  const recipeIdsRaw = data.recipeIds;
+  if (
+    !Array.isArray(recipeIdsRaw) ||
+    recipeIdsRaw.length > COLLECTION_CREATE_MAX_EXPLICIT_IDS
+  ) {
+    return undefined;
+  }
+  const recipeIds: string[] = [];
+  const seenIds = new Set<string>();
+  for (const id of recipeIdsRaw) {
+    if (typeof id !== 'string' || id === '' || seenIds.has(id)) {
+      return undefined;
+    }
+    seenIds.add(id);
+    recipeIds.push(id);
+  }
+
+  const sourcesRaw = data.sources;
+  if (!Array.isArray(sourcesRaw) || sourcesRaw.length !== recipeIds.length) {
+    return undefined;
+  }
+  const sources: CollectionCreateData['sources'] = [];
+  for (let i = 0; i < sourcesRaw.length; i += 1) {
+    const entry = sourcesRaw[i];
+    const id = recipeIds[i];
+    if (!isPlainObject(entry) || id === undefined || entry.id !== id) {
+      return undefined;
+    }
+    const from = parseMoveFrom(entry.from);
+    if (from === undefined) {
+      return undefined;
+    }
+    sources.push({ id, from });
+  }
+
+  const total = data.total;
+  if (typeof total !== 'number' || !Number.isFinite(total) || total !== recipeIds.length) {
+    return undefined;
+  }
+
+  const previewRaw = data.preview;
+  if (!Array.isArray(previewRaw) || previewRaw.length > COLLECTION_CREATE_PREVIEW_LIMIT) {
+    return undefined;
+  }
+  const preview: CollectionCreateData['preview'] = [];
+  for (const row of previewRaw) {
+    if (!isPlainObject(row)) {
+      return undefined;
+    }
+    const id = row.id;
+    if (typeof id !== 'string' || id === '') {
+      return undefined;
+    }
+    const title = row.title;
+    if (typeof title !== 'string' || title.trim() === '') {
+      return undefined;
+    }
+    const trimmedTitle = title.trim();
+    if (trimmedTitle.length > COLLECTION_CREATE_TITLE_MAX) {
+      return undefined;
+    }
+    const from = parseMoveFrom(row.from);
+    if (from === undefined) {
+      return undefined;
+    }
+    preview.push({ id, title: trimmedTitle, from });
+  }
+
+  return { name, recipeIds, sources, preview, total };
 }

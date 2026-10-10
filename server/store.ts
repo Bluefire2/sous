@@ -9,9 +9,13 @@ import {
   SHARED_PARENT_OWNER_SUB_FIELD,
   type PushRejectReason,
 } from './pushReasons.ts';
+import { compactImportCheck } from './importWarnings.ts';
 import { normalizeLang } from './lang.ts';
+import { compactSavedFrom } from './recipeSavedFrom.ts';
+import { compactVariantOf } from './recipeVariant.ts';
 import { TRANSLATIONS_COLLECTION, translationCacheDocIds } from './recipeTranslation.ts';
 import { canViewRecipe } from './shareAuth.ts';
+import { isUuid } from './uuid.ts';
 
 export { SHARED_PARENT_OWNER_SUB_FIELD };
 export type { PushRejectReason };
@@ -28,11 +32,11 @@ export type CursorTuple = [number, string];
 
 export type PullCursor = Partial<Record<StoreKind, CursorTuple>>;
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export { isUuid };
 
-export function isUuid(value: unknown): value is string {
-  return typeof value === 'string' && UUID_RE.test(value);
+/** Firestore's ALREADY_EXISTS from `create()`: the Admin SDK's numeric gRPC code 6. */
+export function isAlreadyExists(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 6;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -64,6 +68,32 @@ function colRef(uid: string, kind: StoreKind) {
   return userRef(uid).collection(kind);
 }
 
+/**
+ * Top-level recipe links (`server/recipeLinks.ts`). Named here so a recipe
+ * delete can turn its links off in the same transaction without an import
+ * cycle.
+ */
+export const RECIPE_LINKS_COLLECTION = 'recipeLinks';
+
+export function recipeLinksColRef() {
+  return getFirestore().collection(RECIPE_LINKS_COLLECTION);
+}
+
+/** Equality filters only, so Firestore serves this from single-field indexes. */
+export function liveRecipeLinksQuery(ownerSub: string, recipeId: string) {
+  return recipeLinksColRef()
+    .where('ownerSub', '==', ownerSub)
+    .where('recipeId', '==', recipeId)
+    .where('status', '==', 'live');
+}
+
+/** The Google display name stored on the profile at sign-in, or undefined. */
+export async function readUserName(uid: string): Promise<string | undefined> {
+  const snap = await userRef(uid).get();
+  const name = snap.exists ? snap.get('name') : undefined;
+  return typeof name === 'string' ? name : undefined;
+}
+
 export function gcsDeletesColRef(uid: string) {
   return userRef(uid).collection('gcsDeletes');
 }
@@ -82,6 +112,10 @@ export function recipeDocRef(uid: string, recipeId: string) {
 
 export function collectionDocRef(uid: string, collectionId: string) {
   return colRef(uid, 'collections').doc(collectionId);
+}
+
+export function collectionsColRef(uid: string) {
+  return colRef(uid, 'collections');
 }
 
 export function photosColRef(uid: string) {
@@ -252,6 +286,20 @@ export function compactRecipeFields(recipe: Record<string, unknown>): Record<str
   );
   if (galleryPhotoIds !== undefined) {
     next.galleryPhotoIds = galleryPhotoIds;
+  }
+  // Malformed is dropped, not rejected (`validateRecipePut` never checks it),
+  // so a put from an older or newer client still saves.
+  const importCheck = compactImportCheck(recipe.importCheck);
+  if (importCheck !== undefined) {
+    next.importCheck = importCheck;
+  }
+  const variantOf = compactVariantOf(recipe.variantOf, recipe.id);
+  if (variantOf !== undefined) {
+    next.variantOf = variantOf;
+  }
+  const savedFrom = compactSavedFrom(recipe.savedFrom);
+  if (savedFrom !== undefined) {
+    next.savedFrom = savedFrom;
   }
   return next;
 }
@@ -1101,6 +1149,103 @@ export async function countLiveNamedCollections(
   }
 }
 
+/**
+ * The stored recipe document: the compacted fields plus identity and both
+ * clocks. `putDoc` and `updateOwnRecipe` both build it here, so a sync push
+ * and an MCP edit write the same shape.
+ */
+export function recipeDocBody(
+  payload: Record<string, unknown>,
+  id: string,
+  updatedAt: number,
+  serverUpdatedAt: number,
+): Record<string, unknown> {
+  return {
+    ...compactRecipeFields(payload),
+    id,
+    updatedAt,
+    serverUpdatedAt,
+  };
+}
+
+/**
+ * `updatedAt` for a server-side edit: now, or one past the stored clock when
+ * that is ahead (a device with a fast clock). The edit always wins LWW against
+ * what it replaced, and the server never plants a time from a client.
+ */
+export function nextRecipeUpdatedAt(storedUpdatedAt: number, now: number): number {
+  return Math.max(now, storedUpdatedAt + 1);
+}
+
+export type OwnRecipeUpdateDecision =
+  | { kind: 'ok'; stored: Record<string, unknown>; storedUpdatedAt: number }
+  | { kind: 'not_found' }
+  | { kind: 'conflict'; version: number };
+
+/**
+ * Whether an edit of the caller's own recipe at `expectedVersion` may go
+ * ahead. A missing or tombstoned doc is `not_found` (a shared recipe's id is
+ * missing from the caller's tree, so it lands here too). A stored `updatedAt`
+ * other than the version the editor read is `conflict`, with the current one.
+ */
+export function ownRecipeUpdateDecision(
+  storedRaw: Record<string, unknown> | undefined,
+  expectedVersion: number,
+): OwnRecipeUpdateDecision {
+  if (storedRaw === undefined || !isLiveDoc(storedRaw)) {
+    return { kind: 'not_found' };
+  }
+  const storedUpdatedAt = finiteNumber(storedRaw.updatedAt);
+  if (storedUpdatedAt === undefined) {
+    return { kind: 'not_found' };
+  }
+  if (storedUpdatedAt !== expectedVersion) {
+    return { kind: 'conflict', version: storedUpdatedAt };
+  }
+  return { kind: 'ok', stored: storedRaw, storedUpdatedAt };
+}
+
+export type OwnRecipeUpdateResult =
+  | { kind: 'ok'; doc: Record<string, unknown> }
+  | { kind: 'not_found' }
+  | { kind: 'conflict'; version: number }
+  | { kind: 'too_large' };
+
+/**
+ * Edits one live recipe in the caller's own tree (`users/{uid}/recipes/{id}`)
+ * in one transaction: read, `ownRecipeUpdateDecision`, then `apply(stored,
+ * updatedAt)` builds the new payload and it is written whole (`merge: false`)
+ * through `recipeDocBody`. `apply` returns null when the result is too large
+ * to store. Never touches another member's tree, collections, or photos.
+ */
+export async function updateOwnRecipe(
+  uid: string,
+  id: string,
+  expectedVersion: number,
+  apply: (stored: Record<string, unknown>, updatedAt: number) => Record<string, unknown> | null,
+): Promise<OwnRecipeUpdateResult> {
+  const ref = colRef(uid, 'recipes').doc(id);
+  return getFirestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const decision = ownRecipeUpdateDecision(
+      snap.exists ? (snap.data() as Record<string, unknown>) : undefined,
+      expectedVersion,
+    );
+    if (decision.kind !== 'ok') {
+      return decision;
+    }
+    const serverUpdatedAt = Date.now();
+    const updatedAt = nextRecipeUpdatedAt(decision.storedUpdatedAt, serverUpdatedAt);
+    const payload = apply(decision.stored, updatedAt);
+    if (payload === null) {
+      return { kind: 'too_large' };
+    }
+    const doc = recipeDocBody(payload, id, updatedAt, serverUpdatedAt);
+    tx.set(ref, doc, { merge: false });
+    return { kind: 'ok', doc };
+  });
+}
+
 export async function putDoc(
   uid: string,
   kind: StoreKind,
@@ -1176,12 +1321,7 @@ export async function putDoc(
     const serverUpdatedAt = Date.now();
     let body: Record<string, unknown>;
     if (kind === 'recipes') {
-      body = {
-        ...compactRecipeFields(payload),
-        id,
-        updatedAt: clientUpdatedAt,
-        serverUpdatedAt,
-      };
+      body = recipeDocBody(payload, id, clientUpdatedAt, serverUpdatedAt);
       if (cmp.undeleting) {
         // deletedAt cleared by omission
       }
@@ -1275,6 +1415,16 @@ export async function cascadeRecipeDelete(
   await getFirestore().runTransaction(async (tx) => {
     const recipeRef = colRef(uid, 'recipes').doc(recipeId);
     const snap = await tx.get(recipeRef);
+    // A deleted recipe's links go off with it, so an undelete never quietly
+    // reopens one; a stale delete that loses LWW leaves them on. Read before
+    // any write, as Firestore requires.
+    const liveLinks = await tx.get(liveRecipeLinksQuery(uid, recipeId));
+    const revokeLinks = () => {
+      const revokedAt = Date.now();
+      for (const link of liveLinks.docs) {
+        tx.set(link.ref, { status: 'revoked', revokedAt }, { merge: true });
+      }
+    };
     if (snap.exists) {
       const data = snap.data() as Record<string, unknown>;
       if (isLiveDoc(data) && isUuid(data.photoId)) {
@@ -1292,10 +1442,12 @@ export async function cascadeRecipeDelete(
       if (cmp.allow) {
         const serverUpdatedAt = Date.now();
         tx.set(recipeRef, tombstonePayload(recipeId, at, serverUpdatedAt), { merge: false });
+        revokeLinks();
       }
     } else {
       const serverUpdatedAt = Date.now();
       tx.set(recipeRef, tombstonePayload(recipeId, at, serverUpdatedAt), { merge: false });
+      revokeLinks();
     }
     // Derived cache, not a sync doc. Delete on every branch after the one
     // read: tombstone applied, stale reject, and missing doc. A missing
@@ -1368,29 +1520,15 @@ export async function cascadeRecipeDelete(
 
   for (const chunk of chunkByCost(childJobs, cascadeJobCost, 400)) {
     const serverUpdatedAt = Date.now();
-    await getFirestore().runTransaction(async (tx) => {
-      // Firestore transactions reject any read after a write, so read the whole chunk first.
-      const refs = chunk.map((job) => colRef(uid, job.kind).doc(job.id));
-      const snaps = await tx.getAll(...refs);
-      chunk.forEach((job, i) => {
-        const snap = snaps[i];
-        const stored = readStoredState(
-          snap.exists ? (snap.data() as Record<string, unknown>) : undefined,
-        );
-        const writeAt = cascadeTombstoneAt(job, at, stored);
-        if (writeAt === null) {
-          return;
-        }
-        tx.set(refs[i], tombstonePayload(job.id, writeAt, serverUpdatedAt), { merge: false });
-        if (job.kind === 'photos') {
-          tx.set(
-            gcsDeletesRef(uid).doc(job.id),
-            { photoId: job.id, createdAt: Date.now() },
-            { merge: true },
-          );
-        }
-      });
-    });
+    await getFirestore().runTransaction((tx) =>
+      tombstoneChunk(
+        tx,
+        chunk,
+        tombstoneRefs(uid),
+        (stored) => chunk.map((job, i) => cascadeTombstoneAt(job, at, stored[i])),
+        serverUpdatedAt,
+      ),
+    );
   }
 
   // Query and puts are separate steps, not one transaction. putDoc
@@ -1410,6 +1548,133 @@ export async function cascadeRecipeDelete(
   return { photoIds: [...photoIds], gcsPending: photoIds.size > 0 };
 }
 
+export type TombstoneSnapshot = {
+  exists: boolean;
+  data: () => Record<string, unknown> | undefined;
+};
+
+export type TombstoneTx<Ref> = {
+  getAll: (...refs: Ref[]) => Promise<TombstoneSnapshot[]>;
+  set: (ref: Ref, data: Record<string, unknown>, options: { merge: boolean }) => void;
+};
+
+export type TombstoneRefs<Ref> = {
+  doc: (job: { kind: StoreKind; id: string }) => Ref;
+  gcsDelete: (photoId: string) => Ref;
+};
+
+function tombstoneRefs(uid: string): TombstoneRefs<DocumentReference> {
+  return {
+    doc: (job) => colRef(uid, job.kind).doc(job.id),
+    gcsDelete: (photoId) => gcsDeletesRef(uid).doc(photoId),
+  };
+}
+
+/**
+ * Tombstone one chunk of docs inside a transaction. Firestore transactions
+ * reject any read after a write ("Firestore transactions require all reads
+ * to be executed before all writes"), so the whole chunk is read with one
+ * getAll first. `writeAts` sees every stored state in the chunk and returns
+ * each job's tombstone time, or null to leave that doc. A photo tombstone
+ * also queues its `gcsDeletes` doc.
+ */
+export async function tombstoneChunk<Ref, Job extends { kind: StoreKind; id: string }>(
+  tx: TombstoneTx<Ref>,
+  jobs: Job[],
+  refs: TombstoneRefs<Ref>,
+  writeAts: (stored: Array<StoredMutationState | null>) => Array<number | null>,
+  serverUpdatedAt: number,
+): Promise<void> {
+  const docRefs = jobs.map((job) => refs.doc(job));
+  const snaps = await tx.getAll(...docRefs);
+  const decided = writeAts(
+    snaps.map((snap) => readStoredState(snap.exists ? snap.data() : undefined)),
+  );
+  jobs.forEach((job, i) => {
+    const writeAt = decided[i];
+    if (writeAt === null) {
+      return;
+    }
+    tx.set(docRefs[i], tombstonePayload(job.id, writeAt, serverUpdatedAt), { merge: false });
+    if (job.kind === 'photos') {
+      tx.set(refs.gcsDelete(job.id), { photoId: job.id, createdAt: Date.now() }, { merge: true });
+    }
+  });
+}
+
+export type ChatClearMessage = { id: string; photoIds: string[] };
+
+/**
+ * Messages a clear at `at` tombstones: live and created at or before `at`.
+ * A message created after the clear is not listed, so its photos are kept.
+ * A photo id is listed once, under the first message that names it.
+ */
+export function chatMessagesToClear(
+  docs: Array<{ id: string; data: Record<string, unknown> }>,
+  at: number,
+): ChatClearMessage[] {
+  const seen = new Set<string>();
+  const messages: ChatClearMessage[] = [];
+  for (const { id, data } of docs) {
+    const createdAt = finiteNumber(data.createdAt);
+    if (createdAt === undefined || createdAt > at || !isLiveDoc(data)) {
+      continue;
+    }
+    const photoIds: string[] = [];
+    for (const pid of Array.isArray(data.photoIds) ? data.photoIds : []) {
+      if (isUuid(pid) && !seen.has(pid)) {
+        seen.add(pid);
+        photoIds.push(pid);
+      }
+    }
+    messages.push({ id, photoIds });
+  }
+  return messages;
+}
+
+/** A message and its photos share a transaction; a photo also writes `gcsDeletes`. */
+export function chatClearMessageCost(message: ChatClearMessage): number {
+  return 1 + message.photoIds.length * cascadeJobCost({ kind: 'photos' });
+}
+
+export type ChatClearJob = {
+  kind: 'chatMessages' | 'photos';
+  id: string;
+  /** Index in the chunk of the message job this photo belongs to (its own index for a message). */
+  message: number;
+};
+
+export function chatClearJobs(messages: ChatClearMessage[]): ChatClearJob[] {
+  const jobs: ChatClearJob[] = [];
+  for (const message of messages) {
+    const index = jobs.length;
+    jobs.push({ kind: 'chatMessages', id: message.id, message: index });
+    for (const photoId of message.photoIds) {
+      jobs.push({ kind: 'photos', id: photoId, message: index });
+    }
+  }
+  return jobs;
+}
+
+/**
+ * Plain last-write-wins at `at` for every job, except that a photo is
+ * tombstoned only when its message is: a message stored newer than the clear
+ * keeps its photos.
+ */
+export function chatClearWriteAts(
+  jobs: ChatClearJob[],
+  stored: Array<StoredMutationState | null>,
+  at: number,
+): Array<number | null> {
+  const allowed = (i: number) => compareMutation(stored[i], at, 'tombstone').allow;
+  return jobs.map((job, i) => (allowed(job.message) && allowed(i) ? at : null));
+}
+
+/**
+ * A thread's messages and their photos are tombstoned together, one
+ * transaction per chunk, so a failure leaves each chunk either cleared with
+ * its photos or untouched. Only a thread above one chunk can clear partially.
+ */
 export async function clearChatForRecipe(
   uid: string,
   recipeId: string,
@@ -1418,48 +1683,23 @@ export async function clearChatForRecipe(
   const messagesSnap = await colRef(uid, 'chatMessages')
     .where('recipeId', '==', recipeId)
     .get();
+  const messages = chatMessagesToClear(
+    messagesSnap.docs.map((doc) => ({ id: doc.id, data: doc.data() })),
+    at,
+  );
 
-  const toTombstone: string[] = [];
-  const photoIds = new Set<string>();
-
-  for (const doc of messagesSnap.docs) {
-    const data = doc.data() as Record<string, unknown>;
-    const createdAt = finiteNumber(data.createdAt);
-    if (createdAt !== undefined && createdAt <= at && isLiveDoc(data)) {
-      toTombstone.push(doc.id);
-      for (const pid of (data.photoIds as string[] | undefined) ?? []) {
-        if (isUuid(pid)) {
-          photoIds.add(pid);
-        }
-      }
-    } else if (isLiveDoc(data)) {
-      for (const pid of (data.photoIds as string[] | undefined) ?? []) {
-        if (isUuid(pid)) {
-          photoIds.add(pid);
-        }
-      }
-    }
-  }
-
-  for (const chunk of chunkForBatch(toTombstone, 400)) {
+  for (const chunk of chunkByCost(messages, chatClearMessageCost, 400)) {
+    const jobs = chatClearJobs(chunk);
     const serverUpdatedAt = Date.now();
-    await getFirestore().runTransaction(async (tx) => {
-      for (const messageId of chunk) {
-        const ref = colRef(uid, 'chatMessages').doc(messageId);
-        const snap = await tx.get(ref);
-        const stored = readStoredState(
-          snap.exists ? (snap.data() as Record<string, unknown>) : undefined,
-        );
-        const cmp = compareMutation(stored, at, 'tombstone');
-        if (cmp.allow) {
-          tx.set(ref, tombstonePayload(messageId, at, serverUpdatedAt), { merge: false });
-        }
-      }
-    });
-  }
-
-  for (const photoId of photoIds) {
-    await tombstonePhotoWithGcs(uid, photoId, at);
+    await getFirestore().runTransaction((tx) =>
+      tombstoneChunk(
+        tx,
+        jobs,
+        tombstoneRefs(uid),
+        (stored) => chatClearWriteAts(jobs, stored, at),
+        serverUpdatedAt,
+      ),
+    );
   }
 }
 

@@ -243,6 +243,36 @@ describe('planSharedRecipePut', () => {
     expect(plan.body).not.toHaveProperty('role');
   });
 
+  it("keeps the owner's variantOf whatever the editor sends", () => {
+    const original = '77777777-7777-4777-8777-777777777777';
+    const editorsOwn = '88888888-8888-4888-8888-888888888888';
+    const variant: SharedRecipeAccess = { ...editor, recipe: { ...ownerRecipe, variantOf: original } };
+    for (const payload of [editedPayload({ variantOf: editorsOwn }), editedPayload()]) {
+      const plan = planSharedRecipePut({ ...base, access: variant, payload });
+      expect(plan).toMatchObject({ kind: 'write', body: { variantOf: original } });
+    }
+    const plain = planSharedRecipePut({ ...base, payload: editedPayload({ variantOf: editorsOwn }) });
+    expect(plain.kind).toBe('write');
+    if (plain.kind !== 'write') return;
+    expect(plain.body).not.toHaveProperty('variantOf');
+  });
+
+  it("keeps the owner's savedFrom, which the editor never sees", () => {
+    const savedFrom = { name: 'Ada', savedAt: 5 };
+    const copy: SharedRecipeAccess = { ...editor, recipe: { ...ownerRecipe, savedFrom } };
+    for (const payload of [editedPayload({ savedFrom: { name: 'Eve', savedAt: 6 } }), editedPayload()]) {
+      const plan = planSharedRecipePut({ ...base, access: copy, payload });
+      expect(plan).toMatchObject({ kind: 'write', body: { savedFrom } });
+    }
+    const plain = planSharedRecipePut({
+      ...base,
+      payload: editedPayload({ savedFrom: { name: 'Eve', savedAt: 6 } }),
+    });
+    expect(plain.kind).toBe('write');
+    if (plain.kind !== 'write') return;
+    expect(plain.body).not.toHaveProperty('savedFrom');
+  });
+
   it('rejects a viewer, a stranger, and an editor whose owner is no longer admitted', () => {
     for (const input of [
       { ...base, access: { ...editor, role: 'viewer' as const } },

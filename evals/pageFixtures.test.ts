@@ -2,7 +2,13 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { extractRecipeSource } from '../server/recipeImport.ts';
+import { checkImport } from '../server/importChecks.ts';
+import {
+  extractRecipeSource,
+  htmlCheckContext,
+  normalizeImportedRecipe,
+  type ImportedRecipe,
+} from '../server/recipeImport.ts';
 
 // Offline companion to recipeImport.eval.ts: runs the deterministic
 // extraction step (no Gemini) over every cached page. Only the website page
@@ -105,6 +111,66 @@ describe('extractRecipeSource over cached page fixtures', () => {
           expect(lower).toContain(word);
         }
       }
+    });
+  }
+});
+
+// Offline calibration of the import checks (docs/plans/import-reliability.md,
+// Verification). A false warning costs more trust than a missed one, so every
+// cached page that has a recipe must raise no source warning, and each page
+// golden checked against its own page must raise nothing at all.
+
+type PageClass = { class: 'source' | 'extraction' | 'ok'; why: string };
+
+function pageClass(fixture: string): PageClass | null {
+  const path = join(evalsRoot, fixture, 'class.json');
+  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as PageClass) : null;
+}
+
+const EMPTY_STEPS: ImportedRecipe = {
+  title: 'Recipe',
+  servings: 1,
+  ingredientSections: [],
+  steps: [],
+  tags: [],
+};
+
+describe('import checks over cached page fixtures', () => {
+  for (const fixture of Object.keys(EXPECTED)) {
+    const expectedClass = pageClass(fixture)?.class ?? 'ok';
+    it(`${fixture} (${expectedClass}) ${expectedClass === 'source' ? 'raises' : 'raises no'} source warning for empty steps`, () => {
+      const context = htmlCheckContext(readFileSync(join(evalsRoot, fixture, 'page.html'), 'utf8'));
+      const result = checkImport({
+        recipe: EMPTY_STEPS,
+        selfReport: { instructionsOnPage: false, ingredientsOnPage: false },
+        jsonLd: context.jsonLd,
+        sourceHasInstructions: context.sourceHasInstructions,
+        corpus: context.corpus,
+      });
+      const codes = result.warnings.map((w) => w.code);
+      if (expectedClass === 'source') {
+        expect(codes).toContain('INSTRUCTIONS_NOT_ON_PAGE');
+      } else {
+        expect(codes).not.toContain('INSTRUCTIONS_NOT_ON_PAGE');
+      }
+    });
+  }
+
+  for (const fixture of Object.keys(EXPECTED)) {
+    const goldenPath = join(evalsRoot, fixture, 'golden.json');
+    if (!existsSync(goldenPath)) continue;
+    it(`${fixture} golden raises no warnings against its own page`, () => {
+      const golden = normalizeImportedRecipe(JSON.parse(readFileSync(goldenPath, 'utf8')));
+      expect(golden).not.toBeNull();
+      const context = htmlCheckContext(readFileSync(join(evalsRoot, fixture, 'page.html'), 'utf8'));
+      const result = checkImport({
+        recipe: golden as ImportedRecipe,
+        selfReport: { instructionsOnPage: true, ingredientsOnPage: true },
+        jsonLd: context.jsonLd,
+        sourceHasInstructions: context.sourceHasInstructions,
+        corpus: context.corpus,
+      });
+      expect(result.warnings).toEqual([]);
     });
   }
 });

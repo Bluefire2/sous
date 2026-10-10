@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { en, type PluralForms } from './en';
-import { CATALOGS, formatNumber, languageName, translate } from './index';
+import {
+  CATALOGS,
+  formatNumber,
+  languageName,
+  localeDisplayName,
+  translate,
+} from './index';
 import { SUPPORTED_LOCALES } from './lang';
 
 const NON_ENGLISH = SUPPORTED_LOCALES.filter((locale) => locale !== 'en');
@@ -36,6 +42,17 @@ describe('catalog parity', () => {
       }
       for (const form of ['one', 'few', 'many', 'other'] as const) {
         expect(entry[form], `${locale}.${key}.${form}`).toBeTruthy();
+      }
+    }
+  });
+
+  // A Latin letter that looks Cyrillic ("i" for "і") reads fine and breaks
+  // search and screen readers; date-fns shipped one in uk (relativeTime.ts).
+  it.each(['uk', 'ru'] as const)('%s has no Latin letter inside a Cyrillic word', (locale) => {
+    const mixedScript = /\p{Script=Cyrillic}\p{Script=Latin}|\p{Script=Latin}\p{Script=Cyrillic}/u;
+    for (const [key, entry] of Object.entries(CATALOGS[locale])) {
+      for (const text of isPlural(entry) ? Object.values(entry) : [entry]) {
+        expect(text, `${locale}.${key}`).not.toMatch(mixedScript);
       }
     }
   });
@@ -139,5 +156,24 @@ describe('languageName', () => {
   it('is undefined for a tag it cannot name', () => {
     expect(languageName('xx', 'en')).toBeUndefined();
     expect(languageName('!!', 'en')).toBeUndefined();
+  });
+});
+
+describe('localeDisplayName', () => {
+  it('names each UI language in itself, capitalized as a standalone label', () => {
+    expect(localeDisplayName('en')).toBe('English');
+    expect(localeDisplayName('uk')).toBe('Українська');
+    expect(localeDisplayName('ru')).toBe('Русский');
+    expect(localeDisplayName('zh-Hans')).toBe('简体中文');
+  });
+});
+
+describe('library.languageShort', () => {
+  it('is a distinct, non-empty label in every catalog', () => {
+    const labels = SUPPORTED_LOCALES.map((locale) => translate(locale, 'library.languageShort'));
+    for (const label of labels) {
+      expect(label.trim()).not.toBe('');
+    }
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

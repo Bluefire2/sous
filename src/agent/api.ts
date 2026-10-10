@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { serverErrorText } from '../lib/errorText';
 import { invalidateSession } from '../lib/session';
 import type { AgentServerEvent } from './protocol';
 
@@ -210,6 +211,11 @@ export async function postAgent(params: {
   if (response.status === 401) {
     invalidateSession();
     throw new Error(t('assistant.sessionExpired'));
+  }
+  if (response.status === 429) {
+    // The daily AI budget or too many requests at once (`server/llmBudget.ts`).
+    const body: unknown = await response.json().catch(() => null);
+    throw new Error(serverErrorText(body, 'assistant.requestFailed', { status: 429 }));
   }
   if (!response.ok || !response.body) {
     throw new Error(t('assistant.requestFailed', { status: response.status }));

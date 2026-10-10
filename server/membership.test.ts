@@ -8,9 +8,14 @@ import {
   cacheSizeForTest,
   clearMembershipCache,
   lookupMemberForTest,
+  memberFromIdentity,
+  readBoundedText,
+  RequestBodyError,
   visitorMembership,
 } from './membership.ts';
 import { signSession } from './session.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -303,6 +308,94 @@ describe('visitorMembership', () => {
   });
 });
 
+describe('memberFromIdentity', () => {
+  const sub = 'identity-sub';
+
+  beforeEach(() => {
+    process.env.ALLOWED_EMAILS = 'owner@example.com';
+    clearMembershipCache(sub);
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('an owner short-circuits without a member read', async () => {
+    const spy = vi.spyOn(members, 'readMember');
+    expect(await memberFromIdentity({ sub: 'owner-sub', email: 'Owner@Example.com' })).toEqual({
+      kind: 'ok',
+      sub: 'owner-sub',
+      email: 'Owner@Example.com',
+      isOwner: true,
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('an active member is ok, a missing or revoked one denied, a throw unknown', async () => {
+    const spy = vi
+      .spyOn(members, 'readMember')
+      .mockResolvedValueOnce({ sub, status: 'active', approvedAt: 1, approvedBy: 'owner' });
+    expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({
+      kind: 'ok',
+      sub,
+      email: 'm@example.com',
+      isOwner: false,
+    });
+    clearMembershipCache(sub);
+    spy.mockResolvedValueOnce(null);
+    expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({ kind: 'denied' });
+    spy.mockResolvedValueOnce({ sub, status: 'revoked', approvedAt: 1, approvedBy: 'owner' });
+    expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({ kind: 'denied' });
+    spy.mockRejectedValueOnce(new Error('down'));
+    expect(await memberFromIdentity({ sub, email: 'm@example.com' })).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('readBoundedText', () => {
+  it('reads the body as text, and null past the limit', async () => {
+    const post = (body: string) => new Request('http://localhost/', { method: 'POST', body });
+    expect(await readBoundedText(post('{"a":1}'), 100)).toBe('{"a":1}');
+    expect(await readBoundedText(post('x'.repeat(101)), 100)).toBeNull();
+  });
+
+  it('throws a RequestBodyError that drops the original when the client hangs up mid-upload', async () => {
+    const err = await readBoundedText(abortedRequest('http://localhost/'), 1_000_000).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(RequestBodyError);
+    expect(err).toMatchObject({ name: 'RequestBodyError', message: 'Request body could not be read' });
+    expect((err as Error).cause).toBeUndefined();
+    expect(String(err)).not.toContain('SECRET');
+  });
+
+  it('refuses a declared Content-Length over the limit without reading', async () => {
+    const endless = endlessBody();
+    const req = new Request('http://localhost/api/x', {
+      method: 'POST',
+      headers: { 'Content-Length': '6' },
+      body: endless.body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(await readBoundedText(req, 5)).toBeNull();
+    expect(endless.cancelled()).toBe(false);
+  });
+
+  it('stops reading past the limit and leaves the rest unlocked, not cancelled', async () => {
+    const endless = endlessBody();
+    const req = new Request('http://localhost/api/x', {
+      method: 'POST',
+      body: endless.body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(await readBoundedText(req, 100_000)).toBeNull();
+    // Cancelling would abort the request under the 413; the dispatcher drops the rest.
+    expect(endless.cancelled()).toBe(false);
+    expect(req.body?.locked).toBe(false);
+    expect(endless.read()).toBeLessThan(100_000 + 256 * 1024);
+  });
+});
+
 describe('architecture lock', () => {
   it('assertion 1: readSession referenced only in session, membership, auth', () => {
     const sources = productionSources();
@@ -353,22 +446,44 @@ describe('architecture lock', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const serverTs = readFileSync(join(repoRoot, 'scripts/server.ts'), 'utf8');
-    expect(serverTs.includes('withMembership(chatPost)')).toBe(true);
+    // The kitchen profile read and withChatBudget (server/llmBudget.ts) run
+    // inside the gate, never around it; the profile is read before the budget.
+    expect(serverTs.includes('withMembership(withKitchenProfile(withChatBudget(chatPost)))')).toBe(true);
     expect(serverTs.includes('withMembership(importPost)')).toBe(true);
+    expect(serverTs.includes('withMembership(kitchenProfileGet)')).toBe(true);
+    expect(serverTs.includes('withMembership(kitchenProfilePost)')).toBe(true);
+    expect(serverTs.includes('handler: kitchenProfile')).toBe(false);
+    expect(serverTs.includes('handler: withKitchenProfile')).toBe(false);
     expect(serverTs.includes('handler: chatPost')).toBe(false);
     expect(serverTs.includes('handler: importPost')).toBe(false);
+    expect(serverTs.includes('withMembership(importFeedbackPost)')).toBe(true);
+    expect(serverTs.includes('handler: importFeedbackPost')).toBe(false);
+    expect(serverTs.includes('withMembership(featureRequestPost)')).toBe(true);
+    expect(serverTs.includes('handler: featureRequestPost')).toBe(false);
   });
 
   // api/import.ts is a 401 stub; Cloud Run's import route (server/importRoute.ts)
   // has no session fallback to bypass. Its one use of authorizedSub copies the
   // sub onto the import log line (server/importLog.ts) and never decides
-  // access; a second use fails this count.
-  it('assertion 6: authorizedSub in exactly three files with fixed counts', () => {
+  // access; a second use fails this count. The import feedback route
+  // (server/importFeedback.ts) reads it once, after withMembership decided
+  // access, to name the report's sender and its log line; it never decides
+  // access either. The feature request route (server/featureRequest.ts) does
+  // the same for a suggestion. The chat budget (server/llmBudget.ts) reads it
+  // once, inside withMembership, only to key the member's daily spend. The
+  // kitchen profile (server/kitchenProfile.ts) reads it in its GET and POST
+  // handlers and in the chat wrapper, all behind withMembership, only to name
+  // whose profile to read or write.
+  it('assertion 6: authorizedSub in exactly seven files with fixed counts', () => {
     const sources = productionSources();
     expectProductionScanReady(sources);
     const expectedCounts: Record<string, number> = {
       'api/chat.ts': 5,
+      'server/featureRequest.ts': 1,
+      'server/importFeedback.ts': 1,
+      'server/kitchenProfile.ts': 3,
       'server/importRoute.ts': 1,
+      'server/llmBudget.ts': 1,
       'server/membership.ts': 2,
     };
     const allowed = new Set(Object.keys(expectedCounts));

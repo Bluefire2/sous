@@ -37,6 +37,29 @@ export function missingCollectionAction(input: {
   };
 }
 
+/**
+ * Where the collections index sends Back. Only a library path is kept:
+ * `/` or `/collections/<id>`. Anything else, including the index itself,
+ * goes home.
+ */
+export function libraryReturnPath(from: unknown): string {
+  if (from === '/') return '/';
+  if (typeof from !== 'string' || !from.startsWith('/collections/')) return '/';
+  const id = from.slice('/collections/'.length);
+  if (id === '' || id.includes('/')) return '/';
+  return from;
+}
+
+/**
+ * The library path a screen was opened from, carried in navigation state as
+ * `{ from }`. `undefined` when there is none or it is not a library path.
+ */
+export function libraryPathFromState(state: unknown): string | undefined {
+  if (state === null || typeof state !== 'object' || !('from' in state)) return undefined;
+  const { from } = state;
+  return typeof from === 'string' && libraryReturnPath(from) === from ? from : undefined;
+}
+
 export function libraryHref(collectionId: string | undefined): string {
   if (collectionId === undefined || collectionId === '') {
     return '/';
@@ -44,11 +67,13 @@ export function libraryHref(collectionId: string | undefined): string {
   return collectionPath(collectionId);
 }
 
-export function importHref(collectionId: string | undefined): string {
-  if (collectionId === undefined || collectionId === '') {
-    return '/import';
-  }
-  return `${collectionPath(collectionId)}/import`;
+/** `mode: 'create'` opens the Import screen on Create, where the model writes a recipe from an idea. */
+export function importHref(collectionId: string | undefined, mode?: 'create'): string {
+  const path =
+    collectionId === undefined || collectionId === ''
+      ? '/import'
+      : `${collectionPath(collectionId)}/import`;
+  return mode === 'create' ? `${path}?mode=create` : path;
 }
 
 export function newRecipeHref(collectionId: string | undefined): string {

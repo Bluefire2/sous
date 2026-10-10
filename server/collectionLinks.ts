@@ -1,3 +1,4 @@
+import type { Transaction } from '@google-cloud/firestore';
 import {
   collectionLiveForGrant,
   firestoreGrantAddTransaction,
@@ -261,6 +262,39 @@ function liveLinksQuery(ownerSub: string, collectionId: string) {
     .where('ownerSub', '==', ownerSub)
     .where('collectionId', '==', collectionId)
     .where('status', '==', 'live');
+}
+
+/**
+ * Whether the collection has an open join link, read inside `tx`. A live row
+ * that cannot be parsed counts as open: this tells a model someone may still
+ * join, so it errs toward saying so.
+ */
+export async function hasOpenCollectionLinkInTransaction(
+  tx: Transaction,
+  ownerSub: string,
+  collectionId: string,
+  now: number,
+): Promise<boolean> {
+  const snap = await tx.get(liveLinksQuery(ownerSub, collectionId));
+  return snap.docs.some((doc) => {
+    const record = parseCollectionLinkDoc(doc.data());
+    return record === null || collectionLinkIsLive(record, now);
+  });
+}
+
+/** Ids of the owner's collections with an open join link, counted like the check above. */
+export async function listOpenCollectionLinkIds(ownerSub: string, now: number): Promise<Set<string>> {
+  // Equality filters only, so Firestore serves this from single-field indexes.
+  const snap = await linksCol().where('ownerSub', '==', ownerSub).where('status', '==', 'live').get();
+  const ids = new Set<string>();
+  for (const doc of snap.docs) {
+    const record = parseCollectionLinkDoc(doc.data());
+    const collectionId = doc.get('collectionId');
+    if (typeof collectionId === 'string' && (record === null || collectionLinkIsLive(record, now))) {
+      ids.add(collectionId);
+    }
+  }
+  return ids;
 }
 
 export async function listCollectionLinks(

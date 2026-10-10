@@ -13,22 +13,25 @@ import {
   withImportLog,
   type ImportLogEntry,
 } from './importLog.ts';
-import { requireHeaderMember } from './membership.ts';
+import { meteredImportDeps } from './importRoute.ts';
+import { admitLlm, llmRefusal } from './llmBudget.ts';
+import { RequestBodyError, readBoundedText, requireHeaderMember } from './membership.ts';
 import { recipePutFromExtraction } from './recipeFromExtraction.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
   importFromHtml,
+  MAX_PAGE_HTML_CHARS,
   readImportTranslateTo,
-  recipeImportDepsFromEnv,
+  type ImportOutcome,
   type RecipeImportDeps,
 } from './recipeImport.ts';
 import { applyPushOp } from './sync.ts';
 
-/** Buffered then measured, matching `syncPush`'s `raw.length` convention. */
+/** The body limit, in UTF-16 code units of the decoded body, matching `syncPush`. */
 const MAX_BODY_CHARS = 1_500_000;
-/** The extension caps itself at 400 000; this is the server refusing to be the one that runs out of memory. */
-const MAX_HTML_CHARS = 600_000;
+/** Where reading stops: UTF-8 spends at most 3 bytes per code unit, so no body within `MAX_BODY_CHARS` is longer. */
+const MAX_BODY_BYTES = 3 * MAX_BODY_CHARS;
 const TOO_LARGE = 'Page was too large to import.';
 const UNUSABLE = 'Extraction produced an unusable recipe.';
 
@@ -119,14 +122,15 @@ async function importAndSave(
   entry: ImportLogEntry,
   deps: RecipeImportDeps | undefined,
 ): Promise<Response> {
-  let raw: string;
+  let raw: string | null;
   try {
-    raw = await req.text();
-  } catch {
-    entry.outcome = 'bad_request';
+    raw = await readBoundedText(req, MAX_BODY_BYTES);
+  } catch (err) {
+    // `RequestBodyError` is the client going away mid-upload.
+    entry.outcome = err instanceof RequestBodyError ? 'aborted' : 'bad_request';
     return fail(req, 'bad-request', 'Bad request', 400);
   }
-  if (raw.length > MAX_BODY_CHARS) {
+  if (raw === null || raw.length > MAX_BODY_CHARS) {
     entry.outcome = 'too_large';
     return fail(req, 'import-too-large', TOO_LARGE, 413);
   }
@@ -160,7 +164,9 @@ async function importAndSave(
   Object.assign(entry, loggableUrl(url));
 
   const html = typeof body.html === 'string' ? body.html : '';
-  if (html.length > MAX_HTML_CHARS) {
+  // The extension caps itself at 400 000; this is the server refusing to be
+  // the one that runs out of memory. The website fetch truncates at the same cap.
+  if (html.length > MAX_PAGE_HTML_CHARS) {
     entry.outcome = 'too_large';
     return fail(req, 'import-too-large', TOO_LARGE, 413);
   }
@@ -175,11 +181,24 @@ async function importAndSave(
     return fail(req, IMPORT_BAD_LANGUAGE_CODE, IMPORT_BAD_LANGUAGE_ERROR, 400);
   }
 
-  const outcome = await importFromHtml(
-    html,
-    deps ?? recipeImportDepsFromEnv(),
-    target.translateTo,
-  );
+  const admission = await admitLlm(sub, 'extension_import');
+  if (admission.kind !== 'ok') {
+    entry.outcome = 'llm_refused';
+    const refusal = llmRefusal(admission);
+    const headers = new Headers(refusal.headers);
+    for (const [name, value] of Object.entries(corsHeaders(req))) headers.set(name, value);
+    return new Response(refusal.body, { status: refusal.status, headers });
+  }
+  let outcome: ImportOutcome;
+  try {
+    outcome = await importFromHtml(
+      html,
+      meteredImportDeps(deps, admission.meter),
+      target.translateTo,
+    );
+  } finally {
+    admission.meter.release();
+  }
   noteImportOutcome(entry, outcome);
   switch (outcome.kind) {
     case 'ok':
@@ -192,6 +211,8 @@ async function importAndSave(
       return fail(req, 'import-extract-failed', 'Extraction failed — no structured result.', 502);
     case 'unusable':
       return fail(req, 'import-unusable', UNUSABLE, 502);
+    case 'model_error':
+      return fail(req, 'import-model-failed', "Couldn't read that recipe — try again.", 502);
   }
 
   // A failed translation still saves the original. The extension has no preview.
@@ -201,10 +222,15 @@ async function importAndSave(
     translated = true;
     recipe = { ...outcome.translation.recipe, lang: outcome.translation.lang };
   }
+  const now = Date.now();
   const payload = recipePutFromExtraction(recipe, {
     id: randomUUID(),
-    now: Date.now(),
+    now,
     sourceUrl: url,
+    // The extension has no preview, so the warnings show on the recipe view.
+    ...(outcome.warnings.length > 0
+      ? { importCheck: { at: now, warnings: outcome.warnings } }
+      : {}),
   });
   if (payload === null) {
     entry.outcome = 'unusable';

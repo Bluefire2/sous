@@ -320,7 +320,12 @@ export async function handleRevokeGrantRequest(
   }
 }
 
-async function revokeGrantInFirestore(
+/**
+ * Tombstones one forward grant and its incoming share in one transaction.
+ * Owner revoke, viewer leave, and account deletion
+ * (`server/accountDeletion.ts`) all go through it.
+ */
+export async function revokeGrantInFirestore(
   ownerSub: string,
   collectionId: string,
   viewerSub: string,

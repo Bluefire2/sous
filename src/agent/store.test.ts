@@ -117,6 +117,33 @@ describe('applyEvent', () => {
     expect(state.messages[state.messages.length - 1]?.cards?.[0]?.data).toEqual(data);
   });
 
+  it('replays a collection create without the recipe id lists', () => {
+    let state = beginTurn(initialAgentState, 'create');
+    const data = {
+      name: 'Soups',
+      recipeIds: ['r1', 'r2'],
+      sources: [{ id: 'r1', from: { kind: 'unfiled' } }],
+      preview: [{ id: 'r1', title: 'One', from: { kind: 'unfiled' } }],
+      total: 2,
+    };
+    const card = { type: 'collection_create', v: 1, id: 'c-create', data };
+    state = applyEvent(state, { t: 'card', card });
+    const replay = messagesForReplay(state);
+    expect(replay[1]?.cards).toEqual([
+      {
+        type: 'collection_create',
+        v: 1,
+        id: 'c-create',
+        data: {
+          name: data.name,
+          preview: data.preview,
+          total: data.total,
+        },
+      },
+    ]);
+    expect(state.messages[state.messages.length - 1]?.cards?.[0]?.data).toEqual(data);
+  });
+
   it('keeps interim cards when no later assistant text arrives', () => {
     let state = beginTurn(initialAgentState, 'list');
     const card = { type: 'shopping_list', v: 1, id: 'c1', data: {} };

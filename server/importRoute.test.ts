@@ -1,26 +1,59 @@
 import type { Content } from '@google/genai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeImportDeps } from '../test/fakeGemini.ts';
+import { abortedRequest } from '../test/abortedBody.ts';
+import { fakePageFetch } from '../test/fakePageFetch.ts';
 import {
   IMPORT_IMAGE_TYPES,
   importPost,
   MAX_IMPORT_BODY_BYTES,
   MAX_IMPORT_IMAGE_BYTES,
   MAX_IMPORT_IMAGES,
+  MAX_IMPORT_SEARCHES_PER_HOUR,
+  resetImportSearchRateLimitForTest,
 } from './importRoute.ts';
 import {
   IMPORT_BAD_LANGUAGE_CODE,
   IMPORT_BAD_LANGUAGE_ERROR,
+  MAX_GENERATE_BRIEF_CHARS,
   type RecipeImportDeps,
 } from './recipeImport.ts';
+import type { KitchenProfileStore } from './kitchenProfile.ts';
 import * as recipeImport from './recipeImport.ts';
 import { TRANSLATE_FAILED, type TranslateInput, type TranslateOutcome } from './translate.ts';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
+
+// Model routes admit against the daily budget; keep it off Firestore.
+let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+beforeEach(() => {
+  llmUsage = memoryLlmUsageStore();
+  setLlmBudgetForTest({ store: llmUsage });
+});
+afterEach(() => setLlmBudgetForTest(null));
+
+// The route fetches pages over the live network; send it through a fake one
+// (`test/fakePageFetch.ts`) so `fetchPageHtml`'s own checks still run.
+const network = vi.hoisted(() => ({
+  deps: undefined as import('./recipeImport.ts').PageFetchDeps | undefined,
+}));
+vi.mock('./recipeImport.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./recipeImport.ts')>();
+  return {
+    ...actual,
+    fetchPageHtml: (url: string) => actual.fetchPageHtml(url, network.deps),
+  };
+});
 
 const RECIPE = {
   title: 'Tomato soup',
   servings: 4,
   ingredientSections: [{ items: [{ item: 'tomatoes', quantity: 6 }] }],
-  steps: [{ text: 'Simmer.' }],
+  steps: [{ text: 'Simmer.' }, { text: 'Blend.' }],
   tags: ['soup'],
 };
 
@@ -33,6 +66,23 @@ interface PostOptions {
   /** Replaces the fake built from `reply`. */
   deps?: RecipeImportDeps;
   translator?: (input: TranslateInput) => Promise<TranslateOutcome>;
+  /** The member the gate admitted; `sub-1` by default. */
+  sub?: string;
+  /** Where a brief import reads the kitchen profile; none saved by default. */
+  kitchenStore?: KitchenProfileStore;
+}
+
+/** A kitchen profile store holding `docs` by sub. */
+function kitchenStore(docs: Record<string, unknown> = {}): KitchenProfileStore & { reads: string[] } {
+  const reads: string[] = [];
+  return {
+    reads,
+    read: async (sub) => {
+      reads.push(sub);
+      return docs[sub];
+    },
+    write: async () => {},
+  };
 }
 
 async function post(
@@ -46,7 +96,12 @@ async function post(
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.rawBody ?? JSON.stringify(body),
   });
-  const response = await importPost(req, { authorizedSub: 'sub-1' }, options.deps ?? deps);
+  const response = await importPost(
+    req,
+    { authorizedSub: options.sub ?? 'sub-1' },
+    options.deps ?? deps,
+    options.kitchenStore ?? kitchenStore(),
+  );
   return { status: response.status, body: (await response.json()) as unknown, calls };
 }
 
@@ -89,15 +144,16 @@ function rejectingDeps(message: string, status?: number): RecipeImportDeps {
   };
 }
 
-function serve(response: Response) {
-  const fetchMock = vi.fn(() => Promise.resolve(response));
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+/** Every URL answers with this page. */
+function serve(body: string, status = 200) {
+  network.deps = fakePageFetch({ pages: () => ({ status, body }) }).deps;
 }
 
 // Every request writes an import log line; keep it out of the test output.
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  // Until a test serves a page, every connection is refused.
+  network.deps = fakePageFetch({ pages: {} }).deps;
 });
 
 afterEach(() => {
@@ -126,7 +182,7 @@ describe('POST /api/import', () => {
   });
 
   it('returns the normalized recipe and sourceUrl for a URL', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup' });
     expect(result).toMatchObject({
       status: 200,
@@ -136,7 +192,7 @@ describe('POST /api/import', () => {
   });
 
   it('prefers the URL when both are given', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup', text: 'Other text' });
     expect(result.calls[0].contents).not.toContain('Other text');
   });
@@ -153,7 +209,7 @@ describe('POST /api/import', () => {
   });
 
   it('rejects a page with no readable text like an empty request', async () => {
-    serve(new Response('<html><body><script>x()</script></body></html>'));
+    serve('<html><body><script>x()</script></body></html>');
     const result = await post({ url: 'https://example.com/soup' });
     expect(result).toMatchObject({
       status: 400,
@@ -172,13 +228,23 @@ describe('POST /api/import', () => {
       body: { error: 'Only http and https URLs are supported.', code: 'import-bad-scheme' },
     });
 
-    vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed')));
+    network.deps = fakePageFetch({ pages: {} }).deps;
     expect(await post({ url: 'https://example.com/soup' })).toMatchObject({
       status: 422,
       body: { error: 'Could not reach that URL.', code: 'import-unreachable' },
     });
 
-    serve(new Response('challenge', { status: 403 }));
+    // A non-public address answers exactly like an unreachable site.
+    serve(PAGE);
+    for (const url of ['http://127.0.0.1:3998/internal', 'http://169.254.169.254/computeMetadata/v1/']) {
+      expect(await post({ url }), url).toEqual({
+        status: 422,
+        body: { error: 'Could not reach that URL.', code: 'import-unreachable' },
+        calls: [],
+      });
+    }
+
+    serve('challenge', 403);
     expect(await post({ url: 'https://example.com/soup' })).toMatchObject({
       status: 422,
       body: {
@@ -223,7 +289,7 @@ describe('POST /api/import', () => {
       title: 'UK Tomato soup',
       servings: 4,
       ingredientSections: [{ items: [{ item: 'UK tomatoes', quantity: 6 }] }],
-      steps: [{ text: 'UK Simmer.' }],
+      steps: [{ text: 'UK Simmer.' }, { text: 'UK Blend.' }],
       tags: ['soup'],
       lang: 'uk',
     };
@@ -240,7 +306,7 @@ describe('POST /api/import', () => {
       });
       expect(source).toHaveBeenCalledWith('Tomato soup', expect.anything(), 'uk');
 
-      serve(new Response(PAGE));
+      serve(PAGE);
       const url = await post(
         { url: 'https://example.com/soup', translateTo: 'uk' },
         JSON.stringify(italian),
@@ -309,7 +375,7 @@ describe('POST /api/import with photos', () => {
   });
 
   it('prefers the URL and ignores photos', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const images = Array.from({ length: 5 }, () => jpeg());
     const result = await post({ url: 'https://example.com/soup', images });
     expect(result.status).toBe(200);
@@ -500,7 +566,7 @@ describe('POST /api/import with photos', () => {
         bytes: 4096,
         outcome: 'ok',
         ingredients: 1,
-        steps: 1,
+        steps: 2,
         status: 200,
         ms: expect.any(Number),
       },
@@ -528,7 +594,7 @@ describe('POST /api/import with photos', () => {
 
 describe('POST /api/import log line', () => {
   it('logs a URL import with the account and the address, never its query or the recipe', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     const result = await post({ url: 'https://example.com/soup?user_id=u-77&code=c-88#step-2' });
     expect(result.status).toBe(200);
     const lines = importLogLines();
@@ -540,9 +606,11 @@ describe('POST /api/import log line', () => {
         url: 'https://example.com/soup',
         host: 'example.com',
         fetch: 'ok',
+        source: 'text',
+        attempts: ['ok'],
         outcome: 'ok',
         ingredients: 1,
-        steps: 1,
+        steps: 2,
         status: 200,
         ms: expect.any(Number),
       },
@@ -553,7 +621,7 @@ describe('POST /api/import log line', () => {
   });
 
   it('logs a site that refused the fetch, with its status', async () => {
-    serve(new Response('blocked', { status: 403 }));
+    serve('blocked', 403);
     expect((await post({ url: 'https://example.com/soup' })).status).toBe(422);
     expect(importLogLines().map((line) => line.entry)).toEqual([
       expect.objectContaining({
@@ -567,35 +635,66 @@ describe('POST /api/import log line', () => {
     ]);
   });
 
+  it('logs a refused address as blocked, without the address it resolved to', async () => {
+    network.deps = fakePageFetch({ dns: { 'intranet.example': ['10.20.30.40'] }, pages: {} }).deps;
+    expect((await post({ url: 'https://intranet.example/admin?token=t-99' })).status).toBe(422);
+    const lines = importLogLines();
+    expect(lines.map((line) => line.entry)).toEqual([
+      expect.objectContaining({
+        via: 'url',
+        url: 'https://intranet.example/admin',
+        fetch: 'blocked',
+        outcome: 'fetch_failed',
+        status: 422,
+      }),
+    ]);
+    for (const leaked of ['10.20.30.40', 't-99']) {
+      expect(lines[0].raw).not.toContain(leaked);
+    }
+  });
+
   it('logs a recipe with no steps as ok with steps 0', async () => {
-    serve(new Response(PAGE));
+    serve(PAGE);
     await post({ url: 'https://example.com/soup' }, JSON.stringify({ ...RECIPE, steps: [] }));
     expect(importLogLines()[0].entry).toMatchObject({ outcome: 'ok', ingredients: 1, steps: 0 });
   });
 
-  it('logs a Gemini throw on a URL import and passes on only a sanitized error', async () => {
-    serve(new Response(PAGE));
-    const thrown = await post({ url: 'https://example.com/soup' }, undefined, {
+  it('logs a Gemini throw on a URL import as model_error with its status, and answers 502', async () => {
+    serve(PAGE);
+    const result = await post({ url: 'https://example.com/soup' }, undefined, {
       deps: rejectingDeps('SECRET upstream detail', 429),
-    }).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-    // The dispatcher console.errors whatever escapes: no SDK text may be in it.
-    expect(thrown).toBeInstanceOf(Error);
-    expect((thrown as Error).message).toBe('Import failed: Error (status 429); message withheld');
-    expect(String((thrown as Error).stack)).not.toContain('SECRET');
+    });
+    expect(result.status).toBe(502);
+    expect(result.body).toMatchObject({ code: 'import-model-failed' });
+    expect(JSON.stringify(result.body)).not.toContain('SECRET');
     const lines = importLogLines();
     expect(lines.map((line) => line.entry)).toEqual([
       expect.objectContaining({
         via: 'url',
         fetch: 'ok',
-        outcome: 'threw',
+        source: 'text',
+        attempts: ['threw'],
+        outcome: 'model_error',
         errorStatus: 429,
-        status: 500,
+        status: 502,
       }),
     ]);
     expect(lines[0].raw).not.toContain('SECRET');
+  });
+
+  it('logs the warning codes on a URL import, and sends them to the client', async () => {
+    serve('<main><h1>Soup</h1><p>You need tomatoes. Watch the video.</p></main>');
+    const result = await post(
+      { url: 'https://example.com/soup' },
+      JSON.stringify({ ...RECIPE, steps: [], instructionsOnPage: false }),
+    );
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ warnings: [{ code: 'INSTRUCTIONS_NOT_ON_PAGE' }] });
+    expect(importLogLines()[0].entry).toMatchObject({
+      source: 'text',
+      attempts: ['warn'],
+      codes: ['INSTRUCTIONS_NOT_ON_PAGE'],
+    });
   });
 
   it('logs pasted text without the text', async () => {
@@ -613,5 +712,341 @@ describe('POST /api/import log line', () => {
     expect(importLogLines().map((line) => line.entry)).toEqual([
       expect.objectContaining({ sub: 'sub-1', outcome: 'bad_request', status: 400 }),
     ]);
+  });
+});
+
+describe('POST /api/import when the client hangs up mid-upload', () => {
+  it('answers 400 and logs aborted, never a 500, a throw, or the error', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { deps, calls } = fakeImportDeps(JSON.stringify(RECIPE));
+    const response = await importPost(
+      abortedRequest('http://localhost/api/import'),
+      { authorizedSub: 'sub-1' },
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Bad request', code: 'bad-request' });
+    expect(calls).toHaveLength(0);
+    expect(importLogLines().map((line) => line.entry)).toEqual([
+      { event: 'import', sub: 'sub-1', outcome: 'aborted', status: 400, ms: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('SECRET');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('still treats a body it cannot start reading as a throw, not an abort', async () => {
+    const req = new Request('http://localhost/api/import', { method: 'POST', body: '{}' });
+    req.body?.getReader();
+    const err = await importPost(req, { authorizedSub: 'sub-1' }).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/^Import failed: TypeError; message withheld$/);
+    expect(importLogLines().map((line) => line.entry)).toEqual([
+      expect.objectContaining({ outcome: 'threw', status: 500 }),
+    ]);
+  });
+});
+
+describe('POST /api/import with a brief', () => {
+  const BRIEF = 'shrimp gumbo in a pressure cooker for 6';
+  const GROUNDED = {
+    groundingChunks: [
+      { web: { uri: 'https://example.com/gumbo', title: 'Gumbo' } },
+      { web: { uri: 'https://example.org/roux', title: 'Roux' } },
+    ],
+    webSearchQueries: ['pressure cooker gumbo recipe SECRET-QUERY'],
+    searchEntryPoint: { renderedContent: '<div>chip</div>' },
+  };
+
+  function groundedDeps(reply = JSON.stringify(RECIPE)) {
+    return fakeImportDeps(reply, undefined, { groundingMetadata: GROUNDED });
+  }
+
+  beforeEach(() => {
+    resetImportSearchRateLimitForTest();
+  });
+
+  it('writes a recipe from the brief, without sourceUrl or grounding', async () => {
+    const { status, body, calls } = await post({ brief: BRIEF });
+    expect(status).toBe(200);
+    expect(body).toEqual({ recipe: RECIPE });
+    expect('sourceUrl' in (body as { recipe: object }).recipe).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0].contents)).toContain(BRIEF);
+    expect(String(calls[0].contents)).toContain('idea for a dish');
+    expect(calls[0].config?.tools).toBeUndefined();
+  });
+
+  it('adds the search tool and returns the grounding when asked', async () => {
+    const grounded = groundedDeps();
+    const { status, body } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
+    expect(status).toBe(200);
+    expect(body).toEqual({
+      recipe: RECIPE,
+      grounding: {
+        sources: [
+          { title: 'Gumbo', url: 'https://example.com/gumbo' },
+          { title: 'Roux', url: 'https://example.org/roux' },
+        ],
+        searchSuggestions: '<div>chip</div>',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('SECRET-QUERY');
+    expect(grounded.calls[0].config?.tools).toEqual([{ googleSearch: {} }]);
+  });
+
+  it('prefers the URL, then photos, over the brief; the brief over text', async () => {
+    serve(PAGE);
+    const url = await post({ url: 'https://example.com/r', brief: BRIEF });
+    expect(url.status).toBe(200);
+    expect(String(url.calls[0].contents)).toContain('Source material');
+    expect(String(url.calls[0].contents)).not.toContain(BRIEF);
+
+    const photos = await post({ images: [jpeg()], brief: BRIEF });
+    expect(photos.status).toBe(200);
+    expect(sentParts(photos.calls)[0].inlineData).toBeDefined();
+
+    const text = await post({ text: 'Tomato soup\n6 tomatoes', brief: BRIEF });
+    expect(text.status).toBe(200);
+    expect(String(text.calls[0].contents)).toContain('idea for a dish');
+    expect(String(text.calls[0].contents)).not.toContain('6 tomatoes');
+  });
+
+  it('rejects a brief that is not a string, or a search flag that is not a boolean', async () => {
+    for (const body of [{ brief: 7 }, { brief: ['x'] }, { brief: BRIEF, search: 'yes' }, { brief: BRIEF, search: 1 }]) {
+      const { status, body: answer, calls } = await post(body);
+      expect(status, JSON.stringify(body)).toBe(400);
+      expect(answer).toMatchObject({ code: 'bad-request' });
+      expect(calls).toHaveLength(0);
+    }
+  });
+
+  it('rejects a blank brief as nothing to import', async () => {
+    const { status, body, calls } = await post({ brief: '   ' });
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ code: 'import-empty' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rejects a brief over the cap without calling the model', async () => {
+    const ok = await post({ brief: 'x'.repeat(MAX_GENERATE_BRIEF_CHARS) });
+    expect(ok.status).toBe(200);
+    const long = await post({ brief: 'x'.repeat(MAX_GENERATE_BRIEF_CHARS + 1) });
+    expect(long.status).toBe(400);
+    expect(long.body).toEqual({
+      code: 'import-brief-too-long',
+      error: "That's too long — keep the idea under 2,000 characters.",
+    });
+    expect(long.calls).toHaveLength(0);
+  });
+
+  it('limits searched generations per member, and never unsearched ones', async () => {
+    expect(MAX_IMPORT_SEARCHES_PER_HOUR).toBe(20);
+    for (let i = 0; i < MAX_IMPORT_SEARCHES_PER_HOUR; i++) {
+      expect((await post({ brief: BRIEF, search: true })).status, `call ${i + 1}`).toBe(200);
+    }
+    const refused = await post({ brief: BRIEF, search: true });
+    expect(refused.status).toBe(429);
+    expect(refused.body).toEqual({
+      code: 'import-search-rate-limited',
+      error: 'Too many web searches. Try again later, or turn Search the web off.',
+    });
+    expect(refused.calls).toHaveLength(0);
+    expect((await post({ brief: BRIEF })).status).toBe(200);
+    expect((await post({ brief: BRIEF, search: false })).status).toBe(200);
+    // Each member has their own bucket.
+    expect((await post({ brief: BRIEF, search: true }, undefined, { sub: 'sub-2' })).status).toBe(200);
+    expect((await post({ brief: BRIEF, search: true })).status).toBe(429);
+    expect(importLogLines().at(-5)?.entry).toEqual(
+      expect.objectContaining({ via: 'generate', search: true, outcome: 'rate_limited', status: 429 }),
+    );
+  });
+
+  it('maps brief outcomes to brief copy, never the extraction wording', async () => {
+    expect(await post({ brief: 'the weather' }, JSON.stringify({ title: 'NOT_A_RECIPE' }))).toMatchObject({
+      status: 422,
+      body: { code: 'import-no-recipe-brief', error: "Couldn't make a recipe from that — describe a dish." },
+    });
+    const generateFailed = { code: 'import-generate-failed', error: "Couldn't generate that recipe — try again." };
+    expect(await post({ brief: BRIEF }, JSON.stringify({ ...RECIPE, steps: [] }))).toMatchObject({
+      status: 502,
+      body: generateFailed,
+    });
+    expect(await post({ brief: BRIEF }, 'not json')).toMatchObject({
+      status: 502,
+      body: generateFailed,
+    });
+    const failed = await post({ brief: BRIEF }, undefined, { deps: rejectingDeps('SECRET-UPSTREAM', 503) });
+    expect(failed).toMatchObject({ status: 502, body: generateFailed });
+    expect(JSON.stringify(failed.body)).not.toContain('SECRET');
+  });
+
+  it('forwards translateTo like a paste import', async () => {
+    const { status, body } = await post({ brief: 'zuppa di pomodoro', translateTo: 'uk' }, JSON.stringify({ ...RECIPE, lang: 'it' }), {
+      translator: prefixTranslator('it'),
+    });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      recipe: { ...RECIPE, lang: 'it' },
+      translation: { lang: 'uk', recipe: { title: 'UK Tomato soup', lang: 'uk' } },
+    });
+  });
+
+  it('logs the brief import with search counts and never the brief or the queries', async () => {
+    const grounded = groundedDeps();
+    const secretBrief = 'SECRET-BRIEF gumbo in a pressure cooker';
+    await post({ brief: secretBrief, search: true }, undefined, { deps: grounded.deps });
+    await post({ brief: secretBrief });
+    const lines = importLogLines();
+    expect(lines.map((line) => line.entry)).toEqual([
+      {
+        event: 'import',
+        sub: 'sub-1',
+        via: 'generate',
+        search: true,
+        outcome: 'ok',
+        attempts: ['ok'],
+        searchQueries: 1,
+        ingredients: 1,
+        steps: 2,
+        status: 200,
+        ms: expect.any(Number),
+      },
+      expect.objectContaining({ via: 'generate', search: false, outcome: 'ok', status: 200 }),
+    ]);
+    expect(lines[1].entry).not.toHaveProperty('searchQueries');
+    expect(lines[1].entry).not.toHaveProperty('source');
+    for (const line of lines) {
+      expect(line.raw).not.toContain('SECRET');
+      expect(line.raw).not.toContain('gumbo');
+    }
+  });
+
+  describe('kitchen profile', () => {
+    const PROFILE = {
+      allergens: ['peanuts'],
+      diets: ['vegetarian'],
+      avoid: 'SECRET-AVOID cilantro',
+      dislikes: '',
+      equipment: '',
+      notes: '',
+      updatedAt: 1,
+    };
+
+    it('gives the session member’s profile to the structured call and never to the search', async () => {
+      const grounded = groundedDeps();
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      const { status } = await post({ brief: BRIEF, search: true, sub: 'sub-2' }, undefined, {
+        deps: grounded.deps,
+        kitchenStore: store,
+      });
+      expect(status).toBe(200);
+      expect(store.reads).toEqual(['sub-1']);
+      expect(grounded.calls).toHaveLength(2);
+      expect(String(grounded.calls[0].contents)).not.toContain('kitchen_profile');
+      expect(String(grounded.calls[0].contents)).not.toContain('peanuts');
+      const structured = String(grounded.calls[1].contents);
+      expect(structured).toContain('<kitchen_profile>');
+      expect(structured).toContain('Allergies (never include): peanuts');
+      expect(structured).toContain('Diet: vegetarian');
+      expect(structured).toContain('never include an allergen');
+      expect(structured.indexOf('</kitchen_profile>')).toBeLessThan(structured.indexOf('Request:'));
+    });
+
+    it('writes the prompt as before when no profile is saved', async () => {
+      const { calls } = await post({ brief: BRIEF });
+      expect(String(calls[0].contents)).not.toContain('kitchen');
+    });
+
+    it('answers 503 without calling the model or taking a search slot when the profile cannot be read', async () => {
+      const failing: KitchenProfileStore = {
+        read: () => Promise.reject(new Error('firestore down')),
+        write: async () => {},
+      };
+      const { status, body, calls } = await post({ brief: BRIEF, search: true }, undefined, { kitchenStore: failing });
+      expect(status).toBe(503);
+      expect(body).toEqual({
+        code: 'import-profile-unavailable',
+        error: "Couldn't read your kitchen profile, so nothing was generated. Try again.",
+      });
+      expect(calls).toHaveLength(0);
+      expect(importLogLines().at(-1)?.entry).toEqual(
+        expect.objectContaining({ via: 'generate', outcome: 'store_unavailable', status: 503 }),
+      );
+      for (let i = 0; i < MAX_IMPORT_SEARCHES_PER_HOUR; i++) {
+        expect((await post({ brief: BRIEF, search: true })).status, `call ${i + 1}`).toBe(200);
+      }
+    });
+
+    it('never logs the profile', async () => {
+      await post({ brief: BRIEF }, undefined, { kitchenStore: kitchenStore({ 'sub-1': PROFILE }) });
+      for (const line of importLogLines()) {
+        expect(line.raw).not.toContain('SECRET-AVOID');
+        expect(line.raw).not.toContain('peanuts');
+      }
+    });
+
+    it('does not read the profile for a paste, page, or photo import', async () => {
+      const store = kitchenStore({ 'sub-1': PROFILE });
+      await post({ text: 'Tomato soup\n6 tomatoes' }, undefined, { kitchenStore: store });
+      expect(store.reads).toEqual([]);
+    });
+  });
+
+  it('logs the search count when the searched brief then fails', async () => {
+    const grounded = groundedDeps(JSON.stringify({ title: 'NOT_A_RECIPE' }));
+    const { status } = await post({ brief: BRIEF, search: true }, undefined, { deps: grounded.deps });
+    expect(status).toBe(422);
+    expect(importLogLines().at(-1)?.entry).toEqual(
+      expect.objectContaining({ via: 'generate', search: true, outcome: 'not_a_recipe', searchQueries: 1 }),
+    );
+  });
+});
+
+describe('importPost daily AI budget', () => {
+  function spendToday(sub: string, microUsd: number): void {
+    llmUsage.spent.set(`${sub}/${utcDayKey(Date.now())}`, microUsd);
+  }
+
+  it.each([
+    ['paste', { text: 'Simmer the tomatoes.' }],
+    ['brief', { brief: 'tomato soup' }],
+    ['photos', { images: [{ mediaType: 'image/jpeg', base64: '/9j/4A==' }] }],
+  ])('refuses a %s import over the budget without calling the model', async (_via, body) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    const { status, body: answer, calls } = await post(body);
+    expect(status).toBe(429);
+    expect(answer).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('logs the refusal as llm_refused on the import line', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    spendToday('sub-1', LLM_DAILY_BUDGET_MICRO_USD);
+    await post({ text: 'Simmer the tomatoes.' });
+    const importLine = log.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((line) => line.event === 'import');
+    expect(importLine).toMatchObject({ outcome: 'llm_refused', status: 429 });
+  });
+
+  it("charges the model's reported usage to the member", async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { status } = await post({ text: 'Simmer the tomatoes.' }, JSON.stringify(RECIPE), {
+      deps: {
+        ...fakeImportDeps(JSON.stringify(RECIPE)).deps,
+        model: 'gemini-3.7-flash',
+        ai: {
+          models: {
+            generateContent: async (params) => {
+              const response = await fakeImportDeps(JSON.stringify(RECIPE)).deps.ai.models.generateContent(params);
+              response.usageMetadata = { promptTokenCount: 1000, candidatesTokenCount: 100 };
+              return response;
+            },
+          },
+        },
+      },
+    });
+    expect(status).toBe(200);
+    expect(llmUsage.spent.get(`sub-1/${utcDayKey(Date.now())}`)).toBe(1000 * 1.5 + 100 * 7.5);
   });
 });

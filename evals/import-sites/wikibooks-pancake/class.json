@@ -1,0 +1,4 @@
+{
+  "class": "source",
+  "why": "A Wikibooks category overview: it describes pancake varieties and links to separate recipe pages, but has no method of its own. The live import returns NOT_A_RECIPE (422), which is correct: there is no recipe to extract. The check calibration feeds an empty-steps stand-in to confirm a source failure is classified as one if a model ever returns ingredients here."
+}

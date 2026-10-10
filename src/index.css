@@ -16,6 +16,15 @@
   --color-danger-fill-hover: #b91c1c;
   --color-accent-soft: #fef3c7;
   --color-success: #15803d;
+
+  --animate-dice-roll: dice-roll 0.9s ease-out;
+  @keyframes dice-roll {
+    0% { transform: translateY(0) rotate(0); }
+    30% { transform: translateY(-10px) rotate(240deg); }
+    60% { transform: translateY(0) rotate(420deg); }
+    80% { transform: translateY(-3px) rotate(460deg); }
+    100% { transform: translateY(0) rotate(450deg); }
+  }
 }
 
 @layer theme {
@@ -33,6 +42,24 @@
     --color-accent-soft: #78350f;
     --color-success: #4ade80;
   }
+
+  /* Paper is white: print the light palette whatever the theme. */
+  @media print {
+    html.dark {
+      --color-page: #faf7f2;
+      --color-surface: #ffffff;
+      --color-surface-muted: #f5f5f4;
+      --color-ink: #292524;
+      --color-ink-muted: #78716c;
+      --color-ink-subtle: #a8a29e;
+      --color-line: #e7e5e4;
+      --color-line-strong: #d6d3d1;
+      --color-danger-bg: #fef2f2;
+      --color-danger: #dc2626;
+      --color-accent-soft: #fef3c7;
+      --color-success: #15803d;
+    }
+  }
 }
 
 html {
@@ -41,6 +68,19 @@ html {
 }
 
 html.dark {
+  color-scheme: dark;
+}
+
+/*
+ * Google's Search Suggestions frame (ImportPreview) picks light or dark from
+ * this element's scheme. The light theme sets none, which would leave it to
+ * the operating system: a dark chip on the light page.
+ */
+.chip-frame {
+  color-scheme: light;
+}
+
+html.dark .chip-frame {
   color-scheme: dark;
 }
 
@@ -63,4 +103,29 @@ body {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   overscroll-behavior-y: none;
+}
+
+/*
+ * Printing. What prints is decided on each element with `print:hidden` and
+ * friends (RecipeView, RecipeBody, PublicRecipe), next to the markup it
+ * hides. Only what holds for every page lives here: fills and shadows cost
+ * ink and carry nothing on paper.
+ */
+@media print {
+  html.dark {
+    color-scheme: light;
+  }
+
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    box-shadow: none !important;
+    /* Print what the page settles on, not a colour mid-transition. */
+    transition: none !important;
+  }
+
+  body {
+    padding: 0;
+  }
 }

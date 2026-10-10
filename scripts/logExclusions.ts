@@ -3,13 +3,15 @@
  * `scripts/apply-log-exclusions.ts` reads the sink, plans with these, and
  * writes only with `--apply`.
  *
- * Invite links (`/invite/<token>`) and collection links (`/c/<token>`) carry
- * their secret in the path. `/privacy` promises that only a hash or
- * fingerprint of a link is stored, but Cloud Run's request log records the
- * full URL and the `Referer`. This exclusion drops those request lines before
- * they are stored. Both token kinds are 20–64 characters of
+ * Invite links (`/invite/<token>`), collection links (`/c/<token>`), and
+ * public collection links (the page `/p/<token>` and its reads under
+ * `/api/public/<token>`) carry their secret in the path. `/privacy` promises
+ * that request logs never hold a link, but Cloud Run's request log records
+ * the full URL and the `Referer`. This exclusion drops those request lines
+ * before they are stored. Every token kind is 20–64 characters of
  * `[A-Za-z0-9_-]` (`isInviteTokenShape` in `server/invites.ts`), so
- * `/c/join` and `/invite` without a token are still logged.
+ * `/c/join`, `/api/public/join`, and `/invite` without a token are still
+ * logged.
  */
 
 export interface LogExclusion {
@@ -20,12 +22,12 @@ export interface LogExclusion {
 }
 
 /** A link token in a URL's path. RE2 (Cloud Logging's `=~`) and JS read it the same way. */
-export const LINK_TOKEN_URL = '^https?://[^/]+/(invite|c)/[A-Za-z0-9_-]{20}';
+export const LINK_TOKEN_URL = '^https?://[^/]+/(invite|c|p|api/public)/[A-Za-z0-9_-]{20}';
 
 export const LINK_TOKEN_EXCLUSION: LogExclusion = {
   name: 'link-token-requests',
   description:
-    'Cloud Run request lines whose URL or Referer holds an /invite/ or /c/ link token. See scripts/logExclusions.ts.',
+    'Cloud Run request lines whose URL or Referer holds an /invite/, /c/, /p/, or /api/public/ link token. See scripts/logExclusions.ts.',
   filter:
     `log_id("run.googleapis.com/requests") AND ` +
     `(httpRequest.requestUrl=~"${LINK_TOKEN_URL}" OR httpRequest.referer=~"${LINK_TOKEN_URL}")`,

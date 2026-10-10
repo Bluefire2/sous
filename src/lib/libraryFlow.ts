@@ -36,7 +36,9 @@ export type LibrarySheet =
   /** `name` is kept so the sheet can still title itself once the collection has left the list. */
   | { kind: 'leave'; collectionId: string; name: string; error?: string }
   | { kind: 'share' }
-  | { kind: 'inviteConfirm' };
+  | { kind: 'inviteConfirm' }
+  /** `poolIds` is the visible list when the sheet opened, so a pull can't change it mid-roll. */
+  | { kind: 'roll'; poolIds: readonly string[]; pickId: string };
 
 export type LibraryFlow = { token: number; sheet: LibrarySheet };
 
@@ -51,6 +53,8 @@ export type LibraryFlowAction =
   | { type: 'openLeave'; collectionId: string; name: string }
   | { type: 'openShare' }
   | { type: 'openInviteConfirm' }
+  | { type: 'openRoll'; poolIds: readonly string[]; pickId: string }
+  | { type: 'reroll'; poolIds: readonly string[]; pickId: string }
   | { type: 'setName'; name: string }
   | { type: 'submitting'; token: number }
   | { type: 'created'; token: number; created: { id: string; name: string } }
@@ -104,6 +108,13 @@ export function libraryFlowReducer(
       return open(state, { kind: 'share' });
     case 'openInviteConfirm':
       return open(state, { kind: 'inviteConfirm' });
+    case 'openRoll':
+      return open(state, { kind: 'roll', poolIds: action.poolIds, pickId: action.pickId });
+    case 'reroll':
+      if (sheet.kind !== 'roll') {
+        return state;
+      }
+      return { ...state, sheet: { kind: 'roll', poolIds: action.poolIds, pickId: action.pickId } };
     case 'setName':
       if (sheet.kind !== 'create' && sheet.kind !== 'rename') {
         return state;
@@ -206,4 +217,48 @@ export async function runCreate(input: {
     }
   }
   return { kind: 'done', id };
+}
+
+/**
+ * The create sheet's submit for every screen that opens one. `onSuccess`
+ * runs only after a create that is still current. A stale token and a
+ * thrown error stop there, so a retry or a closed sheet is handled once.
+ */
+export async function submitCollectionCreate(input: {
+  name: string;
+  created: { id: string; name: string } | undefined;
+  moveRecipeIds: readonly string[] | undefined;
+  saving: boolean;
+  token: number;
+  isCurrent: (token: number) => boolean;
+  dispatch: (action: LibraryFlowAction) => void;
+  failureMessage: string;
+  create: (name: string) => Promise<{ id: string }>;
+  rename: (id: string, name: string) => Promise<void>;
+  move: (recipeIds: readonly string[], collectionId: string) => Promise<void>;
+  onSuccess: (id: string) => void;
+}): Promise<void> {
+  if (input.saving) return;
+  const { token } = input;
+  input.dispatch({ type: 'submitting', token });
+  try {
+    const result = await runCreate({
+      name: input.name,
+      created: input.created,
+      moveRecipeIds: input.moveRecipeIds,
+      isCurrent: () => input.isCurrent(token),
+      create: input.create,
+      rename: input.rename,
+      move: input.move,
+      onCreated: (created) => input.dispatch({ type: 'created', token, created }),
+    });
+    if (result.kind === 'stale') return;
+    input.onSuccess(result.id);
+  } catch (err) {
+    input.dispatch({
+      type: 'failed',
+      token,
+      error: err instanceof Error ? err.message : input.failureMessage,
+    });
+  }
 }

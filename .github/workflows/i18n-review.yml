@@ -1,0 +1,117 @@
+# The scheduled in-context translation review (docs/plans/i18n-review-ci.md,
+# step 6): npm run test:i18n over every manifest state on main, in test mode,
+# with the findings kept in one issue labelled i18n-review. It reads the
+# repository, writes only that issue, never pushes, and never opens a PR.
+#
+# Only the judge calls Gemini: GEMINI_API_KEY (an Actions secret made for
+# this review) is given to the review step and nothing else. The test server
+# runs without it; the app's model routes are mocked in the browser.
+#
+# Besides the test-mode CI job, this is the only workflow that runs the
+# Firestore emulator (AGENTS.md, Tests and verification).
+name: i18n review
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      states:
+        description: 'Comma-separated state ids (default: all)'
+        required: false
+      langs:
+        description: 'Comma-separated languages (default: all four)'
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: i18n-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes; keep the token out of .git/config.
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.18'
+          cache: npm
+      # A scheduled run on a main already fully reviewed stops here.
+      - name: Decide whether to run
+        id: gate
+        # The token reaches only the two issue steps, not the review's code.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: node testing/i18n-review/issue.ts should-run --event "$EVENT" --sha "$GITHUB_SHA"
+      - name: Start the Firestore emulator
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          docker run -d --name firestore-emulator -p 127.0.0.1:8085:8085 \
+            gcr.io/google.com/cloudsdktool/google-cloud-cli:587.0.0-emulators \
+            gcloud emulators firestore start --host-port=0.0.0.0:8085
+      - if: steps.gate.outputs.run == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.run == 'true'
+        run: npm run build
+      - name: Install Chromium
+        if: steps.gate.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Wait for the emulator
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          for _ in $(seq 1 90); do
+            if [ "$(curl -s --max-time 2 http://127.0.0.1:8085/ || true)" = "Ok" ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "The Firestore emulator never answered"
+          exit 1
+      - name: Start test mode
+        if: steps.gate.outputs.run == 'true'
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+        run: node testing/test-server.ts --static --port 4173 > test-server.log 2>&1 &
+      # Exits non-zero on a confirmed blocker, which is what the issue is
+      # for, so the exit code is not the job's; the issue step decides.
+      - name: Review
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          STATES: ${{ inputs.states }}
+          LANGS: ${{ inputs.langs }}
+        run: |
+          args=(--scope full --out review)
+          if [ -n "$STATES" ]; then args+=(--states "$STATES"); fi
+          if [ -n "$LANGS" ]; then args+=(--langs "$LANGS"); fi
+          npm run test:i18n -- "${args[@]}" || echo "test:i18n exited $?"
+      - name: Upload the report and screenshots
+        if: always() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: i18n-review
+          path: review/
+          retention-days: 30
+          if-no-files-found: warn
+      # Fails the job, after updating the issue, only when the run could not
+      # judge everything (a capture or judge failure, or the call limit).
+      - name: Update the issue
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node testing/i18n-review/issue.ts update --results review/results.json
+      - name: Logs
+        if: always() && steps.gate.outputs.run == 'true'
+        run: |
+          tail -50 test-server.log || true
+          docker logs firestore-emulator 2>&1 | tail -50 || true

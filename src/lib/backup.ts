@@ -1,7 +1,6 @@
 import { t } from '../i18n';
 import { isUsableRecipe } from './recipeShape';
-import type { CookStateRow } from './useCookState';
-import type { ChatMessage, Collection, CookLog, Recipe } from './types';
+import type { ChatMessage, Collection, CookLog, CookStateRow, Recipe } from './types';
 import { compactCookLog, isUsableCookLog } from './cookLogShape';
 import {
   addPendingBlob,

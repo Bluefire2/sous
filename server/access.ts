@@ -93,7 +93,8 @@ footer {
 }
 `;
 
-function pageHtml(title: string, body: string): string {
+/** A complete self-contained page in this style. Escape every interpolated value in `body`. */
+export function pageHtml(title: string, body: string): string {
   return (
     '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +

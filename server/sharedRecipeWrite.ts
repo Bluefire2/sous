@@ -115,7 +115,8 @@ export type SharedRecipePutPlan =
  * Decision for a recipe put a non-owner makes. Only an editor may write, and
  * only text: photo ids must match the stored recipe, because a new id would
  * point the owner's recipe at bytes in the editor's own bucket path. The row
- * keeps the owner's id and `createdAt`. `updatedAt` is the editor's clock
+ * keeps the owner's id, `createdAt`, and `variantOf` (an editor could
+ * otherwise point it at a recipe in their own tree). `updatedAt` is the editor's clock
  * clamped to server time, then compared and stored under the same
  * last-write-wins rule as the owner's own devices: a far-future stamp from a
  * non-owner cannot lock the owner out of their own recipe.
@@ -160,6 +161,8 @@ export function planSharedRecipePut(input: {
         createdAt: access.recipe.createdAt,
         photoId: access.recipe.photoId,
         galleryPhotoIds: access.recipe.galleryPhotoIds,
+        variantOf: access.recipe.variantOf,
+        savedFrom: access.recipe.savedFrom,
       }),
       id: input.recipeId,
       updatedAt,

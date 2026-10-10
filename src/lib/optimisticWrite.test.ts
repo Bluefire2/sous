@@ -30,8 +30,8 @@ import { CreateRollbackError, recipeStore } from './recipeStore';
 import { onSyncFinished, pullAll, resetDiscardedPullForTests, sync } from './syncEngine';
 import { resetRereadScheduleForTests, setRereadQuietForTests } from './localWrite';
 import { invalidateSession } from './session';
-import type { Collection, Recipe } from './types';
-import { updateCookState, type CookStateRow } from './useCookState';
+import type { Collection, CookStateRow, Recipe } from './types';
+import { updateCookState } from './useCookState';
 
 vi.mock('./remote', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./remote')>();

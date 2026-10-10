@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   importHref,
   libraryHref,
+  libraryPathFromState,
+  libraryReturnPath,
   missingCollectionAction,
   newRecipeHref,
 } from './collectionHref';
@@ -22,6 +24,40 @@ describe('libraryHref', () => {
 
   it('encodes the id into a collection path', () => {
     expect(libraryHref('a/b')).toBe('/collections/a%2Fb');
+  });
+});
+
+describe('libraryReturnPath', () => {
+  it('keeps the home library and a collection library', () => {
+    expect(libraryReturnPath('/')).toBe('/');
+    expect(libraryReturnPath(`/collections/${SAMPLE_COLLECTION_ID}`)).toBe(
+      `/collections/${SAMPLE_COLLECTION_ID}`,
+    );
+  });
+
+  it('sends anything else home', () => {
+    expect(libraryReturnPath(undefined)).toBe('/');
+    expect(libraryReturnPath('/collections')).toBe('/');
+    expect(libraryReturnPath(`/collections/${SAMPLE_COLLECTION_ID}/import`)).toBe('/');
+    expect(libraryReturnPath('/settings')).toBe('/');
+  });
+});
+
+describe('libraryPathFromState', () => {
+  it('returns a library path carried as from', () => {
+    expect(libraryPathFromState({ from: '/' })).toBe('/');
+    expect(libraryPathFromState({ from: `/collections/${SAMPLE_COLLECTION_ID}` })).toBe(
+      `/collections/${SAMPLE_COLLECTION_ID}`,
+    );
+  });
+
+  it('returns undefined without state or for a path that is not a library', () => {
+    expect(libraryPathFromState(null)).toBeUndefined();
+    expect(libraryPathFromState(undefined)).toBeUndefined();
+    expect(libraryPathFromState({})).toBeUndefined();
+    expect(libraryPathFromState({ from: 'library' })).toBeUndefined();
+    expect(libraryPathFromState({ from: '/collections' })).toBeUndefined();
+    expect(libraryPathFromState({ from: '/settings' })).toBeUndefined();
   });
 });
 

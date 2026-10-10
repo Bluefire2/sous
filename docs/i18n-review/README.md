@@ -4,11 +4,11 @@ Catalog parity tests prove every key exists in every language. They cannot
 show whether the strings work together on a screen. This review looks at the
 rendered page.
 
-The procedure is tool-neutral. Any agent or person follows this file.
-`screens.json` in this directory is the manifest. Tool wrappers only add
-what that tool needs. Cursor agents use
-`.cursor/skills/i18n-visual-review/SKILL.md` for capture, judging, and where
-to write the report. That skill does not restate this procedure.
+`npm run test:i18n` runs it (`testing/i18n-review/`, design in
+`docs/plans/i18n-review-ci.md`). This file defines it: what it checks (the
+rubric, which the suite's judge reads from here), which screens
+(`screens.json`), when it runs, and what the report holds. Tool wrappers,
+such as `.cursor/skills/i18n-visual-review/SKILL.md`, only point here.
 
 ## What the review does
 
@@ -23,8 +23,32 @@ For each screen state in the manifest and each language in scope:
 4. Fix blockers in the catalogs, then re-review the affected screens.
    Record nits in the report or fix them.
 
-Recipe content (titles, ingredients, steps, notes) is excluded. A recipe in
-another language is expected. The reviewer judges only the app's own text.
+The reviewer judges only the app's own text; [Not judged](#not-judged) lists
+what it leaves alone.
+
+## Not judged
+
+The reviewer never reports these, whatever language they are in. A recipe
+in another language is expected. The suite's judge reads this list from
+here and runs it together into one sentence, so a hand review and the suite
+leave the same things alone. Its wording is calibrated: after changing it,
+run `testing/i18n-review/calibration.ts` and update the sentence pinned in
+`judge.test.ts`.
+
+- recipe titles, descriptions, ingredients, steps, notes, and tags
+- collection names
+- people's names and email addresses
+- names of connected apps
+- links and URLs
+- text the person typed or pasted, including where the app quotes it back
+- the messages in a chat or assistant thread, both what the person asked
+  and what the model answered, including what the model put in a card (a
+  shopping list's title, sections, and items)
+
+These are the user's data or the model's words and stay as the user wrote
+them. Language names in the language picker are written in their own
+language on purpose (English, Українська, Русский, 简体中文); that is
+correct.
 
 ## Rubric
 
@@ -43,12 +67,11 @@ another language is expected. The reviewer judges only the app's own text.
 
 ## When it runs
 
-The review is heavy (a live app, screenshots, and an LLM judge). It runs
-once per task, at the end, before the PR, when the implementation is
-complete and the PR may be ready to merge. It is a pre-PR check, alongside
-the other verification. It does not run after each change or each step, and
-it is not part of the iteration loop. There is no lighter variant, including
-for rewording-only changes.
+The review runs once per task, at the end, before the PR, when the
+implementation is complete and the PR may be ready to merge. It is a pre-PR
+check, alongside the other verification. It does not run after each change
+or each step, and it is not part of the iteration loop. There is no lighter
+variant, including for rewording-only changes.
 
 If it finds blockers, fix them and re-review the affected screens before
 opening the PR. During iteration the only per-change requirement is the
@@ -58,34 +81,83 @@ Two scopes:
 
 - **Task run.** Every screen that shows keys the task added or changed, in
   all three non-English languages (`uk`, `ru`, `zh-Hans`). Required before
-  the PR of any task that changed UI text. Capture English as the reference
-  image for each of those states. Do not judge English as a translation target.
+  the PR of any task that changed UI text. English is captured as the
+  reference image for each of those states and is not judged.
 - **Full run.** Every manifest state in every supported language (`en`,
   `uk`, `ru`, `zh-Hans`). Required before the PR for the i18n plan and for
   any task that adds a supported language. English screenshots are the
-  reference for the other three languages. On the English column, judge
-  sense in context and layout. The other rubric items apply to `uk`, `ru`,
-  and `zh-Hans`.
+  reference for the other three languages. On the English column, the judge
+  checks sense in context and layout only.
 
-## App and how to switch language
+## Running it
 
-Both processes must be running, and the browser must be signed in:
+It runs against test mode (`testing/README.md`): fake personas, a seeded
+Firestore emulator, nothing in production. The model routes the app calls
+(import, translation, the assistant) are mocked, so the test server needs
+no Gemini key; only the judge calls Gemini, with `GEMINI_API_KEY` from
+`.env.local`.
 
-- Vite at `http://localhost:5173`
-- `dev:api` on port 3001 (Vite proxies `/api`)
+Once, install the browser: `npx playwright install chromium`.
 
-On this machine Vite binds IPv6 `[::1]` only. Use `localhost`, not
-`127.0.0.1`.
+Then, each time:
 
-Switch language either way:
+```
+npm run build
+gcloud emulators firestore start --host-port=127.0.0.1:8085   # needs Java
+node testing/test-server.ts --static --port 4173              # wait for "Test mode ready"
+npm run test:i18n -- --states library-populated,settings      # a task run
+```
 
-- Settings (`/settings`), the language picker under Appearance.
-- Set `localStorage` key `cook.locale` to `en`, `uk`, `ru`, or `zh-Hans`,
-  then reload.
+Start the test server fresh for each run: `testing/smoke.ts` and some hand
+checks change the seed.
 
-Capture each manifest state in a real browser session, at 390×844, with
-whatever browser tooling you have. Review each screenshot pair against the
-rubric, either yourself or with a vision-capable model given the images.
+| Option | Meaning |
+| --- | --- |
+| `--states a,b` | The manifest ids to review. Default: all. A task run names the states that show the text the task touched. |
+| `--langs uk,ru` | The languages to capture. Default: all four. English is always captured as the reference. |
+| `--scope full` | Also judge the English column (sense in context and layout). Default `task`. English is always captured, so this applies whatever `--langs` says. |
+| `--no-judge` | Capture only; no Gemini calls. |
+| `--repeat 2` | Capture each state twice and fail if any pair differs (the determinism check). |
+| `--out dir` | Where to write. Default `.i18n-review/<date>/`, which is gitignored. |
+| `--base-url url` | The test server. Default `http://localhost:4173`. |
+
+A finding counts only when two judgings of the same screen name the same
+text; one named once is listed as unconfirmed. The run exits non-zero on a
+failed capture, a confirmed blocker, a judge error, or the judge-call cap
+(`MAX_JUDGE_CALLS`).
+
+A change to the judge's prompt or model is measured with
+`testing/i18n-review/calibration.ts` (planted defects and clean screens)
+and recorded in `docs/plans/i18n-review-ci.md`.
+
+## Scheduled run
+
+`.github/workflows/i18n-review.yml` runs a full review of `main` every day at
+06:00 UTC and keeps the open findings in one issue, "In-context translation
+review: open findings", labelled `i18n-review`. It is a backstop for what
+task reviews miss, not a replacement for them.
+
+- **What is filed.** Confirmed findings only: blockers in a table, nits
+  folded away, each with its candidate keys and the date it was first seen.
+  The issue also lists screens the run could not judge, and a comment notes
+  each run that found something new or saw something resolved. With nothing
+  open, the issue is closed; a new finding reopens it.
+- **Declining a finding.** Add it to `accepted.json` in this directory with
+  a reason and the date, in a normal PR:
+  `{ "fingerprint": "…", "reason": "…", "date": "YYYY-MM-DD" }`. The issue
+  lists each finding's fingerprint. Optional `state`, `lang`, and `text`
+  fields are for people reading the file.
+- **When it runs.** A scheduled run on a commit it already reviewed in full
+  stops early. Run it by hand from the Actions tab (`workflow_dispatch`),
+  optionally for some state ids or languages; a partial run updates only
+  the findings on the screens it judged.
+- **Where the report is.** Each run uploads `report.md`, `results.json`,
+  and the screenshots as a workflow artifact, kept 30 days; the issue links
+  the run.
+
+The issue body ends with the run's state in a hidden comment; the next run
+rewrites the body from it, so edits to the body are lost. The repository is
+public, so the issue and artifacts are too; they show only fixture data.
 
 ## Screen manifest
 
@@ -95,59 +167,19 @@ rubric, either yourself or with a vision-capable model given the images.
 | --- | --- |
 | `id` | Stable name used in the report. |
 | `route` | Path from `src/App.tsx`. A named collection is `/collections/:collectionId`. |
-| `setup` | Plain language: how to reach the state without writing. |
-| `needsData` | `true` when the state depends on library or share data the review must not create. If that data is not already there, mark the state `skipped: needs data`. |
+| `setup` | Plain language: what the state shows and how a person reaches it. The judge reads it too. |
+| `needsData` | `true` when a hand review against a real account needs library or share data to be there already. The suite reaches these states from personas. |
+
+Every manifest id has an entry in `testing/i18n-review/states.ts`: the
+persona, the path, the steps that reach the state, and any mocks it needs.
+`states.test.ts` fails when an id has no entry, so a new state cannot be
+added to the manifest without a way to capture it, or one of the named
+reasons in `SKIP_REASONS` not to.
 
 Static pages in `public/*.html` are out of the manifest. Do not add them.
 
-New screens or states are added to `screens.json` in the same change that
-introduces them. Entries that are not in the file yet are not part of this
-review. Translated-recipe and translate-chip states, and the import
-preview's guessed-language line and translate checkbox, are added when
-those steps land.
-
-`needsData: true` is not permission to create the missing data. See
-Read-only.
-
-## Read-only
-
-Local dev talks to production Firestore, so the review never creates,
-edits, or deletes library data: no recipes, collections, chat messages,
-cook state, or photos.
-
-- Allowed: navigating, opening sheets and menus, switching language, and
-  running an import up to its preview without saving. Extraction calls
-  Gemini but writes nothing.
-- Not allowed: toggling cook-mode checkmarks, steps, or servings. Cook
-  state syncs to Firestore. Cook-mode screenshots use whatever state a
-  recipe already has.
-- **No writes by default, including the translation cache.** Tapping the
-  translate chip writes a cache doc to production, so the translated and
-  chip-loading states are captured only when the person who starts the run
-  opts in for that run (for example "include translated states"). Even then
-  the chip is tapped only on one named recipe, and the report lists the
-  cache docs written. Without the opt-in, those states are marked
-  "skipped: needs opt-in". The chip's idle and unlabelled states need no
-  tap and are always captured.
-- A state that can't be reached without writing (for example the empty
-  Library, when the account has recipes) is marked "skipped: needs data"
-  in the report. It is not faked by creating data.
-- Opening `ShareCollectionSheet` is fine. Adding or removing a person is
-  not. Both write grants to production.
-- **Other members' data.** Screenshots go only to the agent's own model.
-  But if the account has incoming shares, or collections shared with
-  grantees, some states show another member's data: a shared recipe's
-  content, the owner's email in the shared-with-you banner and folder
-  label, or grantee emails in `ShareCollectionSheet`. `/admin` signed in as
-  an owner shows other people's names and emails in every list. Such a
-  state is captured only if the reviewer redacts that data (for example by
-  cropping or blurring, or by removing names and emails from extracted page
-  text) before it goes to the judging model. Otherwise it is
-  marked "skipped: shows another member's data". Prefer a collection with
-  no grantees for the sheet ("Nobody else can see this yet."). The report
-  lists every state that was skipped or redacted for this reason.
-
-The review never creates a share to reach the viewer states.
+New screens or states are added to `screens.json`, with their entry in
+`states.ts`, in the same change that introduces them.
 
 ## Glossary and register
 
@@ -155,34 +187,59 @@ Catalog text follows the register and glossary in
 [Current decisions](../constitutions/i18n.md#current-decisions) of
 `docs/constitutions/i18n.md`. Address the person as `uk` "ви", `ru` "вы",
 and `zh-Hans` "你". Do not copy the glossary table into this file or into
-a report; link that section.
+a report; link that section. The judge reads it from the constitution.
 
 ## Report
 
-Write Markdown to `.i18n-review/<date>.md`, where `<date>` is `YYYY-MM-DD`.
-That directory is gitignored.
-
-Cursor agents write `/opt/cursor/artifacts/i18n-review/<date>.md` instead,
-so the report is uploaded. The Cursor skill covers that path. Do not also
-write `.i18n-review/` from a Cursor agent unless you were asked to.
+The suite writes `report.md` and `results.json` to the output directory,
+beside each capture (`<state>/<lang>.png`, and `.txt` for its page text).
+Cursor agents pass `--out /opt/cursor/artifacts/i18n-review/<date>` so the
+report is uploaded.
 
 The report contains:
 
-- Scope (`task` or `full`), whether translated states were opted in, and
-  the languages judged.
-- A pass/fail table, one row per manifest `id` and one column per language
-  in scope. Each cell is `pass`, `fail`, or a skip reason (`skipped: needs
-  data`, `skipped: needs opt-in`, `skipped: shows another member's data`).
-  A redacted capture that was judged is `pass` or `fail`, and the redaction
-  is listed in the skipped-or-redacted section.
-- Issues, each with the screen id, language, severity (`blocker` or
-  `nit`), the visible text, the problem, a suggested fix, and the
-  screenshot path.
+- Scope (`task` or `full`), the commit (and whether the tree had changes),
+  the languages judged, and the judge calls used.
+- A table, one row per manifest `id` and one column per language. Each cell
+  is `pass`, `fail`, `reference` (English in a task run), or why the state
+  was not judged (a capture failure, a judge error, the call limit, or a
+  skip reason).
+- Issues: confirmed blockers, nits, and unconfirmed findings, each with the
+  screen id, language, rubric item, the visible text, the problem, a
+  suggested fix, the catalog keys that may hold the text, and the
+  screenshot.
 - What was fixed in the catalogs, and which screens were re-reviewed.
-- Every skipped or redacted state, with the reason. Redacted rows name
-  what was cropped or blurred.
-- Translation cache docs written during the run. `None` when there was no
-  opt-in. With opt-in, list every cache doc and the one recipe the chip
-  was tapped on.
+- Every skipped state, with the reason.
+- Translation cache docs written: none, since nothing reaches production.
 
 Attach the report to the PR.
+
+## Without the suite
+
+A person can review by hand: sign in to test mode as a persona (`/__test/`),
+switch language in Settings (or set `localStorage` key `cook.locale` to
+`en`, `uk`, `ru`, or `zh-Hans` and reload), reach each state as its `setup`
+says, capture it at 390×844, and judge it against the rubric. Write the
+report in the format above.
+
+A hand review against a real account, where test mode cannot show what is
+needed, talks to production and keeps these rules:
+
+- **Read-only.** Never create, edit, or delete library data: no recipes,
+  collections, chat messages, cook state, or photos. Navigating, opening
+  sheets and menus, switching language, and running an import up to its
+  preview without saving are fine. Opening `ShareCollectionSheet` is fine;
+  adding or removing a person is not. Never create a share to reach the
+  viewer states. A state that needs data the account lacks is marked
+  `skipped: needs data`, not faked.
+- **Translation cache.** Tapping the translate chip writes a cache doc to
+  production, so the translated and chip-loading states are captured only
+  when the person who starts the run opts in for that run, on one named
+  recipe, and the report lists every cache doc written. Without the opt-in,
+  they are `skipped: needs opt-in`.
+- **Other members' data.** A state that shows another member's recipe
+  content or email (a shared recipe, the shared-with-you banner, grantee
+  emails in `ShareCollectionSheet`, `/admin`) is captured only if that data
+  is redacted, by cropping or blurring, before it goes to a model;
+  otherwise it is `skipped: shows another member's data`. The report lists
+  every state skipped or redacted for this reason.

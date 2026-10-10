@@ -1,11 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { GenerateContentResponse } from '@google/genai';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  LLM_DAILY_BUDGET_MICRO_USD,
+  memoryLlmUsageStore,
+  setLlmBudgetForTest,
+  utcDayKey,
+} from './llmBudget.ts';
 import { MAX_TRANSLATE_CHARS, MAX_TRANSLATE_SEGMENTS } from './recipeTranslation.ts';
+import { SESSION_COOKIE_NAME, signSession } from './session.ts';
 import {
   TRANSLATE_BAD_REQUEST,
   TRANSLATE_TOO_LARGE,
   classifyTranslateRecipeId,
   parseTranslateRequest,
+  translatePost,
 } from './translateRoute.ts';
+import { endlessBody } from '../test/endlessBody.ts';
 
 const UUID = '550e8400-e29b-41d4-a716-446655440000';
 
@@ -113,5 +123,96 @@ describe('parseTranslateRequest', () => {
       status: 400,
       code: TRANSLATE_BAD_REQUEST,
     });
+  });
+});
+
+describe('translatePost body size', () => {
+  beforeEach(() => {
+    process.env.SESSION_SECRET = 'test-secret-for-session-hmac';
+    process.env.ALLOWED_EMAILS = 'allowed@example.com';
+  });
+
+  it('answers 413 and stops reading a body over the limit', async () => {
+    const endless = endlessBody();
+    const token = signSession({ sub: 'owner-sub', email: 'allowed@example.com' }, Date.now());
+    const response = await translatePost(
+      new Request('http://localhost/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+        body: endless.body,
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'This recipe is too long to translate.',
+      code: TRANSLATE_TOO_LARGE,
+    });
+    expect(endless.cancelled()).toBe(false);
+    expect(endless.read()).toBeLessThan(2_000_000);
+  });
+});
+
+describe('translatePost daily AI budget', () => {
+  let llmUsage: ReturnType<typeof memoryLlmUsageStore>;
+  let calls = 0;
+  const deps = {
+    model: 'gemini-3.5-flash-lite',
+    ai: {
+      models: {
+        generateContent: () => {
+          calls += 1;
+          const response = new GenerateContentResponse();
+          response.candidates = [
+            {
+              content: {
+                role: 'model',
+                parts: [{ text: JSON.stringify({ detectedLang: 'uk', segments: [{ id: 'title', text: 'Soup' }] }) }],
+              },
+            },
+          ];
+          response.usageMetadata = { promptTokenCount: 100, candidatesTokenCount: 10 };
+          return Promise.resolve(response);
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    process.env.SESSION_SECRET = 'test-secret-for-session-hmac';
+    process.env.ALLOWED_EMAILS = 'allowed@example.com';
+    llmUsage = memoryLlmUsageStore();
+    setLlmBudgetForTest({ store: llmUsage });
+    calls = 0;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    setLlmBudgetForTest(null);
+    vi.restoreAllMocks();
+  });
+
+  function request(): Request {
+    const token = signSession({ sub: 'owner-sub', email: 'allowed@example.com' }, Date.now());
+    return new Request('http://localhost/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+      body: JSON.stringify(body()),
+    });
+  }
+
+  it('refuses over the budget without calling the model', async () => {
+    llmUsage.spent.set(`owner-sub/${utcDayKey(Date.now())}`, LLM_DAILY_BUDGET_MICRO_USD);
+    const response = await translatePost(request(), deps);
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ code: 'llm-budget-exceeded' });
+    expect(calls).toBe(0);
+  });
+
+  it("charges the translation's usage", async () => {
+    const response = await translatePost(request(), deps);
+    expect(response.status).toBe(200);
+    expect(calls).toBe(1);
+    expect(llmUsage.spent.get(`owner-sub/${utcDayKey(Date.now())}`)).toBe(100 * 0.3 + 10 * 2.5);
   });
 });

@@ -1,15 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { languageName, useLocale, useT } from '../i18n';
+import type { ImportCheck } from '../lib/importCheck';
 import type { ImportRecipeResult } from '../lib/importApi';
+import type { ImportSource } from '../lib/importFeedback';
 import { importPreviewRules, translatedPreviewDraft } from '../lib/importPreview';
 import { translateRecipe } from '../lib/translateApi';
 import { SpinnerIcon } from '../lib/icons';
 import type { Recipe, RecipeDraft } from '../lib/types';
 import { inputFocus } from '../lib/uiClasses';
 import CreateRecipeForm, { type CreateRecipeSubmitStatus } from './CreateRecipeForm';
+import ImportFeedbackCard from './ImportFeedbackCard';
+import ImportFeedbackRating from './ImportFeedbackRating';
+import ImportWarningList from './ImportWarningList';
 import LanguagePicker from './LanguagePicker';
 
 const noticeClass = 'rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm text-ink';
+
+/**
+ * Put before Google's Search Suggestions snippet in its frame. `<base>` makes
+ * its links open a new tab, which the sandbox allows: Google's chips are plain
+ * links, and google.com refuses to be framed, so a click inside the frame
+ * would show nothing. The color-scheme meta lets the frame's page take the
+ * scheme `.chip-frame` (src/index.css) gives the frame, so Google's own light
+ * or dark styles follow the app's theme and the frame is never an opaque box.
+ * The snippet itself is passed through unchanged.
+ */
+const CHIP_FRAME_HEAD = '<meta name="color-scheme" content="light dark"><base target="_blank">';
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
@@ -27,14 +43,19 @@ function pastedImport(recipe: RecipeDraft): boolean {
  */
 export default function ImportPreview({
   result,
+  feedbackSource,
   collectionId,
+  destinationId,
   formId,
   onSubmitStatusChange,
   onCreated,
   onCancel,
 }: {
   result: ImportRecipeResult;
+  feedbackSource: ImportSource;
   collectionId?: string;
+  /** Explicit destination. `null` is unfiled. `undefined` follows `collectionId`. */
+  destinationId?: string | null;
   formId?: string;
   onSubmitStatusChange?: (status: CreateRecipeSubmitStatus) => void;
   onCreated: (recipe: Recipe) => void;
@@ -43,6 +64,10 @@ export default function ImportPreview({
   const t = useT();
   const locale = useLocale();
   const [original] = useState(result.recipe);
+  // Computed on the original extraction; positions hold for the translation too.
+  const [importCheck] = useState<ImportCheck | undefined>(() =>
+    result.warnings !== undefined ? { at: Date.now(), warnings: result.warnings } : undefined,
+  );
   const pasted = pastedImport(original);
   const [sourceLang, setSourceLang] = useState(original.lang);
   const [translationFailed, setTranslationFailed] = useState(result.translationFailed === true);
@@ -213,13 +238,78 @@ export default function ImportPreview({
       ? t('import.looksLike', { language: guessedName ?? sourceLang })
       : t('import.couldNotTellLanguage');
   const shown = displayed === 'translated' && held ? held.recipe : original;
+  // A report always carries the extraction (`original`), never the person's edits.
+  const feedbackResult = {
+    recipe: original,
+    translationFailed,
+    translatedTo: held !== undefined && !translationFailed ? held.target : undefined,
+  };
 
   return (
     <>
+      {importCheck !== undefined && (
+        <div className={noticeClass} role="status">
+          <p className="font-medium">{t('importWarning.previewHeading')}</p>
+          <ImportWarningList
+            warnings={importCheck.warnings}
+            sections={shown.ingredientSections}
+            className="mt-1"
+          />
+        </div>
+      )}
+      {importCheck !== undefined && (
+        <ImportFeedbackCard
+          compact
+          input={{
+            trigger: 'warnings',
+            source: feedbackSource,
+            locale,
+            result: { ...feedbackResult, warnings: importCheck.warnings },
+          }}
+        />
+      )}
+
       {translationFailed && (
         <p className={`${noticeClass} mt-3`} role="status">
           {t('import.translateFailedNotice')}
         </p>
+      )}
+
+      {result.grounding !== undefined && (
+        <section className={`${noticeClass} mt-3`} aria-label={t('import.sources')}>
+          {result.grounding.sources.length > 0 && (
+            <>
+              <p className="font-medium">{t('import.sources')}</p>
+              {/* Google's links are redirects on its own host, so the title (usually the site) is the only useful label. */}
+              <ul className="mt-1 list-disc pl-5">
+                {result.grounding.sources.map((source) => (
+                  <li key={source.url} className="break-words">
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="underline hover:text-ink-muted"
+                    >
+                      {source.title !== '' ? source.title : t('import.untitledSource')}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {result.grounding.searchSuggestions !== undefined && (
+            // Google's own snippet, shown as provided (its terms). No scripts run in it.
+            // CHIP_FRAME_HEAD only frames it: its links open a new tab (Google can't be
+            // framed) and the frame follows the app's light or dark theme. 64px fits
+            // Google's one-row strip without a scrollbar.
+            <iframe
+              title={t('import.searchSuggestions')}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={`${CHIP_FRAME_HEAD}${result.grounding.searchSuggestions}`}
+              className="chip-frame mt-2 h-16 w-full border-0"
+            />
+          )}
+        </section>
       )}
 
       <div className={pasted ? `${noticeClass} mt-3` : 'mt-3'}>
@@ -273,15 +363,22 @@ export default function ImportPreview({
         formKey={displayed}
         initial={shown}
         collectionId={collectionId}
+        destinationId={destinationId}
         formId={formId}
         submitLocked={translating}
         resolveLang={resolveLang}
         hideLanguage
         onEditStateChange={onEditStateChange}
         onSubmitStatusChange={onSubmitStatusChange}
+        importCheck={importCheck}
         onCreated={onCreated}
         onCancel={onCancel}
       />
+      {importCheck === undefined && (
+        <ImportFeedbackRating
+          input={{ source: feedbackSource, locale, result: feedbackResult }}
+        />
+      )}
     </>
   );
 }

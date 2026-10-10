@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale, useT } from '../i18n';
+import PublicLinkPane from './PublicLinkPane';
 import Sheet from './Sheet';
 import {
   collectionStore,
@@ -61,13 +62,14 @@ export default function ShareCollectionSheet({
   // Email is the pane that opens. Switching keeps the form, a minted URL,
   // and any request already in flight, except during a mint: the switch is
   // held so the one-time URL is visible when the request finishes.
-  const [method, setMethod] = useState<'email' | 'link'>('email');
+  const [method, setMethod] = useState<'email' | 'link' | 'public'>('email');
+  const [publicBusy, setPublicBusy] = useState(false);
   // The raw link is only in this state: the server never returns it again.
   const [minted, setMinted] = useState<MintedLink | null>(null);
   const [copied, setCopied] = useState(false);
   // Hidden as soon as its link is revoked or drops out of a refreshed list.
   const mintedUrl = visibleMintedUrl(minted, links);
-  const busy = pending !== null || linkBusy;
+  const busy = pending !== null || linkBusy || publicBusy;
   // One request at a time. State alone cannot stop a second submit that lands
   // before the re-render that disables the controls.
   const inFlight = useRef(false);
@@ -282,7 +284,7 @@ export default function ShareCollectionSheet({
         <button
           type="button"
           aria-pressed={method === 'email'}
-          disabled={mintingLink}
+          disabled={mintingLink || publicBusy}
           onClick={() => {
             if (holdPane.current) return;
             setMethod('email');
@@ -298,7 +300,7 @@ export default function ShareCollectionSheet({
         <button
           type="button"
           aria-pressed={method === 'link'}
-          disabled={mintingLink}
+          disabled={mintingLink || publicBusy}
           onClick={() => {
             if (holdPane.current) return;
             setMethod('link');
@@ -311,8 +313,43 @@ export default function ShareCollectionSheet({
         >
           {t('share.byLink')}
         </button>
+        <button
+          type="button"
+          aria-pressed={method === 'public'}
+          disabled={mintingLink || publicBusy}
+          onClick={() => {
+            if (holdPane.current) return;
+            setMethod('public');
+          }}
+          className={`flex-1 rounded-full py-2.5 font-medium disabled:opacity-40 ${
+            method === 'public'
+              ? 'bg-ink text-page'
+              : 'border border-line-strong text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
+          }`}
+        >
+          {t('share.byPublic')}
+        </button>
       </div>
-      {method === 'email' ? (
+      {method === 'public' ? (
+        <PublicLinkPane
+          source={{
+            id: collection.id,
+            load: () => collectionStore.publicLink(collection.id),
+            enable: () => collectionStore.enablePublicLink(collection.id),
+            disable: () => collectionStore.disablePublicLink(collection.id),
+            inputId: 'public-collection-link',
+            text: {
+              intro: 'share.publicIntro',
+              off: 'share.publicOff',
+              turnOn: 'share.publicTurnOn',
+              label: 'share.publicLinkLabel',
+              turnOffLabel: 'share.publicTurnOffLabel',
+              offHint: 'share.publicOffHint',
+            },
+          }}
+          onBusyChange={setPublicBusy}
+        />
+      ) : method === 'email' ? (
         <>
           <p className="mt-3 text-sm text-ink-muted">{t('share.intro')}</p>
           <form

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { resolveCollectionDestination } from '../lib/collectionDestination';
 import { useCollections } from '../lib/collectionStore';
+import { reconcileImportCheck, type ImportCheck } from '../lib/importCheck';
 import { photoStore } from '../lib/photoStore';
 import { recipePhotoIds, remapPhotoIds } from '../lib/recipePhotos';
 import { CreateRollbackError, recipeStore } from '../lib/recipeStore';
@@ -28,12 +29,18 @@ export type CreateRecipeSubmitStatus = {
   locked: boolean;
   /** A write is in flight and the collection sheet is not already showing it. */
   saving: boolean;
+  /**
+   * A submitted draft is waiting on a save, a retry, or the collection sheet.
+   * A destination changed now would be used by Try again.
+   */
+  pending: boolean;
 };
 
 /** Owns a staged creation draft until saved or explicitly abandoned. */
 export default function CreateRecipeForm({
   initial,
   collectionId,
+  destinationId,
   onCreated,
   onCancel,
   formId,
@@ -43,9 +50,14 @@ export default function CreateRecipeForm({
   onEditStateChange,
   submitLocked,
   hideLanguage,
+  importCheck,
 }: {
   initial: RecipeDraft;
   collectionId?: string;
+  /**
+   * Explicit destination. `null` is unfiled. `undefined` follows `collectionId`.
+   */
+  destinationId?: string | null;
   onCreated: (recipe: Recipe) => void;
   onCancel: () => void;
   /** Lets a Save button outside this form submit it (the import header). */
@@ -61,10 +73,15 @@ export default function CreateRecipeForm({
   submitLocked?: boolean;
   /** Hides RecipeForm's language field. Import preview sets `lang` at save. */
   hideLanguage?: boolean;
+  /**
+   * The import check for a draft from the import preview. Saved on the
+   * recipe, reconciled with any edits made to `initial` before saving.
+   */
+  importCheck?: ImportCheck;
 }) {
   const t = useT();
   const collections = useCollections();
-  const destination = resolveCollectionDestination(collections, collectionId);
+  const destination = resolveCollectionDestination(collections, collectionId, destinationId);
   const [draft, setDraft] = useState<RecipeDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState(false);
@@ -91,9 +108,10 @@ export default function CreateRecipeForm({
   const headerLocked =
     destination.kind === 'loading' || draft !== null || !canSubmit || submitLocked === true;
   const saving = busy && !choosing;
+  const pending = draft !== null;
   useLayoutEffect(() => {
-    onSubmitStatusChange?.({ locked: headerLocked, saving });
-  }, [headerLocked, saving, onSubmitStatusChange]);
+    onSubmitStatusChange?.({ locked: headerLocked, saving, pending });
+  }, [headerLocked, saving, pending, onSubmitStatusChange]);
   useEffect(() => {
     if (error) failureRef.current?.scrollIntoView({ block: 'center' });
   }, [error]);
@@ -154,7 +172,14 @@ export default function CreateRecipeForm({
           submitLabel={t('recipeEdit.saveToLibrary')}
           onCancel={onCancel}
           onSubmit={async (pending) => {
-            const next = resolveLang ? replaceLang(pending, resolveLang()) : pending;
+            const withLang = resolveLang ? replaceLang(pending, resolveLang()) : pending;
+            const next =
+              importCheck === undefined
+                ? withLang
+                : {
+                    ...withLang,
+                    importCheck: reconcileImportCheck(importCheck, initial, withLang, Date.now()),
+                  };
             const existingPhotos = new Set(recipePhotoIds(initial));
             stagedPhotoIds.current = recipePhotoIds(next).filter((id) => !existingPhotos.has(id));
             setDraft(next);

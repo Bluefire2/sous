@@ -187,6 +187,28 @@ function clampLimit(limit: number | undefined): number {
 }
 
 export function searchRecipes(library: AgentLibrary, args: SearchRecipesArgs): SearchRecipeHit[] {
+  return searchRecipesPage(library, args, { offset: 0, limit: args.limit }).hits;
+}
+
+function clampOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isFinite(offset) || offset < 0) {
+    return 0;
+  }
+  return Math.floor(offset);
+}
+
+/**
+ * One page of `searchRecipes`' ordering: the hits from `offset`, at most
+ * `limit` (clamped like the agent's, to 1–20), and how many recipes matched in
+ * all. With no query the order is alphabetical, so paging walks the whole
+ * library. The agent's `searchRecipes` is the first page; the MCP
+ * `search_recipes` tool pages.
+ */
+export function searchRecipesPage(
+  library: AgentLibrary,
+  args: Omit<SearchRecipesArgs, 'limit'>,
+  page: { offset?: number; limit?: number },
+): { hits: SearchRecipeHit[]; total: number } {
   const query = typeof args.query === 'string' ? args.query.trim() : '';
   const tags = Array.isArray(args.tags)
     ? args.tags.filter((t): t is string => typeof t === 'string')
@@ -205,7 +227,8 @@ export function searchRecipes(library: AgentLibrary, args: SearchRecipesArgs): S
   const excludeIngredients = Array.isArray(args.excludeIngredients)
     ? args.excludeIngredients.filter((t): t is string => typeof t === 'string')
     : undefined;
-  const limit = clampLimit(args.limit);
+  const limit = clampLimit(page.limit);
+  const offset = clampOffset(page.offset);
 
   const membership = winningMembership(library.collections);
 
@@ -257,7 +280,7 @@ export function searchRecipes(library: AgentLibrary, args: SearchRecipesArgs): S
   }
 
   const hits: SearchRecipeHit[] = [];
-  for (const { recipe } of candidates.slice(0, limit)) {
+  for (const { recipe } of candidates.slice(offset, offset + limit)) {
     const { totalMinutes, timeUnknown } = recipeTotalMinutes(recipe);
     const hit: SearchRecipeHit = {
       id: recipe.id,
@@ -279,5 +302,5 @@ export function searchRecipes(library: AgentLibrary, args: SearchRecipesArgs): S
     }
     hits.push(hit);
   }
-  return hits;
+  return { hits, total: candidates.length };
 }

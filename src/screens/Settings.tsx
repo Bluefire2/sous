@@ -1,14 +1,22 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { isSupportedLocale, languageName, SUPPORTED_LOCALES, t as translate, useLocale, useT } from '../i18n';
+import KitchenProfileSection from '../components/KitchenProfileSection';
+import { isSupportedLocale, localeDisplayName, SUPPORTED_LOCALES, t as translate, useLocale, useT } from '../i18n';
 import { exportLibrary, importLibrary } from '../lib/backup';
+import {
+  disconnectApp,
+  listConnectedApps,
+  mcpServerUrl,
+  type ConnectedApp,
+} from '../lib/connectedAppsApi';
 import { createMemberInvite } from '../lib/inviteApi';
 import { relativeAgoLabel } from '../lib/relativeTime';
 import { notifyImportComplete, sync, useSyncStatus } from '../lib/syncEngine';
 import { signInHref, signOut, useSession } from '../lib/session';
 import { settings, type Theme } from '../lib/settings';
 import { applyTheme } from '../lib/theme';
-import { backLink, inputClass, primaryBtn, secondaryBtn } from '../lib/uiClasses';
+import { backLink, inputClass, inputFocus, primaryBtn, secondaryBtn } from '../lib/uiClasses';
+import { useRecipeTextSize, useWakeLockSetting } from '../lib/useDeviceSettings';
 
 function MemberInvite() {
   const t = useT();
@@ -81,11 +89,145 @@ function MemberInvite() {
   );
 }
 
+/**
+ * AI apps connected through the MCP server. The list is this component's own
+ * state, loaded when Settings opens; nothing else reads it.
+ */
+function ConnectedApps() {
+  const t = useT();
+  const [apps, setApps] = useState<ConnectedApp[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const mountedRef = useRef(true);
+  const serverUrl = mcpServerUrl(window.location.origin);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    let cancelled = false;
+    listConnectedApps().then(
+      (list) => {
+        if (!cancelled) setApps(list);
+      },
+      (e: unknown) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : translate('common.somethingWentWrong'));
+      },
+    );
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const disconnect = async (app: ConnectedApp) => {
+    setPendingId(app.id);
+    setDisconnectError(null);
+    try {
+      await disconnectApp(app.id);
+      if (mountedRef.current) {
+        setApps((current) => current?.filter((row) => row.id !== app.id) ?? current);
+      }
+    } catch {
+      if (mountedRef.current) {
+        setDisconnectError(translate('settings.connectedAppsDisconnectError', { app: app.clientHost }));
+      }
+    } finally {
+      if (mountedRef.current) setPendingId(null);
+    }
+  };
+
+  const copyServerUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(serverUrl);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="mt-8 text-lg font-semibold">{t('settings.connectedApps')}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t('settings.connectedAppsIntro')}</p>
+      {apps === null && loadError === null && (
+        <p className="mt-3 text-sm text-ink-muted">{t('common.loading')}</p>
+      )}
+      {loadError !== null && <p className="mt-3 text-sm text-danger">{loadError}</p>}
+      {apps !== null && apps.length === 0 && (
+        <p className="mt-3 text-sm">{t('settings.connectedAppsEmpty')}</p>
+      )}
+      {apps !== null && apps.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {apps.map((app) => (
+            <li key={app.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{app.clientHost}</p>
+                  {app.clientName !== undefined && (
+                    <p className="truncate text-sm text-ink-muted">
+                      {t('settings.connectedAppsSelfName', { name: app.clientName })}
+                    </p>
+                  )}
+                  <p className="mt-1 text-sm">
+                    {app.canEdit ? t('settings.connectedAppsCanEdit') : t('settings.connectedAppsCanRead')}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {t('settings.connectedAppsConnected', { time: relativeAgoLabel(app.createdAt) })}
+                  </p>
+                  {app.lastUsedAt !== undefined && (
+                    <p className="text-xs text-ink-muted">
+                      {t('settings.connectedAppsLastUsed', { time: relativeAgoLabel(app.lastUsedAt) })}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void disconnect(app)}
+                  disabled={pendingId !== null}
+                  className={`${secondaryBtn} shrink-0 px-3 py-1.5 text-sm disabled:opacity-40`}
+                >
+                  {pendingId === app.id
+                    ? t('settings.connectedAppsDisconnecting')
+                    : t('settings.connectedAppsDisconnect')}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {disconnectError !== null && <p className="mt-2 text-sm text-danger">{disconnectError}</p>}
+      {/* Always shown: a second app needs the address as much as the first. */}
+      <div className="mt-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
+        <label className="block text-xs text-ink-muted" htmlFor="mcp-server-url">
+          {t('settings.connectedAppsServerUrl')}
+        </label>
+        <input
+          id="mcp-server-url"
+          className={`${inputClass} mt-1 font-mono text-sm`}
+          readOnly
+          value={serverUrl}
+          onFocus={(event) => event.currentTarget.select()}
+        />
+        <button
+          type="button"
+          onClick={() => void copyServerUrl()}
+          className={`${secondaryBtn} mt-2 px-3 py-1.5 text-sm`}
+        >
+          {copied ? t('admin.copied') : t('admin.copy')}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const { user, status: sessionStatus } = useSession();
   const syncStatus = useSyncStatus();
   const t = useT();
   const locale = useLocale();
+  const wakeLock = useWakeLockSetting();
+  const textSize = useRecipeTextSize();
   const [theme, setTheme] = useState(settings.getTheme());
   const [status, setStatus] = useState<string | null>(null);
   const [statusKind, setStatusKind] = useState<'ok' | 'err' | null>(null);
@@ -240,6 +382,10 @@ export default function Settings() {
         </>
       )}
 
+      {sessionStatus === 'signedIn' && <KitchenProfileSection />}
+
+      {sessionStatus === 'signedIn' && <ConnectedApps />}
+
       <h2 className="mt-8 text-lg font-semibold">{t('settings.appearance')}</h2>
       <div className="mt-3 flex gap-2">
         {(['dark', 'light'] as const).map((option) => (
@@ -255,6 +401,38 @@ export default function Settings() {
             }`}
           >
             {option === 'dark' ? t('settings.dark') : t('settings.light')}
+          </button>
+        ))}
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold">{t('settings.cooking')}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t('settings.cookingDeviceOnly')}</p>
+      <label className="mt-3 flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={wakeLock}
+          onChange={(event) => settings.setWakeLock(event.target.checked)}
+          className={`mt-1 h-4 w-4 shrink-0 accent-ink ${inputFocus}`}
+        />
+        <span>{t('settings.keepScreenAwake')}</span>
+      </label>
+      <p id="settings-text-size" className="mt-4">
+        {t('settings.recipeTextSize')}
+      </p>
+      <div role="group" aria-labelledby="settings-text-size" className="mt-2 flex gap-2">
+        {(['normal', 'large'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={textSize === option}
+            onClick={() => settings.setRecipeTextSize(option)}
+            className={`flex-1 rounded-full py-2.5 font-medium ${
+              textSize === option
+                ? 'bg-ink text-page'
+                : 'border border-line-strong text-ink-muted hover:bg-surface-muted active:bg-surface-muted'
+            }`}
+          >
+            {option === 'normal' ? t('settings.textSizeNormal') : t('settings.textSizeLarge')}
           </button>
         ))}
       </div>
@@ -275,7 +453,7 @@ export default function Settings() {
       >
         {SUPPORTED_LOCALES.map((code) => (
           <option key={code} value={code}>
-            {languageName(code, code) ?? code}
+            {localeDisplayName(code)}
           </option>
         ))}
       </select>
@@ -321,6 +499,20 @@ export default function Settings() {
         >
           {status}
         </p>
+      )}
+
+      {sessionStatus === 'signedIn' && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">{t('settings.feedback')}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{t('settings.feedbackBody')}</p>
+          <Link
+            to="/suggest"
+            state={{ from: 'settings' }}
+            className={`${secondaryBtn} mt-3 inline-block px-4 py-2.5`}
+          >
+            {t('settings.suggestButton')}
+          </Link>
+        </>
       )}
 
       <footer className="mt-8">
