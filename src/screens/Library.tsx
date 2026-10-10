@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLocale, useT } from '../i18n';
 import CollectionSection from '../components/CollectionSection';
 import CreateCollectionSheet from '../components/CreateCollectionSheet';
+import DocumentTitle from '../components/DocumentTitle';
 import LanguageMenu from '../components/LanguageMenu';
 import NoticeToast, { type Notice } from '../components/NoticeToast';
 import LibrarySortMenu from '../components/LibrarySortMenu';
 import ShareCollectionSheet from '../components/ShareCollectionSheet';
 import Sheet from '../components/Sheet';
 import { createInvite } from '../lib/adminApi';
+import { APP_TITLE, namedTitle } from '../lib/documentTitle';
 import { createMemberInvite } from '../lib/inviteApi';
 import { copyStrategy, inviteMintClient, isInviteQuotaError } from '../lib/inviteMint';
 import { DiceIcon, FolderIcon, InviteIcon, PlusIcon, SettingsIcon, SpinnerIcon } from '../lib/icons';
@@ -801,6 +803,8 @@ export default function Library() {
 
   return (
     <div className={`mx-auto max-w-xl px-4 ${selecting ? 'pb-40' : 'pb-24'}`}>
+      {/* The library is the app; a named collection is titled by its name. */}
+      <DocumentTitle title={named ? namedTitle(t, named.name) : APP_TITLE} />
       <NoticeToast notice={inviteNotice} />
       <header className="flex items-center justify-between py-4">
         <h1 className="text-2xl font-bold">Sous</h1>

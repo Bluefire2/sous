@@ -1,7 +1,9 @@
 import { Link, useParams } from 'react-router-dom';
 import { useT } from '../i18n';
+import DocumentTitle from '../components/DocumentTitle';
 import LanguageMenu from '../components/LanguageMenu';
 import { PublicSignInLink } from '../components/LockedAi';
+import { APP_TITLE, namedTitle } from '../lib/documentTitle';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../lib/uiClasses';
@@ -19,11 +21,24 @@ import PublicSharedRecipe from './PublicSharedRecipe';
  */
 export default function PublicLink() {
   const { token = '' } = useParams<{ token: string }>();
+  const t = useT();
   const { result, retry } = usePublicLink(token);
-  if (result?.kind === 'ok' && result.data.kind === 'recipe') {
-    return <PublicSharedRecipe token={token} data={result.data} />;
-  }
-  return <PublicCollection token={token} result={result} retry={retry} />;
+  const data = result?.kind === 'ok' ? result.data : undefined;
+  // Titled by what the link shows; loading, missing, and failed pages are just the app.
+  const title =
+    data === undefined
+      ? APP_TITLE
+      : namedTitle(t, data.kind === 'recipe' ? data.recipe.title : data.collection.name);
+  return (
+    <>
+      <DocumentTitle title={title} />
+      {data?.kind === 'recipe' ? (
+        <PublicSharedRecipe token={token} data={data} />
+      ) : (
+        <PublicCollection token={token} result={result} retry={retry} />
+      )}
+    </>
+  );
 }
 
 function PublicCollection({

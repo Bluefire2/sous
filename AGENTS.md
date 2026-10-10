@@ -507,7 +507,8 @@ live tie between a copy and its original.
 SPA shell's head for a live link, resolved with the visitor chain in the same
 order (collection, then recipe link): a recipe's title, description, and main
 photo URL, or a collection's name only. Never `sharedBy`, an email, a `sub`,
-or `og:url`; the `<title>` stays "Sous". Any failure, or a lookup over
+or `og:url`; the served `<title>` stays "Sous" (the SPA retitles the tab
+once it runs; see Screen titles). Any failure, or a lookup over
 `PREVIEW_LOOKUP_TIMEOUT_MS` (500), serves the plain shell, and every `/p`
 shell is `no-store`. The service worker never serves `/p`, so every visit
 pays that lookup before its first byte and the page then repeats the reads
@@ -825,6 +826,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage` `expireAt` applied 2026-10-09. |
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
+| `docs/plans/screen-titles.md` | Merged. Browser tab titles per screen with React 19's `<title>`: "<screen> · Sous" from the catalogs, or a recipe or collection name; "Sous" for the library. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not
@@ -955,6 +957,17 @@ catalogs are typed `Messages`, so a missing key fails `tsc`, and the parity
 test in `src/i18n/messages.test.ts` checks plural forms and placeholders.
 Sentences are single catalog strings with named `{params}`, never joined
 fragments; relative times go through `src/lib/relativeTime.ts`.
+
+**Screen titles** (`docs/plans/screen-titles.md`). Every route titles the
+browser tab with React 19's `<title>`, through `src/components/DocumentTitle.tsx`
+only: "<screen> · Sous" from the `title.*` catalog keys (a fixed screen's
+title is its heading plus " · Sous", wrapped by `Titled` in `src/App.tsx`), or
+`namedTitle` for a recipe or collection name; the library and loading or
+missing states are "Sous". React inserts the screen's `<title>` before
+`index.html`'s static `<title>Sous</title>`, which stays as the fallback, and
+removes it with the screen. Render exactly one `DocumentTitle` at a time;
+`scripts/invariants.test.ts` checks that each route has one and nothing else
+renders `<title>`. A new route needs one.
 
 Any UI change that adds or changes user-facing text must add it to
 every catalog in `src/i18n/` (see `docs/constitutions/i18n.md`), in

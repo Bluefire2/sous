@@ -1,12 +1,16 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { useT } from '../i18n';
+import { APP_TITLE } from '../lib/documentTitle';
 import { primaryBtn } from '../lib/uiClasses';
+import DocumentTitle from './DocumentTitle';
 
 function ErrorFallback({ message }: { message: string }) {
   const t = useT();
   return (
     <div className="mx-auto max-w-xl px-4 pb-24">
+      {/* The crashed screen's title went with it. */}
+      <DocumentTitle title={APP_TITLE} />
       <h1 className="py-4 text-2xl font-bold">{t('common.somethingWentWrong')}</h1>
       <p className="text-sm text-ink-muted">{message}</p>
       <button

@@ -97,6 +97,34 @@ describe('client architecture', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('every route titles the tab, and only DocumentTitle renders a <title>', () => {
+    // docs/plans/screen-titles.md: every route renders one DocumentTitle,
+    // through Titled in App.tsx or from the screen itself, so no screen is
+    // left with index.html's bare "Sous". Two at once leave the tab to
+    // React's insertion order.
+    const app = read('src/App.tsx');
+    const imports = new Map(
+      [...app.matchAll(/^import (\w+) from '\.\/(screens\/\w+)';$/gm)].map((m) => [m[1], `src/${m[2]}.tsx`]),
+    );
+    // Redirects render nothing of their own; the page they land on titles the tab.
+    const redirects = new Set(['Navigate', 'PublicReturn']);
+    const elements = [...app.matchAll(/element=\{<(\w+)/g)].map((m) => m[1]);
+    expect(elements.length).toBeGreaterThan(10);
+    const untitled = elements.filter((name) => {
+      if (name === 'Titled' || redirects.has(name)) {
+        return false;
+      }
+      const path = imports.get(name);
+      return path === undefined || !read(path).includes('<DocumentTitle');
+    });
+    expect(untitled).toEqual([]);
+    const rawTitles = ['src']
+      .flatMap((dir) => filesUnder(dir, ['.tsx']))
+      .filter((path) => path !== 'src/components/DocumentTitle.tsx')
+      .flatMap((path) => matchingLines(path, /<title[\s>]/));
+    expect(rawTitles).toEqual([]);
+  });
+
   it('no VITE_-prefixed variable outside the non-secret allowlist', () => {
     // Vite inlines VITE_* into the client bundle. Never give a secret that prefix.
     // A new non-secret build-time variable goes in this list, on purpose.
