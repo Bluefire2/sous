@@ -25,6 +25,14 @@
     80% { transform: translateY(-3px) rotate(460deg); }
     100% { transform: translateY(0) rotate(450deg); }
   }
+
+  /* App.tsx's route fallback: hidden for a fast chunk load, so it does not
+     flash before the screen's own loading line. */
+  --animate-route-fallback: route-fallback 0.2s ease-out 0.4s both;
+  @keyframes route-fallback {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 
 @layer theme {
