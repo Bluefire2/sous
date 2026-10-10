@@ -960,14 +960,17 @@ fragments; relative times go through `src/lib/relativeTime.ts`.
 
 **Screen titles** (`docs/plans/screen-titles.md`). Every route titles the
 browser tab with React 19's `<title>`, through `src/components/DocumentTitle.tsx`
-only: "<screen> · Sous" from the `title.*` catalog keys (a fixed screen's
-title is its heading plus " · Sous", wrapped by `Titled` in `src/App.tsx`), or
-`namedTitle` for a recipe or collection name; the library and loading or
-missing states are "Sous". React inserts the screen's `<title>` before
-`index.html`'s static `<title>Sous</title>`, which stays as the fallback, and
-removes it with the screen. Render exactly one `DocumentTitle` at a time;
-`scripts/invariants.test.ts` checks that each route has one and nothing else
-renders `<title>`. A new route needs one.
+only: "<screen> · Sous" from the `title.*` catalog keys (fixed screens are
+wrapped by `Titled` in `src/App.tsx`; one with a heading is titled with that
+heading plus " · Sous", and `/assistant`, which has none, has its own
+string), or `namedTitle` for a recipe or collection name; the library and
+loading or missing states are "Sous". The in-context translation review
+captures `document.title` and judges it with the page. React inserts the
+screen's `<title>` before `index.html`'s static `<title>Sous</title>`, which
+stays as the fallback, and removes it with the screen. Render exactly one `DocumentTitle` at a time;
+`scripts/invariants.test.ts` checks that each route has exactly one and
+nothing else renders `<title>`. A new route needs one. Titles name recipes and
+collections in browser history; `/privacy` says so, so change it with them.
 
 Any UI change that adds or changes user-facing text must add it to
 every catalog in `src/i18n/` (see `docs/constitutions/i18n.md`), in

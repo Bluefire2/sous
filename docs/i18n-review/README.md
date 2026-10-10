@@ -15,9 +15,11 @@ such as `.cursor/skills/i18n-visual-review/SKILL.md`, only point here.
 For each screen state in the manifest and each language in scope:
 
 1. Render the screen at phone width (390×844) and capture it, together with
-   the English version of the same state as reference.
-2. Give both screenshots, the language, and the rubric to a vision-capable
-   LLM reviewer.
+   the English version of the same state as reference. Also read its page
+   text and the browser tab title (`document.title`), which no screenshot
+   shows (`docs/plans/screen-titles.md`).
+2. Give both screenshots, the page text and tab title, the language, and the
+   rubric to a vision-capable LLM reviewer.
 3. Get back pass/fail and a list of issues. Each issue names the visible
    text, the problem, a suggested fix, and severity (`blocker` or `nit`).
 4. Fix blockers in the catalogs, then re-review the affected screens.
@@ -192,7 +194,7 @@ a report; link that section. The judge reads it from the constitution.
 ## Report
 
 The suite writes `report.md` and `results.json` to the output directory,
-beside each capture (`<state>/<lang>.png`, and `.txt` for its page text).
+beside each capture (`<state>/<lang>.png`, and `.txt` for its tab title and page text).
 Cursor agents pass `--out /opt/cursor/artifacts/i18n-review/<date>` so the
 report is uploaded.
 

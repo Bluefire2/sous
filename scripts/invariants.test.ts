@@ -55,6 +55,17 @@ function matchingLines(path: string, pattern: RegExp, commentPrefix = '//'): str
     .map(({ text, line }) => `${path}:${line}: ${text.trim()}`);
 }
 
+/**
+ * App.tsx's screen components and their files, imported eagerly
+ * (`import X from './screens/X';`) or lazily
+ * (`const X = lazyScreen(() => import('./screens/X'));`, possibly over lines).
+ */
+function screenModules(appSource: string): Map<string, string> {
+  const pattern =
+    /^(?:import (\w+) from|const (\w+) = lazyScreen\(\s*\(\) => import\()\s*'\.\/(screens\/\w+)'/gm;
+  return new Map([...appSource.matchAll(pattern)].map((m) => [m[1] ?? m[2], `src/${m[3]}.tsx`]));
+}
+
 describe('api/ (Vercel copies)', () => {
   it('api/*.ts handlers import no sibling or parent modules', () => {
     // AGENTS.md: api/chat.ts "cannot import siblings"; Vercel bundles each file alone.
@@ -103,26 +114,49 @@ describe('client architecture', () => {
     // left with index.html's bare "Sous". Two at once leave the tab to
     // React's insertion order.
     const app = read('src/App.tsx');
-    const imports = new Map(
-      [...app.matchAll(/^import (\w+) from '\.\/(screens\/\w+)';$/gm)].map((m) => [m[1], `src/${m[2]}.tsx`]),
-    );
+    const imports = screenModules(app);
+    const tsxFiles = filesUnder('src', ['.tsx']);
+    /** The file a route's component lives in: its screen import, else the one file named after it. */
+    const fileOf = (name: string): string | undefined =>
+      imports.get(name) ?? tsxFiles.find((path) => path.endsWith(`/${name}.tsx`));
+    const titlesItself = (name: string) => {
+      const path = fileOf(name);
+      return path !== undefined && read(path).includes('<DocumentTitle');
+    };
     // Redirects render nothing of their own; the page they land on titles the tab.
     const redirects = new Set(['Navigate', 'PublicReturn']);
     const elements = [...app.matchAll(/element=\{<(\w+)/g)].map((m) => m[1]);
     expect(elements.length).toBeGreaterThan(10);
-    const untitled = elements.filter((name) => {
-      if (name === 'Titled' || redirects.has(name)) {
-        return false;
-      }
-      const path = imports.get(name);
-      return path === undefined || !read(path).includes('<DocumentTitle');
-    });
+    const untitled = elements.filter(
+      (name) => name !== 'Titled' && !redirects.has(name) && !titlesItself(name),
+    );
     expect(untitled).toEqual([]);
+    // A screen that titles itself must not also be wrapped: two titles at once.
+    const wrapped = [...app.matchAll(/<Titled\b[^>]*>\s*<(\w+)/g)].map((m) => m[1]);
+    expect(wrapped.length).toBeGreaterThan(5);
+    expect(wrapped.filter((name) => fileOf(name) === undefined)).toEqual([]);
+    expect(wrapped.filter(titlesItself)).toEqual([]);
     const rawTitles = ['src']
       .flatMap((dir) => filesUnder(dir, ['.tsx']))
       .filter((path) => path !== 'src/components/DocumentTitle.tsx')
       .flatMap((path) => matchingLines(path, /<title[\s>]/));
     expect(rawTitles).toEqual([]);
+  });
+
+  it('finds screens imported either eagerly or through lazyScreen', () => {
+    const source = [
+      "import Library from './screens/Library';",
+      "const RecipeView = lazyScreen(() => import('./screens/RecipeView'));",
+      'const PublicLink = lazyScreen(',
+      "  () => import('./screens/PublicLink'),",
+      ');',
+      "import { routePaths } from './lib/routePaths';",
+    ].join('\n');
+    expect([...screenModules(source)]).toEqual([
+      ['Library', 'src/screens/Library.tsx'],
+      ['RecipeView', 'src/screens/RecipeView.tsx'],
+      ['PublicLink', 'src/screens/PublicLink.tsx'],
+    ]);
   });
 
   it('no VITE_-prefixed variable outside the non-secret allowlist', () => {

@@ -117,6 +117,18 @@ reachable from personas.
   `KNOWN_REAL` is empty again. Calibration on 3.8 after the fix: 11 of 12
   planted defects confirmed ("Выбор" seen only), no false blocker on the
   30 clean pairs, 55 calls.
+- **The tab title joins the judge's input (2026-10-10,
+  `docs/plans/screen-titles.md`).** Screens now set `document.title`, which
+  no screenshot or `innerText` shows. `capture.ts` reads it, and both
+  prompts end with it in a block labelled as the browser tab title, judged
+  like the page text except a recipe or collection name; findings may quote
+  it. `calibration.ts` gained a thirteenth plant: an English tab title
+  ("Cooks · Sous") on the Russian Cooks screen, a "left in English" defect,
+  so missing it fails calibration. Same seed, catalog, and model
+  (`gemini-3.8-flash`). Before the change: 11 of 12 confirmed ("Выбор"
+  missed), no false blocker on the 30 clean pairs (one unconfirmed nit), 54
+  calls. After: 13 of 13 confirmed, including the tab title, no false
+  blocker and no unconfirmed report on the clean pairs, 56 calls.
 - **The judge reads the rubric and glossary from their sources.** The rubric
   bullets come from the README's "Rubric" section and the register and
   glossary from the constitution's "Register and glossary" decision, read at
@@ -125,8 +137,9 @@ reachable from personas.
 - **What the judge sees.** For each state and target language: the English
   screenshot as reference, the target screenshot, the target page's visible
   text (`innerText`, so quotes in findings are exact rather than read off
-  pixels), the language, the rubric, the register and glossary, and the
-  state's `setup` text from the manifest. The prompt also says, because the
+  pixels), its browser tab title (`document.title`, since 2026-10-10), the
+  language, the rubric, the register and glossary, and the state's `setup`
+  text from the manifest. The prompt also says, because the
   spike showed each was needed:
   - what is user data and never judged: recipe text and tags, collection
     names, people's names and emails, connected app names;

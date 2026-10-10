@@ -100,6 +100,8 @@ export interface CaptureOk {
   status: 'ok';
   png: Buffer;
   pageText: string;
+  /** `document.title`: the tab title, which the screenshot cannot show (docs/plans/screen-titles.md). */
+  title: string;
   sha256: string;
   ms: number;
 }
@@ -242,10 +244,12 @@ export async function captureState(
     await page.evaluate(PIN_FLOATING_TO_END);
     const png = await page.screenshot({ fullPage: true, animations: 'disabled', caret: 'hide' });
     const pageText = await page.locator('body').innerText();
+    const title = await page.title();
     return {
       status: 'ok',
       png,
       pageText,
+      title,
       sha256: createHash('sha256').update(png).digest('hex'),
       ms: Date.now() - started,
     };

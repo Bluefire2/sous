@@ -42,13 +42,30 @@ new store reads in render).
   | `/p/:token/r/:recipeId` | {title} · Sous | `title.named` |
 
 - **Catalog text.** Each title is one whole string per language. A fixed
-  title is the screen's existing heading string plus " · Sous", in every
-  catalog; `src/lib/documentTitle.test.ts` pins that, so the words are ones
-  the in-context review already judges on the page. `title.named` is
+  screen with a heading is titled with that heading string plus " · Sous",
+  in every catalog, so the tab and the page never name the screen
+  differently; `src/lib/documentTitle.test.ts` pins that. `/assistant` shows
+  no heading, so `title.assistant` ("Assistant · Sous", uk "Помічник",
+  ru "Помощник", zh-Hans "助手", the words the recipe screen's Ask panel and
+  the public pages already use for the assistant) is its own string, judged
+  in context like the rest (next decision). `title.named` is
   `{name} · Sous` everywhere, kept in the catalogs so a language can change
   the order or separator. The brand is the same in every language, so
   `src/i18n/messages.test.ts` ignores it when looking for untranslated
   English (as it already ignored placeholders). No title names the model.
+- **The in-context review judges the tab title.** A tab title is UI text,
+  so i18n principle 16 applies, but a screenshot and the body's text never
+  show it. `testing/i18n-review/capture.ts` now also reads `document.title`;
+  the judge receives it after the page text, labelled as the browser tab
+  title, and may quote it in a finding; each capture's `.txt` starts with it.
+  This changes the judge's input, so it was calibrated before and after
+  (`docs/plans/i18n-review-ci.md`), with a new planted defect: an English
+  tab title on the Russian Cooks screen.
+- **Privacy.** A title names the recipe or collection on screen, including
+  shared ones and translated titles, so the browser's history and
+  bookmarks hold those names, may sync them, and keep them after sign-out.
+  `/privacy` says so beside "There is no on-device recipe database".
+  `/terms` needs nothing: it promises nothing about browser history.
 - **User text.** `namedTitle` (`src/lib/documentTitle.ts`) puts a name on one
   line: control and bidi characters dropped (a name cannot reorder
   " · Sous"), whitespace collapsed, at most 120 graphemes with "…"; a blank
@@ -67,8 +84,10 @@ new store reads in render).
   `Titled` in `src/App.tsx`, so every state of the screen (loading, not
   found) carries the title; the library, the recipe screen, and the public
   pages render their own `DocumentTitle`. `scripts/invariants.test.ts`
-  checks that each route element is one or the other (or a redirect) and that
-  nothing else renders `<title>`.
+  checks that each route element is one or the other (or a redirect), never
+  both (a wrapped screen that also renders `DocumentTitle`), and that nothing
+  else renders `<title>`. It reads screens imported either eagerly or through
+  `lazyScreen(() => import(...))`, the form route code splitting (#187) uses.
 - **Link previews unchanged.** `server/publicPreview.ts` still serves the
   shell's `<title>Sous</title>` with the Open Graph tags; a browser retitles
   the tab once the app runs. Setting the served `<title>` to the same
@@ -85,6 +104,10 @@ new store reads in render).
 3. [core] The invariant check; comments in `index.html` and
    `server/publicPreview.ts`; AGENTS.md (Link previews, Screen titles, this
    row).
+4. [core] Review fixes: the tab title in the in-context review (capture,
+   judge prompt, calibration plant), `title.assistant` as its own string,
+   the `/privacy` sentence, and the invariant's lazy-import and double-title
+   checks.
 
 ## Verification
 
@@ -100,7 +123,16 @@ new store reads in render).
 - The built app (`--static`): the same titles, and `/p/<token>` still carries
   the og: tags; `CI=1 node testing/smoke.ts` passed and
   `testing/logSweep.ts` found nothing in the server log.
-- The in-context translation review (`npm run test:i18n`) captures the page
-  and its body text, never the tab, so it cannot see these strings. They
-  were checked by hand against each catalog's heading text and the glossary
-  instead, and the heading test above keeps them equal.
+- The in-context translation review, with the tab title now in the judge's
+  input (calibration before and after in `docs/plans/i18n-review-ci.md`),
+  on 72 states in `uk`, `ru`, and `zh-Hans`: every state of each fixed-title
+  route (Collections, Settings, Suggest, Admin, both Import routes, recipe
+  edit and new, Cooks, both cook-log routes, all 13 Assistant states), and
+  six named-title states (`recipe-view`, `recipe-view-translate-translated`,
+  `library-collection-menu`, `public-collection`, `public-shared-recipe`,
+  `public-recipe`), whose only UI text in the title is " · Sous". 288
+  captures, 216 judged, 221 calls. No finding on any tab title. Three
+  confirmed blockers, all on text this change did not touch:
+  `import.summaryAttention` in `ru` ("Требуют внимания: 1", already open in
+  the `i18n-review` issue #134) on two states, and the `ru` note placeholder
+  cut off in `import-preview` (Layout).

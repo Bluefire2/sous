@@ -57,9 +57,9 @@ describe('namedTitle', () => {
     expect(namedTitle(en, 'Cake {name}')).toBe('Cake {name} · Sous');
   });
 
-  // The in-context review cannot see a tab title (it captures the page), so a
-  // fixed title is the screen's own heading, which the review does judge, and
-  // the brand. A title that needs other words has to be reviewed by hand.
+  // A fixed screen with a heading is titled with that heading and the brand,
+  // so the tab and the page never name the screen differently. The in-context
+  // review judges the tab title too (testing/i18n-review/capture.ts).
   const HEADINGS: Record<string, TextKey> = {
     'title.collections': 'library.collectionsNav',
     'title.cooks': 'library.cooks',
@@ -70,13 +70,14 @@ describe('namedTitle', () => {
     'title.editCook': 'cookLog.editCook',
     'title.settings': 'settings.title',
     'title.suggest': 'suggest.title',
-    'title.assistant': 'chat.assistant',
     'title.admin': 'admin.title',
   };
+  /** Titles with no heading to follow: a name, and `/assistant`, which shows no heading. */
+  const OWN_WORDS = ['title.named', 'title.assistant'];
 
   it.each(SUPPORTED_LOCALES)('%s titles a fixed screen with its heading', (locale) => {
     const titleKeys = Object.keys(CATALOGS[locale]).filter((key) => key.startsWith('title.'));
-    expect(titleKeys.sort()).toEqual([...Object.keys(HEADINGS), 'title.named'].sort());
+    expect(titleKeys.sort()).toEqual([...Object.keys(HEADINGS), ...OWN_WORDS].sort());
     for (const [titleKey, headingKey] of Object.entries(HEADINGS)) {
       expect(translate(locale, titleKey as TextKey), `${locale}.${titleKey}`).toBe(
         `${translate(locale, headingKey)} · Sous`,

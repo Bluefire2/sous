@@ -123,8 +123,8 @@ async function main(): Promise<void> {
           continue;
         }
         writeFileSync(join(dir, `${lang}.png`), first.png);
-        writeFileSync(join(dir, `${lang}.txt`), first.pageText);
-        shots.set(`${state}/${lang}`, { png: first.png, pageText: first.pageText });
+        writeFileSync(join(dir, `${lang}.txt`), `Tab title: ${first.title}\n\n${first.pageText}`);
+        shots.set(`${state}/${lang}`, { png: first.png, pageText: first.pageText, title: first.title });
         const hashes = results.map((r) => (r.status === 'ok' ? r.sha256 : `failed: ${r.error}`));
         const stable = hashes.every((hash) => hash === first.sha256);
         if (!stable) {
