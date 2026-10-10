@@ -49,8 +49,8 @@ import {
 } from './handwrittenFixtures.ts';
 import { ingredientCount, judgeRecipe } from './judge.ts';
 
-// Estimates carried over from the owner-approved plan: gemini-3.7-flash is not
-// on the public pricing page.
+// Estimates carried over from the owner-approved plan for gemini-3.7-flash (not
+// on the public pricing page); not rechecked for gemini-3.8-flash.
 const GEMINI_INPUT_USD_PER_MTOK = 1.5;
 /** Applies to candidates plus thoughts. */
 const GEMINI_OUTPUT_USD_PER_MTOK = 9;

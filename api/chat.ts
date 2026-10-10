@@ -425,7 +425,7 @@ function describeThrown(err: unknown): string {
 }
 
 // `??` is wrong here: `node --env-file` turns a bare `CHAT_MODEL=` into `''`, which is not nullish.
-const MODEL = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+const MODEL = process.env.CHAT_MODEL || 'gemini-3.8-flash';
 
 // A turn that triggers update_recipe streams a text reply and then the complete recipe JSON —
 // the slowest response this app produces, so Vercel's 10s default can kill it.

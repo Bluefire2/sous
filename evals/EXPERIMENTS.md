@@ -22,6 +22,72 @@ summary, approach A.
 - Run by: <owner | agent>, model <CHAT_MODEL or default>
 ```
 
+## 2026-10-09 — Import default `gemini-3.7-flash` → `gemini-3.8-flash` (3.7 now redirects)
+
+- Change: `DEFAULT_MODEL` in `server/recipeImport.ts` becomes
+  `gemini-3.8-flash`, undoing the import revert in the entry below. Every
+  `CHAT_MODEL` default is now 3.8.
+- Reason (not fixture-specific): Google deprecated `gemini-3.7-flash`, and
+  the API now serves it with 3.8. On 2026-10-09 a `generateContent` call
+  naming `gemini-3.7-flash` returned `modelVersion: gemini-3.8-flash`,
+  while `models.get` still lists 3.7 (`3.7-flash-08-2026`). Requests that
+  name 3.7 already get 3.8, so this change does not alter what import
+  runs, and the evals were not run for it.
+- What it means for the entry below: `ocrCompare` does not record
+  `modelVersion`, so it is unknown whether the redirect was already active
+  for the 2026-10-08 runs. If it was, the "3.7" Before run and the isolated
+  run's 3.7 judge were 3.8 too, and the differences there (dev 12, 10 and
+  8 of 15; holdout 15, 15 and 14) are run-to-run variance on one model,
+  not a model regression. The two `MAX_TOKENS` runaways happened on 3.8
+  either way.
+- Decision: kept, since there is no other model behind the 3.7 id to
+  choose.
+- Run by: agent, model `gemini-3.8-flash` (`modelVersion` checked).
+
+## 2026-10-08 — Default model `gemini-3.7-flash` → `gemini-3.8-flash`
+
+- Change: `DEFAULT_MODEL` in `server/recipeImport.ts` and every other
+  `CHAT_MODEL` default (chat, dictation, the assistant, `evals/judge.ts`)
+  becomes `gemini-3.8-flash` (`b6b2409`, PR #173; import reverted to 3.7 in
+  `35780b7`, see Decision). Prompts, schemas,
+  checks, retries, thinking and goldens are unchanged.
+- Reason (not fixture-specific): move to the newer Flash model.
+- Command: `npm run eval:ocr-compare -- --split=all --runs=3`, once per
+  side, both at `b6b2409`. `.env.local` sets no `CHAT_MODEL`.
+- Before (`CHAT_MODEL=gemini-3.7-flash`, the same requests as the parent
+  `e687da4`, since the change only moves defaults): dev 12/15
+  (blueberry-muffins 1/3, choc-pie-tea-towel 3/3, hundred-good-cookies
+  3/3, lemon-tea-bread 3/3, sweet-sour-pork 2/3), holdout 15/15; every A
+  run `ok`, `STOP`, calls 1. Approach B: dev 9/15, holdout 9/15.
+- After (default, `gemini-3.8-flash`): dev 10/15 (blueberry-muffins 1/3,
+  choc-pie-tea-towel 3/3, hundred-good-cookies 3/3, lemon-tea-bread 2/3,
+  sweet-sour-pork 1/3), holdout 15/15; every A run `ok`, `STOP`, calls 1.
+  Approach B: dev 8/15, holdout 9/15. Median A time: dev 12.6 s → 12.2 s,
+  holdout 10.2 s → 9.6 s. The cost column still uses the 3.7 estimates.
+- Caveat: `evals/judge.ts` also defaults to `CHAT_MODEL`, so the judge
+  moved with the importer and the difference mixes the two.
+- Isolating the importer (owner's call, a separate measurement, not a
+  re-run for a better number), at `61a18e5` (the same code as `b6b2409`): the
+  same command with
+  `CHAT_MODEL=gemini-3.8-flash` and the eval judge in `evals/judge.ts`
+  pinned to `gemini-3.7-flash` (a local edit, not committed), so only the
+  importer differs from Before: dev 8/15 (blueberry-muffins 1/3,
+  choc-pie-tea-towel 3/3, hundred-good-cookies 3/3, lemon-tea-bread 0/3,
+  sweet-sour-pork 1/3), holdout 14/15. Two A runs ran away to `MAX_TOKENS`
+  (`parse_error`, one dev and one holdout; the dev one at 3,647 output
+  tokens); every other A run `ok`, `STOP`, calls 1. Approach B: dev 8/15,
+  holdout 9/15.
+- Sums of both 3.8 importer runs: dev 18/30 and holdout 29/30, against
+  12/15 and 15/15 on 3.7, with 2 runaways against 0.
+- Decision: reverted for import (owner). Both 3.8 runs fail the
+  acceptance rule: dev fell in both, and holdout fell in the isolated run.
+  `DEFAULT_MODEL` in `server/recipeImport.ts` stays `gemini-3.7-flash`;
+  the other `CHAT_MODEL` defaults, including `evals/judge.ts`, move to
+  3.8, so later `ocrCompare` runs judge with 3.8 unless `CHAT_MODEL` is
+  set.
+- Run by: agent, model `gemini-3.7-flash` (before) and `gemini-3.8-flash`
+  (after).
+
 ## 2026-10-08 — Kitchen profile equipment wording
 
 - Change: the Generate kitchen-profile rule said "use only the equipment the

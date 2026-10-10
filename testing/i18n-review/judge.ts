@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { type GoogleGenAI, Type } from '@google/genai';
 import { LANG_NAMES, type Lang } from './catalog.ts';
 
-export const JUDGE_MODEL = 'gemini-3.7-flash';
+export const JUDGE_MODEL = 'gemini-3.8-flash';
 
 /** Most judge calls one run may make; the run stops judging at this many. */
 export const MAX_JUDGE_CALLS = 500;

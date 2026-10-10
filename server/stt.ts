@@ -219,7 +219,7 @@ export async function sttPost(req: Request): Promise<Response> {
   if (admission.kind !== 'ok') {
     return llmRefusal(admission);
   }
-  const model = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const model = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const ai = meteredAi(new GoogleGenAI({ apiKey }), admission.meter);
   try {
     const result = await ai.models.generateContent({

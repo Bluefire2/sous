@@ -36,7 +36,9 @@ export type LibrarySheet =
   /** `name` is kept so the sheet can still title itself once the collection has left the list. */
   | { kind: 'leave'; collectionId: string; name: string; error?: string }
   | { kind: 'share' }
-  | { kind: 'inviteConfirm' };
+  | { kind: 'inviteConfirm' }
+  /** `poolIds` is the visible list when the sheet opened, so a pull can't change it mid-roll. */
+  | { kind: 'roll'; poolIds: readonly string[]; pickId: string };
 
 export type LibraryFlow = { token: number; sheet: LibrarySheet };
 
@@ -51,6 +53,8 @@ export type LibraryFlowAction =
   | { type: 'openLeave'; collectionId: string; name: string }
   | { type: 'openShare' }
   | { type: 'openInviteConfirm' }
+  | { type: 'openRoll'; poolIds: readonly string[]; pickId: string }
+  | { type: 'reroll'; poolIds: readonly string[]; pickId: string }
   | { type: 'setName'; name: string }
   | { type: 'submitting'; token: number }
   | { type: 'created'; token: number; created: { id: string; name: string } }
@@ -104,6 +108,13 @@ export function libraryFlowReducer(
       return open(state, { kind: 'share' });
     case 'openInviteConfirm':
       return open(state, { kind: 'inviteConfirm' });
+    case 'openRoll':
+      return open(state, { kind: 'roll', poolIds: action.poolIds, pickId: action.pickId });
+    case 'reroll':
+      if (sheet.kind !== 'roll') {
+        return state;
+      }
+      return { ...state, sheet: { kind: 'roll', poolIds: action.poolIds, pickId: action.pickId } };
     case 'setName':
       if (sheet.kind !== 'create' && sheet.kind !== 'rename') {
         return state;

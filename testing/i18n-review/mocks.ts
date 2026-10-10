@@ -398,6 +398,10 @@ export const MOCKS = {
       })();`,
     });
   },
+  /** `Math.random` always returns 0, so a random-recipe roll picks the same recipe on every capture. */
+  randomFirst: async (context) => {
+    await context.addInitScript({ content: 'Math.random = () => 0;' });
+  },
   /**
    * No system share sheet, as in most desktop browsers, so a recipe's Share
    * copies instead. Headless Chromium has one on some platforms; a real one

@@ -106,6 +106,9 @@ export const en = {
     'This also deletes its chat history and cook log. There is no undo.',
   'library.moveTitle': 'Move “{title}”',
   'library.select': 'Select',
+  'library.roll': 'Pick a random recipe',
+  'library.rollAgain': 'Roll again',
+  'library.rollOpen': 'Open recipe',
   'library.selectRecipe': 'Select {title}',
   'library.selectedCount': {
     one: '{count} recipe selected',

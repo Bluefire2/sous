@@ -289,6 +289,15 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByRole('dialog').waitFor();
     },
   },
+  'library-roll': {
+    persona: 'member',
+    path: '/',
+    mocks: ['randomFirst'],
+    reach: async (page, ctx) => {
+      await clickButton(page, ctx.t('library.roll'));
+      await page.getByRole('dialog').locator('[aria-live] p').first().waitFor();
+    },
+  },
   'library-language-menu': {
     persona: 'member',
     path: '/',

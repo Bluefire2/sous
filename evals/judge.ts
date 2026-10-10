@@ -58,7 +58,7 @@ async function judgeOnce(
   golden: ImportedRecipe,
 ): Promise<string> {
   const result = await ai.models.generateContent({
-    model: process.env.CHAT_MODEL || 'gemini-3.7-flash',
+    model: process.env.CHAT_MODEL || 'gemini-3.8-flash',
     contents:
       'You compare a recipe extracted from source text to a golden RecipeDraft. ' +
       'Decide if the extraction is close enough. Do not require exact JSON equality.\n\n' +

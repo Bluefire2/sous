@@ -100,7 +100,7 @@ export async function agentPost(req: Request): Promise<Response> {
   }
 
   const messages = replayCards(parsed.value.messages, library);
-  const modelName = process.env.CHAT_MODEL || 'gemini-3.7-flash';
+  const modelName = process.env.CHAT_MODEL || 'gemini-3.8-flash';
   const stop = new AbortController();
   const deadline = AbortSignal.timeout(AGENT_WALL_MS);
   const signal = AbortSignal.any([deadline, stop.signal]);

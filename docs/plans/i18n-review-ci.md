@@ -81,12 +81,42 @@ reachable from personas.
   planned recordings and `--record` mode; see its results.
 - **Only the judge calls Gemini.** The workflow passes `GEMINI_API_KEY` to
   the judge step, not to the test server.
-- **Judge model: `gemini-3.7-flash`.** The spike confirmed it: Flash-Lite
+- **Judge model: `gemini-3.8-flash`** since 2026-10-08 (recalibrated, next
+  bullet); the spike and the calibration runs in step 3 used
+  `gemini-3.7-flash`. The spike chose Flash over Flash-Lite, which
   reported 11 false blockers on 9 clean pairs (collection names and tags as
   "left in English", language names in the picker, a spacing artifact of the
   page text), and its pass/fail is not usable. Structured output,
   temperature 0, default thinking. Calls that answer 429 or 5xx are retried
   three times with backoff (the spike hit one 503).
+- **Recalibration on `gemini-3.8-flash` (2026-10-08, PR #173).**
+  `calibration.ts` on the same seed and catalog, three runs on
+  3.8 and two controls on 3.7 (`JUDGE_MODEL` changed locally for the
+  control, not committed). Planted defects confirmed: 3.8 12, 11 (missed
+  "Выбор") and 11 (one clipped button seen only) of 12; 3.7 11 (missed
+  "Выбор") and 11 (one clipped button seen only) of 12. Both "left in
+  English" plants were confirmed in every run. Confirmed false blockers on
+  the 30 clean pairs: on 3.8, the `zh-Hans` `import-preview` label 份量
+  (`common.servings`, against the glossary's 份) in 3 of 3 runs, and the
+  `uk` library header's "Приготування" read as a people control in 1; on
+  3.7, 份量 in 1 of 2 runs. So the check passed 0 of 3 times on 3.8 and 1
+  of 2 on 3.7. Recall is about the same; 3.8 holds the servings glossary
+  entry against 份量 every time. A Chinese speaker confirmed on 2026-10-09
+  that the judge is right: 份量 is the amount in one serving, and
+  减少份量 / 增加份量 read as a smaller or larger serving, not fewer or
+  more servings. 份量 was a `KNOWN_REAL` entry in `calibration.ts`
+  until the catalog was fixed in its own change. With it, a sixth run on
+  3.8: 12 of 12 planted defects confirmed, no false blocker on the 30
+  clean pairs, 57 calls. So the judge moves to 3.8.
+  On 2026-10-09 the API answered a `gemini-3.7-flash` request with
+  `modelVersion: gemini-3.8-flash` (3.7 is deprecated). `calibration.ts`
+  does not record `modelVersion`, so the two 3.7 controls above may also
+  have run on 3.8; their difference from the 3.8 runs may be judge noise.
+- **份量 fixed (2026-10-09).** `zh-Hans` now says 份数 (and 减少份数 /
+  增加份数) wherever the English means a number of servings, and
+  `KNOWN_REAL` is empty again. Calibration on 3.8 after the fix: 11 of 12
+  planted defects confirmed ("Выбор" seen only), no false blocker on the
+  30 clean pairs, 55 calls.
 - **The judge reads the rubric and glossary from their sources.** The rubric
   bullets come from the README's "Rubric" section and the register and
   glossary from the constitution's "Register and glossary" decision, read at

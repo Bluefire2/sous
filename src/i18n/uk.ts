@@ -91,6 +91,9 @@ export const uk: Messages = {
     'Разом із рецептом буде видалено історію чату та журнал приготувань. Скасувати це не можна.',
   'library.moveTitle': 'Перемістити «{title}»',
   'library.select': 'Вибрати',
+  'library.roll': 'Випадковий рецепт',
+  'library.rollAgain': 'Кинути ще раз',
+  'library.rollOpen': 'Відкрити рецепт',
   'library.selectRecipe': 'Вибрати «{title}»',
   'library.selectedCount': {
     one: 'Вибрано {count} рецепт',
