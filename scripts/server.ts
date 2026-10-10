@@ -263,9 +263,10 @@ async function handleRequest(
     if (publicPage && method === 'GET') {
       // Link-preview tags for a live link (server/publicPreview.ts); null
       // serves the plain shell below. HEAD skips the lookup and describes the
-      // plain shell; crawlers fetch with GET.
-      const html = await previewHtml(decodedPath, {
-        readIndex: () => readFile(resolve(staticRoot, 'index.html'), 'utf8'),
+      // plain shell; crawlers fetch with GET. The raw path, because the SPA
+      // routes on it: an encoded slash must not change which page is described.
+      const html = await previewHtml(rawPath, {
+        readIndex: () => readIndexHtml(resolve(staticRoot, 'index.html')),
         origin: publicOrigin,
         deps: liveVisitorDependencies,
       });
@@ -715,6 +716,23 @@ async function serveIfFile(
   }
   await sendFile(nodeRes, filePath, urlPath, method, 200);
   return true;
+}
+
+const indexHtmlCache = new Map<string, { mtimeMs: number; html: string }>();
+
+/**
+ * `index.html` for link previews, read again only when the file changes (a
+ * rebuild under `dev:test --static`); the image's copy never does.
+ */
+async function readIndexHtml(path: string): Promise<string> {
+  const { mtimeMs } = await stat(path);
+  const cached = indexHtmlCache.get(path);
+  if (cached !== undefined && cached.mtimeMs === mtimeMs) {
+    return cached.html;
+  }
+  const html = await readFile(path, 'utf8');
+  indexHtmlCache.set(path, { mtimeMs, html });
+  return html;
 }
 
 async function sendFile(

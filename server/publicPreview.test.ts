@@ -113,6 +113,12 @@ describe('previewPath', () => {
     });
   });
 
+  it('refuses an escaped path, which the SPA routes as a different page', () => {
+    expect(previewPath(`/p/${COLLECTION_TOKEN}%2Fr%2F${LISTED}`)).toBeNull();
+    expect(previewPath(`/p/${COLLECTION_TOKEN}%2F`)).toBeNull();
+    expect(previewPath(`/p/${COLLECTION_TOKEN.slice(1)}%63`)).toBeNull();
+  });
+
   it('refuses every other shape', () => {
     for (const path of [
       '/p',
@@ -134,10 +140,19 @@ describe('previewText', () => {
     expect(previewText('  a\n\tb\u0000c\u0085d  ', 50)).toBe('a b c d');
   });
 
-  it('cuts by code point and never splits a surrogate pair', () => {
+  it('cuts by character as people see it, never inside one', () => {
     expect(previewText('🍝🍝🍝🍝', 3)).toBe('🍝🍝…');
     expect(previewText('abc', 3)).toBe('abc');
     expect(previewText('ab cd', 4)).toBe('ab…');
+    const family = '👨‍👩‍👧';
+    expect(previewText(family.repeat(3), 3)).toBe(family.repeat(3));
+    expect(previewText(family.repeat(4), 3)).toBe(`${family.repeat(2)}…`);
+    expect(previewText('é'.repeat(4), 3)).toBe('éé…');
+    expect(previewText('🇺🇦🇺🇦🇺🇦', 2)).toBe('🇺🇦…');
+  });
+
+  it('drops bidi controls', () => {
+    expect(previewText('a‮b⁦c⁩‏d؜', 50)).toBe('abcd');
   });
 
   it('treats a non-string as empty', () => {
@@ -307,6 +322,27 @@ describe('previewHtml', () => {
       throw new Error('PUBLIC_ORIGIN');
     };
     expect(await previewHtml(`/p/${RECIPE_TOKEN}`, { readIndex, origin: noOrigin, deps: deps(world()) })).toBeNull();
+  });
+
+  it('serves the plain shell without a lookup while too many are still running', async () => {
+    const releases: Array<() => void> = [];
+    const slow = deps(world());
+    const readLink = slow.readLink;
+    slow.readLink = (id) =>
+      new Promise((resolve) => releases.push(() => resolve(readLink(id))));
+    const options = { readIndex, origin, deps: slow, timeoutMs: 10, maxInFlight: 2 };
+    expect(await previewHtml(`/p/${COLLECTION_TOKEN}`, options)).toBeNull();
+    expect(await previewHtml(`/p/${COLLECTION_TOKEN}`, options)).toBeNull();
+    expect(releases).toHaveLength(2);
+
+    // Both abandoned lookups still hold their slots.
+    expect(await previewHtml(`/p/${COLLECTION_TOKEN}`, options)).toBeNull();
+    expect(releases).toHaveLength(2);
+
+    for (const release of releases) release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const fast = { readIndex, origin, deps: deps(world()), maxInFlight: 2 };
+    expect(await previewHtml(`/p/${COLLECTION_TOKEN}`, fast)).toContain('content="Weeknights"');
   });
 
   it('gives up on a slow lookup, and a late failure is not unhandled', async () => {

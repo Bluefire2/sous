@@ -29,6 +29,12 @@ import { isLiveDoc, isUuid } from './store.ts';
  * it just gets no tags.
  */
 export const PREVIEW_LOOKUP_TIMEOUT_MS = 500;
+/**
+ * Lookups still running on this instance, including ones a request already
+ * gave up on. Past the cap a page gets the plain shell without a lookup, so a
+ * slow store or a burst of `/p` requests cannot pile up unauthenticated reads.
+ */
+export const MAX_PREVIEW_LOOKUPS_IN_FLIGHT = 20;
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 200;
 
@@ -38,7 +44,12 @@ export type PreviewMeta = { title: string; description?: string; imageUrl?: stri
 
 export type PreviewDependencies = PublicReadDependencies & RecipeLinkReadDependencies;
 
-/** `/p/<token>` or `/p/<token>/r/<recipeId>`, with one trailing slash allowed; null for any other shape. */
+/**
+ * `/p/<token>` or `/p/<token>/r/<recipeId>`, with one trailing slash allowed;
+ * null for any other shape. Takes the path as sent, not decoded: the SPA routes
+ * on the raw path, so `/p/<token>%2Fr%2F<id>` is a token page there, not a
+ * recipe page. A token and a recipe id never need escaping, so a `%` is refused.
+ */
 export function previewPath(pathname: string): PreviewPath | null {
   const parts = (pathname.endsWith('/') ? pathname.slice(0, -1) : pathname).split('/');
   // ['', 'p', token] or ['', 'p', token, 'r', recipeId]
@@ -54,17 +65,28 @@ export function previewPath(pathname: string): PreviewPath | null {
   return null;
 }
 
-/** One line of plain text, at most `max` code points, `…` when cut. */
+const graphemes = new Intl.Segmenter('und', { granularity: 'grapheme' });
+
+/**
+ * One line of plain text, at most `max` characters as people see them
+ * (graphemes, so an emoji sequence or an accented letter is never split),
+ * `…` when cut. Bidi controls are dropped so recipe text cannot reorder the
+ * preview around it.
+ */
 export function previewText(raw: unknown, max: number): string {
   if (typeof raw !== 'string') {
     return '';
   }
-  const flat = raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim();
-  const points = Array.from(flat);
-  if (points.length <= max) {
+  const flat = raw
+    .replace(/[؜‎‏‪-‮⁦-⁩]/g, '')
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const parts = Array.from(graphemes.segment(flat), (part) => part.segment);
+  if (parts.length <= max) {
     return flat;
   }
-  return `${points.slice(0, max - 1).join('').trimEnd()}…`;
+  return `${parts.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
 function escapeAttribute(value: string): string {
@@ -163,28 +185,38 @@ export type PreviewHtmlOptions = {
   origin: () => string;
   deps: PreviewDependencies;
   timeoutMs?: number;
+  maxInFlight?: number;
 };
 
 const TIMED_OUT = Symbol('timed out');
 
+let lookupsInFlight = 0;
+
 /**
  * The shell with preview tags for a resolved public page, or null: serve the
- * plain shell. A slow lookup is abandoned after `timeoutMs`; a store error
- * logs its class name only.
+ * plain shell. `pathname` is the request path as sent (see `previewPath`). A
+ * slow lookup is abandoned after `timeoutMs`; a store error logs its class
+ * name only.
  */
 export async function previewHtml(
   pathname: string,
   options: PreviewHtmlOptions,
 ): Promise<string | null> {
   const path = previewPath(pathname);
-  if (path === null) {
+  if (path === null || lookupsInFlight >= (options.maxInFlight ?? MAX_PREVIEW_LOOKUPS_IN_FLIGHT)) {
     return null;
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const lookup = resolvePreview(path, options.origin(), options.deps);
-    // An abandoned lookup may still fail; it must not become an unhandled rejection.
-    lookup.catch(() => undefined);
+    lookupsInFlight += 1;
+    // An abandoned lookup may still fail; it must not become an unhandled
+    // rejection, and it holds its slot until it settles.
+    void lookup
+      .catch(() => undefined)
+      .finally(() => {
+        lookupsInFlight -= 1;
+      });
     const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
       timer = setTimeout(() => resolve(TIMED_OUT), options.timeoutMs ?? PREVIEW_LOOKUP_TIMEOUT_MS);
     });
