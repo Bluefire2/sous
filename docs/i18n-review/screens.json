@@ -602,7 +602,7 @@
   {
     "id": "assistant-shopping-list",
     "route": "/assistant",
-    "setup": "Signed in, with a shopping-list card already on screen. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
+    "setup": "Signed in, with a shopping-list card already on screen. The basil line ends with an optional label. If that state is not already showing, do not send a message to create it; mark skipped: needs data.",
     "needsData": true
   },
   {

@@ -10,6 +10,7 @@ function formatQty(quantity: number): string {
 
 function itemLine(
   item: ShoppingListData['sections'][number]['items'][number],
+  optionalLabel: string,
 ): string {
   const parts: string[] = [];
   if (item.quantity !== undefined) {
@@ -23,10 +24,17 @@ function itemLine(
   if (item.note) {
     line += ` (${item.note})`;
   }
+  if (item.optional) {
+    line += ` · ${optionalLabel}`;
+  }
   return line;
 }
 
-function buildPlainText(data: ShoppingListData, recipesHeading: string): string {
+function buildPlainText(
+  data: ShoppingListData,
+  recipesHeading: string,
+  optionalLabel: string,
+): string {
   const lines: string[] = [data.title, ''];
   if (data.recipes.length > 0) {
     lines.push(recipesHeading);
@@ -38,7 +46,7 @@ function buildPlainText(data: ShoppingListData, recipesHeading: string): string 
   for (const section of data.sections) {
     lines.push(section.name);
     for (const item of section.items) {
-      lines.push(`- ${itemLine(item)}`);
+      lines.push(`- ${itemLine(item, optionalLabel)}`);
     }
     lines.push('');
   }
@@ -57,10 +65,11 @@ export default function ShoppingListCard({
   onToggle: (itemKey: string) => void;
 }) {
   const tr = useT();
+  const optionalLabel = tr('recipe.optionalIngredient');
   const copyAsText = () => {
     try {
       navigator.clipboard
-        .writeText(buildPlainText(data, tr('assistant.recipesHeading')))
+        .writeText(buildPlainText(data, tr('assistant.recipesHeading'), optionalLabel))
         .catch(() => {
           // ignore clipboard failures
         });
@@ -111,7 +120,7 @@ export default function ShoppingListCard({
                         onChange={() => onToggle(item.key)}
                         className="mt-0.5 shrink-0"
                       />
-                      <span>{itemLine(item)}</span>
+                      <span>{itemLine(item, optionalLabel)}</span>
                     </label>
                   </li>
                 );

@@ -12,6 +12,7 @@ export type ShoppingListData = {
       quantity?: number;
       unit?: string;
       note?: string;
+      optional?: true;
       recipeIds: string[];
     }[];
   }[];
@@ -138,6 +139,14 @@ export function normalizeShoppingList(
         }
         normalized.note = itemEntry.note;
       }
+      if (itemEntry.optional !== undefined) {
+        if (typeof itemEntry.optional !== 'boolean') {
+          return { ok: false, error: 'invalid optional' };
+        }
+        if (itemEntry.optional) {
+          normalized.optional = true;
+        }
+      }
       const recipeIdsRaw = itemEntry.recipeIds;
       if (!Array.isArray(recipeIdsRaw)) {
         return { ok: false, error: 'recipeIds required' };
@@ -165,7 +174,8 @@ export function shoppingListHistoryText(data: ShoppingListData): string {
           ? `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`
           : 'as needed';
       const recipes = item.recipeIds.join(', ');
-      lines.push(`${section.name}: ${item.item} — ${qty} (${recipes})`);
+      const optional = item.optional ? ', optional' : '';
+      lines.push(`${section.name}: ${item.item} — ${qty}${optional} (${recipes})`);
     }
   }
   return lines.join('\n');
@@ -208,6 +218,7 @@ export const shoppingListCard: CardSpec<AgentLibrary, ShoppingListData> = {
                   quantity: { type: 'number' },
                   unit: { type: 'string' },
                   note: { type: 'string' },
+                  optional: { type: 'boolean' },
                   recipeIds: { type: 'array', items: { type: 'string' } },
                 },
                 required: ['key', 'item', 'recipeIds'],
@@ -221,7 +232,8 @@ export const shoppingListCard: CardSpec<AgentLibrary, ShoppingListData> = {
     required: ['title', 'recipes', 'sections'],
   },
   rule:
-    'Call show_shopping_list whenever the user asks for a shopping or grocery list, after you have called combine_ingredients.',
+    'Call show_shopping_list whenever the user asks for a shopping or grocery list, after you have called combine_ingredients. ' +
+    'Set optional: true on an item whose combined line is optional, and keep it a separate item from a required line of the same ingredient.',
   normalize: normalizeShoppingList,
   historyText: shoppingListHistoryText,
 };

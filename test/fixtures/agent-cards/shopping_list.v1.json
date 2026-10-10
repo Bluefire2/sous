@@ -83,6 +83,48 @@
       }
     },
     {
+      "ok": true,
+      "args": {
+        "title": "Optional extras",
+        "recipes": [{ "id": "r1" }],
+        "sections": [
+          {
+            "name": "Produce",
+            "items": [
+              { "key": "basil", "item": "Basil", "optional": true, "recipeIds": ["r1"] },
+              { "key": "lemon", "item": "Lemon", "quantity": 1, "optional": false, "recipeIds": ["r1"] }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "title": "Optional extras",
+        "recipes": [{ "id": "r1", "title": "Library title", "servings": 4 }],
+        "sections": [
+          {
+            "name": "Produce",
+            "items": [
+              { "key": "basil", "item": "Basil", "optional": true, "recipeIds": ["r1"] },
+              { "key": "lemon", "item": "Lemon", "quantity": 1, "recipeIds": ["r1"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ok": false,
+      "args": {
+        "title": "Bad optional",
+        "recipes": [{ "id": "r1" }],
+        "sections": [
+          {
+            "name": "Produce",
+            "items": [{ "key": "basil", "item": "Basil", "optional": "yes", "recipeIds": ["r1"] }]
+          }
+        ]
+      }
+    },
+    {
       "ok": false,
       "args": {
         "title": "Bad key",

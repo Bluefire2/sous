@@ -5,6 +5,8 @@ export type CombinedLine = {
   quantity?: number;
   unit?: string;
   asNeeded?: true;
+  /** Optional in every source recipe; never merged with a required line of the same item. */
+  optional?: true;
   sourceRecipeIds: string[];
 };
 
@@ -168,10 +170,11 @@ function mergeKey(normalizedItem: string, family: UnitFamily, otherCanonical: st
 }
 
 type Accumulator =
-  | { kind: 'asNeeded'; item: string; sourceRecipeIds: Set<string> }
+  | { kind: 'asNeeded'; item: string; optional: boolean; sourceRecipeIds: Set<string> }
   | {
       kind: 'quantified';
       item: string;
+      optional: boolean;
       family: UnitFamily;
       otherCanonical: string;
       baseTotal: number;
@@ -217,12 +220,15 @@ export function combineIngredients(
         if (normalized === '') {
           continue;
         }
+        // An optional ingredient keeps its own line, so it never inflates a required total.
+        const optional = ing.optional === true;
+        const optionalKey = optional ? '\0optional' : '';
         const hasQuantity = ing.quantity !== undefined && Number.isFinite(ing.quantity);
         if (!hasQuantity) {
-          const key = `${normalized}\0asNeeded`;
+          const key = `${normalized}\0asNeeded${optionalKey}`;
           let entry = acc.get(key);
           if (!entry || entry.kind !== 'asNeeded') {
-            entry = { kind: 'asNeeded', item: ing.item.trim(), sourceRecipeIds: new Set() };
+            entry = { kind: 'asNeeded', item: ing.item.trim(), optional, sourceRecipeIds: new Set() };
             acc.set(key, entry);
           }
           entry.sourceRecipeIds.add(recipe.id);
@@ -235,12 +241,13 @@ export function combineIngredients(
           ? { family: 'metric_mass' as const, canonical: 'g', toBase: resolved.toBase * GRAMS_PER_OUNCE }
           : resolved;
         if (unitInfo.family === 'other') {
-          const key = mergeKey(normalized, 'other', unitInfo.canonical);
+          const key = mergeKey(normalized, 'other', unitInfo.canonical) + optionalKey;
           let entry = acc.get(key);
           if (!entry || entry.kind !== 'quantified') {
             entry = {
               kind: 'quantified',
               item: ing.item.trim(),
+              optional,
               family: 'other',
               otherCanonical: unitInfo.canonical,
               baseTotal: 0,
@@ -254,12 +261,13 @@ export function combineIngredients(
           continue;
         }
         const baseAmount = qty * unitInfo.toBase;
-        const key = mergeKey(normalized, unitInfo.family, '');
+        const key = mergeKey(normalized, unitInfo.family, '') + optionalKey;
         let entry = acc.get(key);
         if (!entry || entry.kind !== 'quantified') {
           entry = {
             kind: 'quantified',
             item: ing.item.trim(),
+            optional,
             family: unitInfo.family,
             otherCanonical: '',
             baseTotal: 0,
@@ -281,6 +289,7 @@ export function combineIngredients(
       lines.push({
         item: entry.item,
         asNeeded: true,
+        ...(entry.optional ? { optional: true as const } : {}),
         sourceRecipeIds: [...entry.sourceRecipeIds].sort(),
       });
       continue;
@@ -294,6 +303,7 @@ export function combineIngredients(
       item: entry.item,
       quantity,
       unit,
+      ...(entry.optional ? { optional: true as const } : {}),
       sourceRecipeIds: [...entry.sourceRecipeIds].sort(),
     };
     lines.push(line);
