@@ -811,6 +811,20 @@ export const en = {
   'public.saveRateLimited': "You've saved a lot of recipes in the last hour. Try again later.",
   'public.signInToSave': 'Sous members can sign in to save a copy of their own.',
   'public.recipeLinkMissing': "This link doesn't work any more. The recipe may have been unshared or deleted.",
+  // Browser tab titles, "<screen> · Sous" (docs/plans/screen-titles.md).
+  // `{name}` is a recipe title or collection name: the person's own text.
+  'title.named': '{name} · Sous',
+  'title.collections': 'Collections · Sous',
+  'title.cooks': 'Cooks · Sous',
+  'title.import': 'Import recipe · Sous',
+  'title.newRecipe': 'New recipe · Sous',
+  'title.editRecipe': 'Edit recipe · Sous',
+  'title.logCook': 'Log a cook · Sous',
+  'title.editCook': 'Edit cook · Sous',
+  'title.settings': 'Settings · Sous',
+  'title.suggest': 'Suggest a feature · Sous',
+  'title.assistant': 'Assistant · Sous',
+  'title.admin': 'Invitations · Sous',
 } as const satisfies Record<string, string | PluralForms>;
 
 type EnMessages = typeof en;

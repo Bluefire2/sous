@@ -85,7 +85,8 @@ describe('catalog parity', () => {
       const forms = isPlural(translated) ? Object.values(translated) : [translated];
       for (const form of forms) {
         // A pattern with no words, like "{converted} ({original})", has nothing to translate.
-        if (!/\p{L}/u.test(form.replace(/\{\w+\}/g, ''))) continue;
+        // Nor does the brand name, which is the same in every language ("{name} · Sous").
+        if (!/\p{L}/u.test(form.replace(/\{\w+\}/g, '').replace(/\bSous\b/g, ''))) continue;
         expect(englishForms, `${locale}.${key}`).not.toContain(form);
       }
     }

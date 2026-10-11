@@ -20,8 +20,10 @@ import {
   sourceLink,
   StepsSection,
 } from '../components/RecipeBody';
+import DocumentTitle from '../components/DocumentTitle';
 import ShareRecipeButton from '../components/ShareRecipeButton';
 import { useUnitSystem } from '../lib/accountPreferences';
+import { APP_TITLE, namedTitle } from '../lib/documentTitle';
 import { TranslateIcon } from '../lib/icons';
 import { publicPhotoUrl } from '../lib/publicApi';
 import { useSession } from '../lib/session';
@@ -119,6 +121,9 @@ export default function PublicRecipe() {
 
   return (
     <div className={recipePageClass}>
+      <DocumentTitle
+        title={recipe !== undefined && join.state.kind !== 'missing' ? namedTitle(t, recipe.title) : APP_TITLE}
+      />
       <header className="pt-4 print:hidden">{topBar}</header>
       {content}
       {lockedOpen && (

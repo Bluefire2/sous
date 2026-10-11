@@ -54,7 +54,7 @@ const CLEAN_STATES = [
  */
 const KNOWN_REAL: { state: string; lang: Lang; text: string; why: string }[] = [];
 
-type Plant = { text: [from: string, to: string] } | { truncate: string };
+type Plant = { text: [from: string, to: string] } | { truncate: string } | { title: string };
 
 interface Defect {
   rubricItem: RubricItem;
@@ -68,6 +68,8 @@ interface Defect {
 const DEFECTS: Defect[] = [
   { rubricItem: 'Nothing left in English', state: 'import-preview', lang: 'uk', plant: { text: ['Зберегти', 'Save'] }, expect: 'Save' },
   { rubricItem: 'Nothing left in English', state: 'settings', lang: 'zh-Hans', plant: { text: ['语言', 'Language'] }, expect: 'Language' },
+  // The tab title, which only the page's <title> carries (docs/plans/screen-titles.md).
+  { rubricItem: 'Nothing left in English', state: 'cooks-populated', lang: 'ru', plant: { title: 'Cooks · Sous' }, expect: 'Cooks' },
   { rubricItem: 'Sense in context', state: 'library-populated', lang: 'ru', plant: { text: ['Выбрать', 'Выбор'] }, expect: 'Выбор' },
   // The Move button as "emigrate" (#117 made Share an icon, so its "分享" is no longer text to plant in).
   { rubricItem: 'Sense in context', state: 'library-select', lang: 'zh-Hans', plant: { text: ['移动', '移民'] }, expect: '移民' },
@@ -106,6 +108,10 @@ const DEFECTS: Defect[] = [
 ];
 
 async function plant(page: Page, what: Plant): Promise<void> {
+  if ('title' in what) {
+    await page.evaluate(`document.title = ${JSON.stringify(what.title)}`);
+    return;
+  }
   if ('text' in what) {
     const [from, to] = what.text;
     const count = (await page.evaluate(`(() => {
@@ -169,7 +175,7 @@ async function main(): Promise<void> {
   const shot = async (state: string, lang: Lang, extra?: Plant): Promise<Shot> => {
     const result = await captureState(browser, capturable(state, extra), lang, env);
     if (result.status === 'failed') throw new Error(`${state} ${lang}: ${result.error}`);
-    return { png: result.png, pageText: result.pageText };
+    return { png: result.png, pageText: result.pageText, title: result.title };
   };
 
   const tasks: { task: JudgeTask; defect?: Defect }[] = [];

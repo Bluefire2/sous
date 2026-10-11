@@ -60,6 +60,8 @@ export interface Judgment {
 export interface Shot {
   png: Buffer;
   pageText: string;
+  /** The browser tab title (`document.title`), app text the screenshot cannot show. */
+  title: string;
 }
 
 export interface JudgeTask {
@@ -165,7 +167,7 @@ export const JUDGE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          text: { type: Type.STRING, description: 'The exact app text with the problem, copied from the page text.' },
+          text: { type: Type.STRING, description: 'The exact app text with the problem, copied from the page text or the tab title.' },
           problem: { type: Type.STRING },
           suggestion: { type: Type.STRING },
           severity: { type: Type.STRING, enum: ['blocker', 'nit'] },
@@ -181,7 +183,18 @@ export const JUDGE_SCHEMA = {
 
 const LAYOUT_NOTE = `Layout: judge spacing, truncation, and overflow only from the screenshot. The page text below is extracted text and loses the spacing between elements, so never report spacing from it.`;
 
-const QUOTE_NOTE = `For each issue, copy "text" exactly from the page text below, so it can be found in the catalog. Return pass: true and no issues when the screen is fine.`;
+const QUOTE_NOTE = `For each issue, copy "text" exactly from the page text or the tab title below, so it can be found in the catalog. Return pass: true and no issues when the screen is fine.`;
+
+/**
+ * The tab title, labelled: the screenshot cannot show it, and a page's text
+ * never includes it (docs/plans/screen-titles.md).
+ */
+function tabTitleBlock(title: string, image: string): string {
+  return `Browser tab title of ${image} (the page's <title>, shown in the browser tab, history, and bookmarks, not in the screenshot). It is the app's own text and is judged like the page text, except a recipe or collection name in it:
+"""
+${title}
+"""`;
+}
 
 /** The prompt for a target language, judged against the English capture. */
 export function targetPrompt(task: Pick<JudgeTask, 'lang' | 'setup' | 'target'>, sources: JudgeSources): string {
@@ -214,7 +227,9 @@ ${QUOTE_NOTE}
 Page text of image 2:
 """
 ${task.target.pageText}
-"""`;
+"""
+
+${tabTitleBlock(task.target.title, 'image 2')}`;
 }
 
 /** The English column of a full run: sense in context and layout only (docs/i18n-review/README.md). */
@@ -241,7 +256,9 @@ ${QUOTE_NOTE}
 Page text:
 """
 ${task.target.pageText}
-"""`;
+"""
+
+${tabTitleBlock(task.target.title, 'the screen')}`;
 }
 
 export function isRetryable(err: unknown): boolean {

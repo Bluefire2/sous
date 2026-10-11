@@ -4,6 +4,7 @@ import { languageName, sameLanguage, useLocale, useT } from '../i18n';
 import { StoredPhotoImage } from '../components/BlobImage';
 import ChatPanel from '../components/ChatPanel';
 import CookLogCard from '../components/CookLogCard';
+import DocumentTitle from '../components/DocumentTitle';
 import ImportWarningBanner from '../components/ImportWarningBanner';
 import ShareRecipeButton from '../components/ShareRecipeButton';
 import ShareRecipeControl from '../components/ShareRecipeSheet';
@@ -23,6 +24,7 @@ import {
 import { useUnitSystem } from '../lib/accountPreferences';
 import { libraryHref, libraryPathFromState } from '../lib/collectionHref';
 import { useCookLogs } from '../lib/cookLogStore';
+import { APP_TITLE, namedTitle } from '../lib/documentTitle';
 import { SpinnerIcon, TranslateIcon } from '../lib/icons';
 import {
   useRecipe,
@@ -141,19 +143,27 @@ export default function RecipeView() {
     void sync().finally(() => setSettledId(id));
   }, [recipe, id]);
 
+  // Every state titles the tab; until there is a recipe to name, it is the app's.
   if (recipe === undefined) {
     return (
-      <div className="p-6 text-center text-ink-muted">{t('common.loadingRecipe')}</div>
+      <div className="p-6 text-center text-ink-muted">
+        <DocumentTitle title={APP_TITLE} />
+        {t('common.loadingRecipe')}
+      </div>
     );
   }
   if (recipe === null) {
     if (settledId !== id) {
       return (
-        <div className="p-6 text-center text-ink-muted">{t('recipe.lookingFor')}</div>
+        <div className="p-6 text-center text-ink-muted">
+          <DocumentTitle title={APP_TITLE} />
+          {t('recipe.lookingFor')}
+        </div>
       );
     }
     return (
       <div className="p-6 text-center text-ink-muted">
+        <DocumentTitle title={APP_TITLE} />
         {t('common.recipeNotFound')}{' '}
         <Link to="/" className="underline hover:text-ink">
           {t('common.backToLibrary')}
@@ -267,6 +277,8 @@ export default function RecipeView() {
 
   return (
     <div className={recipePageClass}>
+      {/* The title as shown, so a translated view titles the tab in the translation. */}
+      <DocumentTitle title={namedTitle(t, displayRecipe.title)} />
       <header className="py-4">
         <div className="flex items-center justify-between print:hidden">
           <Link to={libraryBack} className={backLink}>

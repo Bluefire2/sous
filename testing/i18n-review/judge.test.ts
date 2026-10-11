@@ -21,13 +21,13 @@ import {
 const repoRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const sources = readSources(repoRoot);
 
-const shot = (pageText: string) => ({ png: Buffer.from('png'), pageText });
+const shot = (pageText: string, title = 'Sous') => ({ png: Buffer.from('png'), pageText, title });
 const task = (lang: JudgeTask['lang'] = 'uk'): JudgeTask => ({
   state: 'settings',
   lang,
   setup: 'Settings while signed in.',
   reference: shot('Settings'),
-  target: shot(lang === 'en' ? 'Settings' : 'Налаштування'),
+  target: lang === 'en' ? shot('Settings', 'Settings · Sous') : shot('Налаштування', 'Налаштування · Sous'),
 });
 const issue = (text: string, severity: JudgeIssue['severity'] = 'blocker'): JudgeIssue => ({
   text,
@@ -104,6 +104,16 @@ describe('prompts', () => {
     expect(prompt).toContain('Check two things only');
     expect(prompt).not.toContain('Register and glossary');
     expect(prompt).toContain(sources.notJudged);
+  });
+
+  // The screenshot cannot show the tab title (docs/plans/screen-titles.md).
+  it('gives both judgings the tab title, labelled as one', () => {
+    const target = targetPrompt(task('uk'), sources);
+    expect(target).toContain('Browser tab title of image 2');
+    expect(target).toMatch(/Browser tab title of image 2[^]*"""\nНалаштування · Sous\n"""$/);
+    const english = englishPrompt(task('en'), sources);
+    expect(english).toMatch(/Browser tab title of the screen[^]*"""\nSettings · Sous\n"""$/);
+    expect(target).toContain('from the page text or the tab title');
   });
 
   it('sends two images for a target language and one for English', async () => {
