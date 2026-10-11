@@ -25,6 +25,13 @@
     80% { transform: translateY(-3px) rotate(460deg); }
     100% { transform: translateY(0) rotate(450deg); }
   }
+
+  /* ScreenLoadBar: a third-width bar sweeping across while a screen loads. */
+  --animate-screen-load: screen-load 1.1s ease-in-out infinite;
+  @keyframes screen-load {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(300%); }
+  }
 }
 
 @layer theme {
