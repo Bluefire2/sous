@@ -826,6 +826,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/recipe-links.md` | Merged (#176). Share one recipe by an unlisted link (same `/p/<token>` space as public collections); members save their own copy with `Recipe.savedFrom`. |
 | `docs/plans/llm-budget.md` | Merged (#169). $10 per member per UTC day on model spend, counted in Firestore from reported usage; chat text caps. TTL policy on `llmUsage` `expireAt` applied 2026-10-09. |
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
+| `docs/plans/route-code-splitting.md` | Merged. Every screen but PublicReturn is a lazy chunk (`lazyScreen` in `src/lib/chunkReload.ts`); a chunk missing after a deploy reloads the tab once, guarded by `sous.chunkReloadAt` in sessionStorage. |
 | `docs/plans/screen-titles.md` | Merged. Browser tab titles per screen with React 19's `<title>`: "<screen> · Sous" from the catalogs, or a recipe or collection name; "Sous" for the library. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
