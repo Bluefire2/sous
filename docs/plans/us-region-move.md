@@ -95,7 +95,10 @@ Remove-Item Env:FIRESTORE_DATABASE_ID
 
 Compare the `comparable` total and each line. For the five TTL groups only
 `unexpired` must match: the TTL sweep may delete expired documents on either
-side at any time.
+side at any time. Both runs must use the same instant: the script prints
+`as-of <ISO time>`, and a later run passes it back as `--as-of=<ISO time>`.
+MCP access tokens expire within the hour, so two runs that each use "now"
+differ during the window without any data lost.
 
 1. **Freeze EU.** `& $GC run services update sous --region=europe-west1 --ingress=internal --project=$P`.
    `https://sous.kyrylo.lol/` now answers 404. The EU service stays frozen
@@ -104,8 +107,9 @@ side at any time.
    run to the 300 s timeout and then writes `llmUsage`), and a managed export
    is not a consistent snapshot, so wait until the EU request log
    (`resource.type="cloud_run_revision"`, `resource.labels.location="europe-west1"`)
-   has been quiet for five minutes. Then count `(default)`. That count, not
-   the preflight one, is what `sous-us` must match.
+   has been quiet for five minutes. Then count `(default)` and record the
+   `as-of` time it prints. That count, not the preflight one, is what
+   `sous-us` must match.
 2. **Export.** `& $GC firestore export gs://sous-migration-eu-cooking-assistant-508423/<UTC yyyymmdd-hhmm> --database='(default)' --project=$P`.
    The command waits for the operation and prints its name.
 3. **Copy the export.** `& $GC storage cp -r gs://sous-migration-eu-cooking-assistant-508423/<ts> gs://sous-migration-us-cooking-assistant-508423/ --project=$P`.
@@ -144,8 +148,8 @@ side at any time.
    with the EU one: runtime SA, one container, limits, timeout 300,
    concurrency 80, startup CPU boost, max instances, the service-level
    `run.googleapis.com/maxScale`, and env names (never values). Apply any
-   difference with `gcloud run services update`. Count `sous-us` and compare
-   it with the step 1 count. Check the `run.app` URL serves `/` and `/about`,
+   difference with `gcloud run services update`. Count `sous-us` with
+   `--as-of=<the step 1 time>` and compare it with the step 1 count. Check the `run.app` URL serves `/` and `/about`,
    and the new service's log shows a clean start.
 8. **Local env.** Every `.env.local` (the main checkout and each worktree
    copy) gets `FIRESTORE_DATABASE_ID=sous-us` and
