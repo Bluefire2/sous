@@ -42,7 +42,10 @@ SERVICE_NAME="${SERVICE_NAME:-sous}"
 REPO_NAME="${REPO_NAME:-sous}"
 IMAGE_REPO="${REGION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
 
-info() { printf '==> %s\n' "$*"; }
+# stderr, like warn and die: secrets are read inside $(...), and a progress
+# line on stdout there becomes part of the secret. The first US deploy caught
+# "Reading secrets off …" in four values that way (docs/plans/us-region-move.md).
+info() { printf '==> %s\n' "$*" >&2; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -159,7 +162,7 @@ strip_controls() {
 
 # Environment wins, then the deployed service, then an interactive prompt. Never echoed.
 resolve_secret() {
-  local name="$1" prompt="$2" value orig
+  local name="$1" prompt="$2" value orig from_service=""
   value="${!name:-}"
   if [[ -n "$value" ]]; then
     info "${name} taken from the environment"
@@ -167,6 +170,7 @@ resolve_secret() {
     value="$(read_deployed_env "$name" || true)"
     if [[ -n "$value" ]]; then
       info "${name} reused from the deployed service"
+      from_service=1
     elif [[ -t 0 ]]; then
       printf '%s: ' "$prompt" >&2
       read -rs value
@@ -176,6 +180,10 @@ resolve_secret() {
   orig="$value"
   value="$(strip_controls "$value")"
   if [[ -n "$orig" && "$value" != "$orig" ]]; then
+    # A value read back off the service is already clean; a control
+    # character there means the read picked up something else.
+    [[ -z "$from_service" ]] \
+      || die "${name} as read off the service held non-printable characters; refusing to deploy a value that is not the deployed one."
     warn "${name} contained non-printable characters (often a Git Bash paste artefact); they were stripped."
   fi
   [[ -n "$value" ]] || die "${name} is not set, is not on the deployed service, and there is no terminal to prompt on. Export it and re-run."
@@ -185,7 +193,7 @@ resolve_secret() {
 
 # Same precedence as resolve_secret, but an empty value is allowed (optional secrets).
 resolve_optional_secret() {
-  local name="$1" prompt="$2" value orig
+  local name="$1" prompt="$2" value orig from_service=""
   value="${!name:-}"
   if [[ -n "$value" ]]; then
     info "${name} taken from the environment"
@@ -193,6 +201,7 @@ resolve_optional_secret() {
     value="$(read_deployed_env "$name" || true)"
     if [[ -n "$value" ]]; then
       info "${name} reused from the deployed service"
+      from_service=1
     elif [[ -t 0 ]]; then
       printf '%s: ' "$prompt" >&2
       read -rs value
@@ -202,6 +211,10 @@ resolve_optional_secret() {
   orig="$value"
   value="$(strip_controls "$value")"
   if [[ -n "$orig" && "$value" != "$orig" ]]; then
+    # A value read back off the service is already clean; a control
+    # character there means the read picked up something else.
+    [[ -z "$from_service" ]] \
+      || die "${name} as read off the service held non-printable characters; refusing to deploy a value that is not the deployed one."
     warn "${name} contained non-printable characters (often a Git Bash paste artefact); they were stripped."
   fi
   if [[ -n "$value" ]]; then

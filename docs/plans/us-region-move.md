@@ -141,7 +141,10 @@ differ during the window without any data lost.
    `deploy.sh` reads the secrets from the EU service (the frozen one still
    answers `describe`) and deploys to `us-central1`. Without the variable it
    refuses rather than mint a new `SESSION_SECRET`, which would sign every
-   device out. Every secret must log "reused from the deployed service".
+   device out. Every secret must log "reused from the deployed service", and
+   a "non-printable characters … stripped" warning means a value is wrong:
+   stop (see Record, 2026-10-15). After the deploy, compare a hash of each
+   env value on both services; never print the values.
    Afterwards: `git -C /c/Users/chern/Documents/cook worktree remove /c/Users/chern/Documents/sous-deploy`.
 7. **Check the new service's shape.** Compare
    `& $GC run services describe sous --region=us-central1 --project=$P --format=json`
@@ -209,3 +212,6 @@ Writes made in the US after cutover do not flow back. In order:
 | Date | Step |
 |---|---|
 | 2026-10-14 | Phases 0–1 done; phase 2 PR opened. |
+| 2026-10-15 | #190 merged (`06dd29c`). EU frozen 04:55Z (no requests since 04:40Z). Export and import of 353 documents; `sous-us` matched `(default)` line for line at as-of `04:55:45.633Z` (353, comparable 347). Photos 4 objects, 753 847 bytes on both sides. |
+| 2026-10-15 | First deploy stopped during the build: `info()` printed to stdout, so "Reading secrets off …" was captured into `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ALLOWED_EMAILS` and `GEMINI_API_KEY` (the "non-printable characters stripped" warnings were its newline). Nothing was deployed. Redeployed the image it had built (`sous:20261015-050149`, `06dd29c`) with `SKIP_BUILD=1` and the EU env passed in the environment: revision `sous-00001-9pg`, every value's hash equal to the EU one. `info()` now writes to stderr. |
+| 2026-10-15 | Domain mapping moved to `us-central1` at 05:07Z; DNS unchanged (`ghs.googlehosted.com`). All 14 `.env.local` files point at `sous-us`. |
