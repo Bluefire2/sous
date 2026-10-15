@@ -31,7 +31,7 @@ jobs:
     environment: production
     env:
       PROJECT: cooking-assistant-508423
-      REGION: europe-west1
+      REGION: us-central1
       SERVICE_NAME: sous
     steps:
       - uses: actions/checkout@v7

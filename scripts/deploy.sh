@@ -18,9 +18,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT="${PROJECT:-cooking-assistant-508423}"
-# europe-west1, not europe-west2: Cloud Run refuses domain mappings there, and
-# a service deployed in the wrong region cannot be mapped without redeploying.
-REGION="${REGION:-europe-west1}"
+# us-central1, where the members are (moved from europe-west1 in 2026-10,
+# docs/plans/us-region-move.md). The region must support Cloud Run domain
+# mappings (europe-west2, for one, does not): a service deployed in the wrong
+# region cannot be mapped without redeploying. Firestore (sous-us) and the
+# photo bucket are in the same region; a region change moves all three.
+REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-sous}"
 REPO_NAME="${REPO_NAME:-sous}"
 IMAGE_REPO="${REGION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
@@ -274,7 +277,7 @@ trap 'rm -f "$ENV_FILE"' EXIT
 # JSON.stringify produces a double-quoted YAML scalar and escapes quotes and
 # backslashes. Do not put the values on the node command line — they are
 # already in the environment. Single-line -e: see strip_controls.
-node -e 'const fs=require("fs");const dest=process.argv[process.argv.length-1];const fixed={PUBLIC_ORIGIN:"https://sous.kyrylo.lol",GOOGLE_CLOUD_PROJECT:"cooking-assistant-508423",PHOTO_BUCKET:"sous-photos-cooking-assistant-508423"};const keys=["GEMINI_API_KEY","AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","SESSION_SECRET","ALLOWED_EMAILS","PUBLIC_ORIGIN","GOOGLE_CLOUD_PROJECT","PHOTO_BUCKET","MAIL_FROM","OWNER_NOTIFY_EMAIL","RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"];const optional=new Set(["RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"]);const lines=keys.flatMap(k=>{const v=fixed[k]??process.env[k];if(typeof v!=="string"||v===""){if(optional.has(k))return[];process.exit(2)}return[k+": "+JSON.stringify(v)]});fs.writeFileSync(dest,lines.join("\n")+"\n");' "$(to_native_path "$ENV_FILE")" \
+node -e 'const fs=require("fs");const dest=process.argv[process.argv.length-1];const fixed={PUBLIC_ORIGIN:"https://sous.kyrylo.lol",GOOGLE_CLOUD_PROJECT:"cooking-assistant-508423",FIRESTORE_DATABASE_ID:"sous-us",PHOTO_BUCKET:"sous-photos-us-cooking-assistant-508423"};const keys=["GEMINI_API_KEY","AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","SESSION_SECRET","ALLOWED_EMAILS","PUBLIC_ORIGIN","GOOGLE_CLOUD_PROJECT","FIRESTORE_DATABASE_ID","PHOTO_BUCKET","MAIL_FROM","OWNER_NOTIFY_EMAIL","RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"];const optional=new Set(["RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"]);const lines=keys.flatMap(k=>{const v=fixed[k]??process.env[k];if(typeof v!=="string"||v===""){if(optional.has(k))return[];process.exit(2)}return[k+": "+JSON.stringify(v)]});fs.writeFileSync(dest,lines.join("\n")+"\n");' "$(to_native_path "$ENV_FILE")" \
   || die "failed to write --env-vars-file (a required secret was empty?)"
 
 info "Deploying Cloud Run service ${SERVICE_NAME} in ${REGION}"
