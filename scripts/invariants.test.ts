@@ -360,6 +360,8 @@ describe('account deletion covers every collection (server/accountDeletion.ts)',
         if (path === 'server/store.ts' && arg === 'kind') continue;
         // accountDeletion.ts takes the name as a PersonalTopLevel, typed against the registry.
         if (path === 'server/accountDeletion.ts' && arg === 'collection') continue;
+        // firestore-counts.ts walks the registry's keys, typed as keyof FIRESTORE_COLLECTIONS.
+        if (path === 'scripts/firestore-counts.ts' && arg === 'collection') continue;
         const name = /^(['"`])[^'"`$]+\1$/.test(arg) ? arg.slice(1, -1) : constants.get(arg);
         if (name === undefined || !Object.hasOwn(FIRESTORE_COLLECTIONS, name)) {
           offenders.push(`${path}: .collection(${arg})`);

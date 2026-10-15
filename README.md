@@ -429,10 +429,21 @@ their client push it back on the next sync.
       `members/{sub}.status` to `revoked`. Step 1 only revoked them in
       `sous-us`, and the script refuses to apply while the EU copy still says
       `active`. The EU service is frozen, so there is no cache to wait out.
-   2. Run this script with `FIRESTORE_DATABASE_ID='(default)'` in front of
-      `node`. Do not use an empty value: in PowerShell that unsets the
-      variable, and `--env-file` then fills in `sous-us` again. The first
-      line must say `cooking-assistant-508423/(default)`.
+   2. Run this script against `(default)`. The first line must say
+      `cooking-assistant-508423/(default)`. In PowerShell:
+
+      ```powershell
+      $env:FIRESTORE_DATABASE_ID = '(default)'
+      node --env-file=.env.local scripts/delete-account-data.ts <SUB>
+      node --env-file=.env.local scripts/delete-account-data.ts <SUB> --apply
+      Remove-Item Env:FIRESTORE_DATABASE_ID
+      ```
+
+      In Git Bash, put `FIRESTORE_DATABASE_ID='(default)'` in front of each
+      `node` instead. Never use an empty value: PowerShell unsets an empty
+      variable, and `--env-file` then fills in `sous-us` again. Clear the
+      variable afterwards, or the next run in that shell also reads
+      `(default)`.
    3. Run step 5 on `gs://sous-photos-cooking-assistant-508423` as well.
 
    `--apply` refuses while `members/{sub}` is still active or any email

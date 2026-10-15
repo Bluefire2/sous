@@ -19,6 +19,10 @@ set -euo pipefail
 #
 #   SECRETS_FROM_REGION=europe-west1 bash scripts/deploy.sh
 #
+# Inline only, never exported: a later deploy would keep reading secrets off
+# the old service and, since the env map is replaced whole, revert any change
+# made on the new one.
+#
 # Runs in Git Bash on Windows and unchanged in Cloud Shell. Does not create the
 # project, enable APIs, or create the Artifact Registry repo; see
 # docs/plans/sous-subdomain.md step 1 for those.
