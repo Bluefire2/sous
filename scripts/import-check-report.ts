@@ -11,7 +11,9 @@
  */
 import { compactImportCheck, IMPORT_WARNING_CODES } from '../server/importWarnings.ts';
 import { getStoreFirestore } from '../server/store.ts';
+import { firestoreTarget } from '../server/env.ts';
 
+console.error(`Firestore: ${firestoreTarget()}`);
 const db = getStoreFirestore();
 const users = await db.collection('users').get();
 

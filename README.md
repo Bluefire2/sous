@@ -420,6 +420,14 @@ their client push it back on the next sync.
    node --env-file=.env.local scripts/delete-account-data.ts <SUB> --apply
    ```
 
+   The first line it prints is the database. It must say
+   `cooking-assistant-508423/sous-us`; `(default)` means `.env.local` lacks
+   `FIRESTORE_DATABASE_ID=sous-us` and the script is reading the old
+   `europe-west1` copy. Until that copy is deleted
+   (`docs/plans/us-region-move.md`, phase 4), also run steps 4–5 against it:
+   this script with `FIRESTORE_DATABASE_ID=` set empty, and step 5 on
+   `gs://sous-photos-cooking-assistant-508423`.
+
    `--apply` refuses while `members/{sub}` is still active or any email
    stored for them (profile, membership, access request) is in
    `ALLOWED_EMAILS`, read from `.env.local`, which must match the deployed

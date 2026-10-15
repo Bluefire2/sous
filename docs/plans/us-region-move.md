@@ -65,8 +65,12 @@ and a first photo copy (4 objects, same byte count).
 `scripts/deploy.sh` defaults to `us-central1` and writes
 `FIRESTORE_DATABASE_ID=sous-us` and the US bucket into the env map;
 `.github/workflows/deploy.yml`, `.env.example`, `/privacy`, README, AGENTS.md
-and two constitution sentences name the new region. Merged just before the
-window, because the next deploy from `main` targets the US.
+and two constitution sentences name the new region. `deploy.sh` also takes
+`SECRETS_FROM_REGION` and refuses to mint a `SESSION_SECRET` when there is no
+service to read one from (unless `ALLOW_NEW_SESSION_SECRET=1`), and every
+script that opens Firestore prints its target (`firestoreTarget()` in
+`server/env.ts`). Merged just before the window, because the next deploy from
+`main` targets the US.
 
 ## Phase 3 — Cutover
 
@@ -80,34 +84,51 @@ beforehand.
 2. `gcloud firestore export gs://sous-migration-eu-…/<ts> --database='(default)'`.
 3. `gcloud storage cp -r` the export to the US migration bucket.
 4. `gcloud firestore import gs://sous-migration-us-…/<ts> --database=sous-us`.
-5. Photos: `gcloud storage rsync -r` EU → US again.
-6. First US deploy. `deploy.sh` reads secrets back from the service in
-   `REGION`, and there is none in `us-central1` yet, so it would prompt for
-   each and **mint a new `SESSION_SECRET`** (signing every device out). Run it
-   with the EU service's env preloaded (environment wins over the service
-   read) and confirm every secret logs "taken from the environment".
-7. Compare the new service with the EU one (SA, container count, limits, env
-   names) and count `sous-us` against the baseline.
-8. Move the domain mapping: delete in `europe-west1`, create in
-   `us-central1`, wait for `CertificateProvisioned=True`. DNS is unchanged
-   while the target stays `ghs.googlehosted.com`.
-9. Verify on the domain: sign-in, library, a photo, Refresh, one chat message
-   (no `Content-Length` or `Content-Encoding` on `/api/chat`), one import, MCP.
+5. Photos: `gcloud storage rsync -r --delete-unmatched-destination-objects`
+   EU → US, so a photo deleted in the EU since the first copy is not
+   resurrected.
+6. First US deploy from merged `main`:
+   `SECRETS_FROM_REGION=europe-west1 bash scripts/deploy.sh`. `deploy.sh`
+   reads secrets back from the service in `SECRETS_FROM_REGION` (the frozen
+   EU one still answers `describe`) and deploys to `REGION`. Without it there
+   is no service to read in `us-central1`, and it now refuses rather than
+   mint a new `SESSION_SECRET`, which would sign every device out. Every
+   secret must log "reused from the deployed service".
+7. Compare the new service with the EU one (SA, container count, limits,
+   timeout, concurrency, CPU boost, max instances, env names; never values),
+   and apply any difference with `gcloud run services update`. Count
+   `sous-us` against the baseline.
+8. Every `.env.local` (the main checkout and each worktree copy) gets
+   `FIRESTORE_DATABASE_ID=sous-us` and `PHOTO_BUCKET=sous-photos-us-cooking-assistant-508423`.
+   Without them, `dev:api` and every script quietly use the frozen EU copy;
+   the scripts print `Firestore: <project>/<database>` first, so check it.
+9. Move the domain mapping: delete in `europe-west1`, create in
+   `us-central1`, wait for `CertificateProvisioned=True` (minutes, sometimes
+   hours; HTTPS is down meanwhile). DNS is unchanged while the target stays
+   `ghs.googlehosted.com`.
+10. Verify on the domain: sign-in, library, a photo, Refresh, one chat message
+    (no `Content-Length` or `Content-Encoding` on `/api/chat`), one import, MCP.
+11. Delete the export from both migration buckets as soon as step 10 passes:
+    each is a full copy of every member's data. The buckets have 7-day soft
+    delete, so the objects are gone for good a week later.
 
 ## Phase 4 — Cleanup
 
 - After a clean week: delete the EU Cloud Run service, the EU Artifact
-  Registry repo, and both migration buckets.
+  Registry repo, and both (by then empty) migration buckets.
 - After 30 days: delete the EU photo bucket and the EU `(default)` database,
   which holds stale personal data. **Until then, an account deletion request
-  must also run `scripts/delete-account-data.ts` with `FIRESTORE_DATABASE_ID`
-  unset (the EU copy) and remove the EU bucket prefix.**
+  also covers the EU copy (README, deletion steps 4–5): run
+  `FIRESTORE_DATABASE_ID= node --env-file=.env.local scripts/delete-account-data.ts <sub>`
+  (an empty value means `(default)`; the script prints which database it is
+  using) and remove the member's prefix in the EU bucket.**
 
 ## Rollback (until phase 4 deletes the EU side)
 
 Writes made in the US after cutover do not flow back. Move the domain mapping
-back to `europe-west1`, set the EU service's ingress to `all`, set the US
-service's to `internal`, and revert this PR.
+back to `europe-west1` (another certificate wait), set the EU service's
+ingress to `all`, set the US service's to `internal`, revert this PR, and
+restore `.env.local`.
 
 ## Record
 

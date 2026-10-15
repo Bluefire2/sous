@@ -64,6 +64,17 @@ describe('runDeleteAccountData arguments', () => {
       expect(h.calls).toEqual([]);
     }
   });
+
+  it('prints the database first, once the sub is valid', async () => {
+    const h = harness();
+    const target = vi.fn(() => 'p/sous-us');
+    expect(await runDeleteAccountData([SUB], { ...h.deps, target })).toBe(0);
+    expect(h.out[0]).toBe('Firestore: p/sous-us');
+
+    const bad = harness();
+    expect(await runDeleteAccountData(['a/b'], { ...bad.deps, target })).toBe(2);
+    expect(bad.out).toEqual([]);
+  });
 });
 
 describe('runDeleteAccountData dry run', () => {

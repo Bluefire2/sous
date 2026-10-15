@@ -102,7 +102,7 @@ blocked on exactly this.
 | | |
 | --- | --- |
 | GCP project | `cooking-assistant-508423` |
-| Database | Firestore Native, `(default)`, region `europe-west1` (the same database as the library) |
+| Database | Firestore Native, named database `sous-us`, region `us-central1` (the same database as the library; `(default)` in `europe-west1` until the 2026-10 move, `us-region-move.md`) |
 | Collection | `importFeedback`, top level. Not under `users/{uid}`. |
 | Document id | A UUID v4 that the client generates for each report card. A retry from the same card reuses it. |
 | Writer | Only `POST /api/import-feedback` (`server/importFeedback.ts`), through the Admin SDK, with `create()`. A repeat id counts as success. No client writes Firestore directly. |

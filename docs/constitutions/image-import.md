@@ -182,7 +182,7 @@ The Gemini API key must belong to a **paid-tier** AI Studio project. Google's
 pricing page says free-tier content is used to improve its products; paid-tier
 content is not. The Gemini Developer API does not pin processing to
 `us-central1`. If data residency becomes a requirement, the answer is to move
-import to Vertex AI in the required region, which is an amendment here, not a quiet change
+import to Vertex AI in the EU, which is an amendment here, not a quiet change
 of endpoint.
 
 **Why:** people photograph notes that may include names, family details, or

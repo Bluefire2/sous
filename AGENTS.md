@@ -830,7 +830,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 | `docs/plans/route-code-splitting.md` | Merged. Every screen but PublicReturn is a lazy chunk (`lazyScreen` in `src/lib/chunkReload.ts`); a chunk missing after a deploy reloads the tab once, guarded by `sous.chunkReloadAt` in sessionStorage. |
 | `docs/plans/screen-titles.md` | Merged. Browser tab titles per screen with React 19's `<title>`: "<screen> · Sous" from the catalogs, or a recipe or collection name; "Sous" for the library. |
-| `docs/plans/us-region-move.md` | Merged. Cloud Run, Firestore (named database `sous-us`) and photos moved from `europe-west1` to `us-central1`. The EU resources are kept as the rollback and deleted later (dates in the plan). |
+| `docs/plans/us-region-move.md` | Merged (#190). Deploys target `us-central1`: Cloud Run, Firestore named database `sous-us`, and the US photo bucket. The cutover and the later deletion of the EU resources are recorded in the plan. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not

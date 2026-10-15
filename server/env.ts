@@ -56,6 +56,19 @@ export function firestoreConfig(): { projectId: string; databaseId?: string } {
   return { projectId };
 }
 
+/**
+ * Where Firestore calls go, for a script to print before it reads or writes:
+ * an unset FIRESTORE_DATABASE_ID quietly means `(default)`, which is not the
+ * production database (`docs/plans/us-region-move.md`).
+ */
+export function firestoreTarget(env: NodeJS.ProcessEnv = process.env): string {
+  const emulator = env.FIRESTORE_EMULATOR_HOST?.trim();
+  const projectId = env.GOOGLE_CLOUD_PROJECT?.trim() || '(no GOOGLE_CLOUD_PROJECT)';
+  const databaseId = env.FIRESTORE_DATABASE_ID?.trim() || '(default)';
+  const where = `${projectId}/${databaseId}`;
+  return emulator ? `emulator ${emulator}, ${where}` : where;
+}
+
 export function photoBucket(): string | null {
   const raw = process.env.PHOTO_BUCKET?.trim();
   if (!raw) {

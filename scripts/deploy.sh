@@ -10,6 +10,14 @@ set -euo pipefail
 # deployed service, so a redeploy needs nothing in the environment.
 # SESSION_SECRET is only generated when describe succeeds and the var was
 # absent — regenerating it on a flaky describe would sign every device out.
+# With no service at all it is generated only under
+# ALLOW_NEW_SESSION_SECRET=1, so a first deploy in a new region cannot sign
+# everyone out by accident.
+#
+# First deploy of an existing app in a new region: read the secrets off the
+# old region's service instead of typing them,
+#
+#   SECRETS_FROM_REGION=europe-west1 bash scripts/deploy.sh
 #
 # Runs in Git Bash on Windows and unchanged in Cloud Shell. Does not create the
 # project, enable APIs, or create the Artifact Registry repo; see
@@ -24,6 +32,8 @@ PROJECT="${PROJECT:-cooking-assistant-508423}"
 # region cannot be mapped without redeploying. Firestore (sous-us) and the
 # photo bucket are in the same region; a region change moves all three.
 REGION="${REGION:-us-central1}"
+# Where secrets are read back from; the deploy itself always goes to REGION.
+SECRETS_REGION="${SECRETS_FROM_REGION:-$REGION}"
 SERVICE_NAME="${SERVICE_NAME:-sous}"
 REPO_NAME="${REPO_NAME:-sous}"
 IMAGE_REPO="${REGION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
@@ -96,7 +106,9 @@ load_deployed_service_describe() {
   local json stderr err
   err=0
   stderr="$(mktemp)"
-  json="$(gcloud run services describe "$SERVICE_NAME" --region="$REGION" \
+  [[ "$SECRETS_REGION" == "$REGION" ]] \
+    || info "Reading secrets off ${SERVICE_NAME} in ${SECRETS_REGION}; deploying to ${REGION}"
+  json="$(gcloud run services describe "$SERVICE_NAME" --region="$SECRETS_REGION" \
     --project="$PROJECT" --format=json 2>"$stderr")" || err=$?
   if [[ "$err" -ne 0 ]]; then
     if grep -qiE 'NOT_FOUND|could not find|does not exist|Resource .* was not found' "$stderr"; then
@@ -219,6 +231,8 @@ resolve_session_secret() {
         fi
         ;;
       no_service)
+        [[ "${ALLOW_NEW_SESSION_SECRET:-}" == "1" ]] \
+          || die "no ${SERVICE_NAME} service in ${SECRETS_REGION} to read SESSION_SECRET from. A new secret signs every device out: for a move between regions, set SECRETS_FROM_REGION to the old region; for a brand-new app, set ALLOW_NEW_SESSION_SECRET=1."
         value="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64"))')"
         info "SESSION_SECRET generated (32 random bytes); save it in a password manager — changing it signs every device out"
         ;;
