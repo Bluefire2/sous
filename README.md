@@ -424,9 +424,16 @@ their client push it back on the next sync.
    `cooking-assistant-508423/sous-us`; `(default)` means `.env.local` lacks
    `FIRESTORE_DATABASE_ID=sous-us` and the script is reading the old
    `europe-west1` copy. Until that copy is deleted
-   (`docs/plans/us-region-move.md`, phase 4), also run steps 4–5 against it:
-   this script with `FIRESTORE_DATABASE_ID=` set empty, and step 5 on
-   `gs://sous-photos-cooking-assistant-508423`.
+   (`docs/plans/us-region-move.md`, phase 4), also clear it:
+   1. In the console, open the `(default)` database and set
+      `members/{sub}.status` to `revoked`. Step 1 only revoked them in
+      `sous-us`, and the script refuses to apply while the EU copy still says
+      `active`. The EU service is frozen, so there is no cache to wait out.
+   2. Run this script with `FIRESTORE_DATABASE_ID='(default)'` in front of
+      `node`. Do not use an empty value: in PowerShell that unsets the
+      variable, and `--env-file` then fills in `sous-us` again. The first
+      line must say `cooking-assistant-508423/(default)`.
+   3. Run step 5 on `gs://sous-photos-cooking-assistant-508423` as well.
 
    `--apply` refuses while `members/{sub}` is still active or any email
    stored for them (profile, membership, access request) is in

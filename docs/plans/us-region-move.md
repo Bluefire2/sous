@@ -80,10 +80,18 @@ beforehand.
 
 1. Freeze EU: `gcloud run services update sous --region=europe-west1
    --ingress=internal`. It stays frozen until deleted, so its `run.app` URL
-   cannot write to `(default)` again.
+   cannot write to `(default)` again. Requests already running finish after
+   the switch (a chat stream can last the 300 s timeout and then writes
+   `llmUsage`), and a managed export is not a consistent snapshot, so wait
+   until the EU request log has been quiet for five minutes. Then count
+   `(default)`: that count, not the preflight one, is what `sous-us` must match.
 2. `gcloud firestore export gs://sous-migration-eu-…/<ts> --database='(default)'`.
 3. `gcloud storage cp -r` the export to the US migration bucket.
-4. `gcloud firestore import gs://sous-migration-us-…/<ts> --database=sous-us`.
+4. Check `sous-us` is empty, then
+   `gcloud firestore import gs://sous-migration-us-…/<ts> --database=sous-us`.
+   An import overwrites by id and never removes documents, so a second
+   attempt (after a rollback, say) needs an emptied or recreated `sous-us`,
+   or documents deleted in the EU meanwhile come back.
 5. Photos: `gcloud storage rsync -r --delete-unmatched-destination-objects`
    EU → US, so a photo deleted in the EU since the first copy is not
    resurrected.
@@ -97,7 +105,7 @@ beforehand.
 7. Compare the new service with the EU one (SA, container count, limits,
    timeout, concurrency, CPU boost, max instances, env names; never values),
    and apply any difference with `gcloud run services update`. Count
-   `sous-us` against the baseline.
+   `sous-us` against the count taken after the freeze (step 1).
 8. Every `.env.local` (the main checkout and each worktree copy) gets
    `FIRESTORE_DATABASE_ID=sous-us` and `PHOTO_BUCKET=sous-photos-us-cooking-assistant-508423`.
    Without them, `dev:api` and every script quietly use the frozen EU copy;
@@ -118,17 +126,26 @@ beforehand.
   Registry repo, and both (by then empty) migration buckets.
 - After 30 days: delete the EU photo bucket and the EU `(default)` database,
   which holds stale personal data. **Until then, an account deletion request
-  also covers the EU copy (README, deletion steps 4–5): run
-  `FIRESTORE_DATABASE_ID= node --env-file=.env.local scripts/delete-account-data.ts <sub>`
-  (an empty value means `(default)`; the script prints which database it is
-  using) and remove the member's prefix in the EU bucket.**
+  also covers the EU copy, as README deletion step 4 describes: mark
+  `members/{sub}` revoked in `(default)` (the frozen copy still says
+  `active`, so `--apply` refuses), run the script with
+  `FIRESTORE_DATABASE_ID='(default)'` (never empty: PowerShell unsets an
+  empty variable and `--env-file` puts `sous-us` back), check it prints
+  `cooking-assistant-508423/(default)`, and remove the member's prefix in the
+  EU bucket.**
 
 ## Rollback (until phase 4 deletes the EU side)
 
-Writes made in the US after cutover do not flow back. Move the domain mapping
-back to `europe-west1` (another certificate wait), set the EU service's
-ingress to `all`, set the US service's to `internal`, revert this PR, and
-restore `.env.local`.
+Writes made in the US after cutover do not flow back. In order:
+
+1. Delete the domain mapping in `us-central1`, then create it in
+   `europe-west1` (a domain maps to one service at a time; another
+   certificate wait).
+2. Set the EU service's ingress to `all` and the US service's to `internal`.
+3. Revert this PR and restore `.env.local`. Do not redeploy the EU service
+   with `REGION=europe-west1 bash scripts/deploy.sh` before the revert: the
+   env map's fixed values do not follow `REGION`, so it would point the EU
+   service at `sous-us` and the US bucket.
 
 ## Record
 
