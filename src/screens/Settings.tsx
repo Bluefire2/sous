@@ -4,6 +4,7 @@ import KitchenProfileSection from '../components/KitchenProfileSection';
 import { isSupportedLocale, localeDisplayName, SUPPORTED_LOCALES, t as translate, useLocale, useT } from '../i18n';
 import { setUnitSystem, useUnitSystem } from '../lib/accountPreferences';
 import { exportLibrary, importLibrary } from '../lib/backup';
+import { type BuildVersion, fetchBuildVersion, shortCommit } from '../lib/buildVersion';
 import {
   disconnectApp,
   listConnectedApps,
@@ -262,6 +263,41 @@ function ConnectedApps() {
           {copied ? t('admin.copied') : t('admin.copy')}
         </button>
       </div>
+    </section>
+  );
+}
+
+/** The commit the server was built from, so the owner can tell which one is live. */
+function BuildVersionSection() {
+  const t = useT();
+  // undefined while loading, null when the server does not know its build.
+  const [version, setVersion] = useState<BuildVersion | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchBuildVersion().then((v) => {
+      if (!cancelled) setVersion(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section>
+      <h2 className="mt-8 text-lg font-semibold">{t('settings.version')}</h2>
+      {version === undefined && <p className="mt-1 text-sm text-ink-muted">{t('common.loading')}</p>}
+      {version === null && <p className="mt-1 text-sm text-ink-muted">{t('settings.versionUnknown')}</p>}
+      {version && (
+        <div className="mt-1 text-sm text-ink-muted">
+          <p title={version.commit}>
+            {t('settings.versionCommit', { commit: shortCommit(version.commit) })}
+          </p>
+          <p title={new Date(version.builtAt).toISOString()}>
+            {t('settings.versionBuilt', { time: relativeAgoLabel(version.builtAt) })}
+          </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -561,6 +597,8 @@ export default function Settings() {
           </Link>
         </>
       )}
+
+      <BuildVersionSection />
 
       <footer className="mt-8">
         <a

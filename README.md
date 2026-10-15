@@ -322,6 +322,32 @@ HTML.
 The Vercel deployment at <https://cook-seven-mu.vercel.app> still exists and
 is untouched. Chat and import there return 401.
 
+### Which commit is live
+
+```bash
+curl https://sous.kyrylo.lol/api/version
+```
+
+answers `{"commit":"<full sha>","builtAt":"<UTC time>"}` (no session needed,
+never cached), and the server logs `Sous build: <sha> (built <time>)` once at
+startup, so each Cloud Run revision's logs say what it runs. Compare it with
+`git log --oneline` or open it with `git show <sha>`.
+
+Both deploy paths run [`scripts/write-build-info.sh`](scripts/write-build-info.sh)
+just before the image is built: `scripts/deploy.sh` before
+`gcloud builds submit`, and the Deploy workflow before `docker build`. It
+writes `server/build-info.json` (gitignored), which `COPY server` puts in the
+image. After deploying, `deploy.sh` reads `/api/version` back and warns if it
+reports a different commit.
+
+- A commit ending in `-dirty` was built with uncommitted changes to tracked
+  files, so the live code is not exactly that commit. Untracked files are not
+  checked.
+- `null` means the image was built without the file: a local run, the CI
+  image, or a build that skipped both deploy paths.
+- `SKIP_BUILD=1` run by hand deploys an image whose build info was recorded
+  when it was built, and skips the read-back.
+
 ## How it's put together
 
 ```

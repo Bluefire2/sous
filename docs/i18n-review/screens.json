@@ -126,6 +126,18 @@
     "needsData": true
   },
   {
+    "id": "settings-version",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to the bottom: the Version section just above the About, Privacy, and Terms links, with a muted line \"Commit\" and a short hexadecimal commit id, and a muted line saying when it was built, as a relative time. The version route is mocked to report a build from a few days ago.",
+    "needsData": false
+  },
+  {
+    "id": "settings-version-unknown",
+    "route": "/settings",
+    "setup": "Settings while signed in, scrolled to the bottom: the Version section just above the About, Privacy, and Terms links, with one muted sentence saying version details are not available for this build. Test mode's server is built without build info, so this is what it shows.",
+    "needsData": false
+  },
+  {
     "id": "settings-kitchen-profile",
     "route": "/settings",
     "setup": "Settings while signed in, scrolled to Kitchen profile (after Library, before Connected apps): the intro sentence, the Allergies chips (14, Eggs selected for the member), the Diet chips (7), four labelled boxes with placeholders or saved text (foods to never include, dislikes, equipment, anything else), and Save. After pressing Save, a muted Saved shows beside the button. Only press Save against a dev server using the Firestore emulator (FIRESTORE_EMULATOR_HOST); against real Firestore, capture without saving.",

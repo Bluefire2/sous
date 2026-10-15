@@ -260,6 +260,21 @@ export const STATES: Record<string, StateEntry> = {
       await page.getByText(ctx.p('settings.connectedAppsDisconnectError')).waitFor();
     },
   },
+  'settings-version': {
+    persona: 'member',
+    path: '/settings',
+    mocks: ['buildVersionKnown'],
+    reach: async (page, ctx) => {
+      await page.getByText(ctx.t('settings.versionCommit', { commit: '24b1ce7' })).scrollIntoViewIfNeeded();
+    },
+  },
+  'settings-version-unknown': {
+    persona: 'member',
+    path: '/settings',
+    reach: async (page, ctx) => {
+      await page.getByText(ctx.t('settings.versionUnknown')).scrollIntoViewIfNeeded();
+    },
+  },
   'settings-kitchen-profile': {
     persona: 'member',
     path: '/settings',

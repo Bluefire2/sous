@@ -83,8 +83,14 @@ import {
   sharedLeavePost,
 } from '../server/grantsHttp.ts';
 import { syncPull, syncPush, syncSharedPull } from '../server/sync.ts';
+import { buildInfo } from '../server/buildInfo.ts';
 
 type ApiHandler = (req: Request) => Promise<Response>;
+
+/** The commit the image was built from (`server/buildInfo.ts`); no session needed. */
+async function versionGet(): Promise<Response> {
+  return Response.json(buildInfo, { headers: { 'Cache-Control': 'no-store' } });
+}
 
 export interface ApiRoute {
   method: string;
@@ -127,6 +133,7 @@ export const apiRoutes: readonly ApiRoute[] = [
   { method: 'POST', path: '/api/settings/kitchen', handler: withMembership(kitchenProfilePost) },
   { method: 'GET', path: '/api/settings/preferences', handler: withMembership(accountPreferencesGet) },
   { method: 'POST', path: '/api/settings/preferences', handler: withMembership(accountPreferencesPost) },
+  { method: 'GET', path: '/api/version', handler: versionGet },
 ];
 
 const PUBLIC_HTML: Record<string, string> = {
@@ -173,7 +180,18 @@ function logRedirectUriOnce(): void {
   }
 }
 
+let loggedBuild = false;
+
+function logBuildOnce(): void {
+  if (loggedBuild) {
+    return;
+  }
+  loggedBuild = true;
+  console.log(`Sous build: ${buildInfo.commit ?? 'unknown'} (built ${buildInfo.builtAt ?? 'unknown'})`);
+}
+
 export function createRequestListener(options: { staticRoot: string | null }) {
+  logBuildOnce();
   logRedirectUriOnce();
   const staticRoot = options.staticRoot === null ? null : resolve(options.staticRoot);
 
