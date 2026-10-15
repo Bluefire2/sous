@@ -63,7 +63,12 @@ function toDisplayRecipe(source: Recipe, translated: RecipeDraft): Recipe {
     title: translated.title,
     servings: translated.servings,
     ingredientSections: translated.ingredientSections,
-    steps: translated.steps,
+    // Translation returns step text only; lanes come from the stored recipe
+    // by position, as structure never changes (i18n principle 4).
+    steps: translated.steps.map((step, i) => {
+      const lane = source.steps[i]?.lane;
+      return lane === undefined ? step : { ...step, lane };
+    }),
     tags: translated.tags,
   };
   if (translated.description !== undefined) {

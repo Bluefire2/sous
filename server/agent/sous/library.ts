@@ -1,4 +1,4 @@
-import { listLiveDocs } from '../../store.ts';
+import { compactSteps, listLiveDocs } from '../../store.ts';
 
 export type IngredientSection = {
   name?: string;
@@ -14,7 +14,8 @@ export type AgentRecipe = {
   prepMinutes?: number;
   cookMinutes?: number;
   ingredientSections: IngredientSection[];
-  steps: { text: string }[];
+  /** `lane` is set on steps two cooks do at the same time. */
+  steps: { text: string; lane?: string }[];
   tags: string[];
   notes?: string;
   photoId?: string;
@@ -108,17 +109,9 @@ function parseIngredientSections(raw: unknown): IngredientSection[] {
   return sections;
 }
 
-function parseSteps(raw: unknown): { text: string }[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const steps: { text: string }[] = [];
-  for (const step of raw) {
-    if (step && typeof step === 'object' && typeof (step as { text?: unknown }).text === 'string') {
-      steps.push({ text: (step as { text: string }).text });
-    }
-  }
-  return steps;
+function parseSteps(raw: unknown): { text: string; lane?: string }[] {
+  // The same rule as every stored recipe: text plus a valid lane, nothing else.
+  return compactSteps(raw);
 }
 
 function parseTags(raw: unknown): string[] {

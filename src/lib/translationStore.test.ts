@@ -122,6 +122,19 @@ describe('translateRecipe', () => {
     expect(source.title).toBe('Carbonara');
   });
 
+  it('keeps each stored step lane on the translated text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(translatedBody('Карбонара'), { status: 200 })),
+    );
+    const source = recipe({ id: 'recipe-laned', steps: [{ text: 'Fry it.', lane: 'Sauce' }] });
+    upsertRecipe(source);
+
+    const display = await translateRecipe(source, 'uk');
+
+    expect(display.steps).toEqual([{ text: 'Смажити.', lane: 'Sauce' }]);
+  });
+
   it('misses the cache when updatedAt changes', async () => {
     let n = 0;
     const fetchMock = vi.fn(async () => {

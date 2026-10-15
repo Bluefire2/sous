@@ -381,6 +381,7 @@ describe('applyPullChanges', () => {
           recipeId: 'revoked',
           servings: 2,
           currentStep: 1,
+          doneSteps: [2],
           checkedKeys: ['0-0'],
           recipeUpdatedAt: 2,
           sharedParentOwnerSub: 'owner-sub',
@@ -405,9 +406,11 @@ describe('applyPullChanges', () => {
       'role',
     ]);
     expect(acc.chat.get('c1')).not.toHaveProperty('sharedParentOwnerSub');
+    // `doneSteps` is the deliberate addition from docs/plans/parallel-steps.md.
     expect(Object.keys(acc.cook.get('revoked')!).sort()).toEqual([
       'checkedKeys',
       'currentStep',
+      'doneSteps',
       'recipeId',
       'recipeUpdatedAt',
       'servings',
@@ -1123,6 +1126,7 @@ describe('pullAll', () => {
                 recipeId: 'revoked-recipe',
                 servings: 2,
                 currentStep: 1,
+                doneSteps: [3],
                 checkedKeys: [],
                 recipeUpdatedAt: 1,
                 sharedParentOwnerSub: 'owner-sub',
@@ -1149,9 +1153,11 @@ describe('pullAll', () => {
       'recipeId',
       'role',
     ]);
+    // `doneSteps` is the deliberate addition from docs/plans/parallel-steps.md.
     expect(Object.keys(snapshot.cook.get('revoked-recipe')!).sort()).toEqual([
       'checkedKeys',
       'currentStep',
+      'doneSteps',
       'recipeId',
       'recipeUpdatedAt',
       'servings',

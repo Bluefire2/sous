@@ -2,6 +2,7 @@
  * Guards data that entered from outside the app (the update_recipe tool, a backup file)
  * and therefore has no compile-time relationship to Recipe.
  */
+import { MAX_LANES, MAX_LANE_CHARS } from './recipeSteps';
 import type { Ingredient, IngredientSection, Recipe, RecipeDraft, RecipeStep } from './types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -48,15 +49,76 @@ function normalizeIngredientSections(value: unknown): IngredientSection[] {
   return sections;
 }
 
-function normalizeSteps(value: unknown): RecipeStep[] {
+/** A lane on one line: runs of whitespace become one space, ends trimmed. */
+function oneLine(lane: string): string {
+  return lane.replace(/\s+/g, ' ').trim();
+}
+
+/** `lane` cut to `max` characters, at a word break when there is one, never inside a surrogate pair. */
+function cutLane(lane: string, max: number): string {
+  if (lane.length <= max) return lane;
+  let cut = lane.slice(0, max);
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+  const space = cut.lastIndexOf(' ');
+  if (lane[cut.length] !== ' ' && space >= max / 2) cut = cut.slice(0, space);
+  return cut.trimEnd();
+}
+
+/**
+ * Each proposed lane as it will be kept, with an overlong one cut to fit
+ * rather than dropped: a dropped lane reads as "no lane field", and
+ * `carryStepLanes` would then put the stored lane back, so a rename Ask made
+ * would silently not happen. A cut lane never takes a name another lane
+ * already has ("… 2" instead), so two lanes' steps never merge into one.
+ * `reserved` holds the stored recipe's lanes, which the carry may put back
+ * on steps that left the lane field out.
+ */
+function fittedLanes(raw: readonly string[], reserved: readonly string[]): Map<string, string> {
+  const fitted = new Map<string, string>();
+  const taken = new Set<string>(reserved);
+  for (const lane of raw) {
+    if (lane.length <= MAX_LANE_CHARS) {
+      fitted.set(lane, lane);
+      taken.add(lane);
+    }
+  }
+  for (const lane of raw) {
+    if (fitted.has(lane)) continue;
+    let fit = cutLane(lane, MAX_LANE_CHARS);
+    for (let n = 2; taken.has(fit); n += 1) {
+      fit = `${cutLane(lane, MAX_LANE_CHARS - String(n).length - 1)} ${n}`;
+    }
+    fitted.set(lane, fit);
+    taken.add(fit);
+  }
+  return fitted;
+}
+
+function normalizeSteps(value: unknown, storedLanes: readonly string[]): RecipeStep[] {
   if (!Array.isArray(value)) return [];
-  const steps: RecipeStep[] = [];
+  const entries: { text: string; lane?: string }[] = [];
   for (const step of value) {
     if (!isPlainObject(step)) continue;
     const text = nonEmptyString(step.text);
-    if (text !== undefined) steps.push({ text });
+    if (text === undefined) continue;
+    entries.push(typeof step.lane === 'string' ? { text, lane: oneLine(step.lane) } : { text });
   }
-  return steps;
+  const fitted = fittedLanes(
+    entries.flatMap((entry) => (entry.lane === undefined ? [] : [entry.lane])),
+    storedLanes,
+  );
+  // A blank lane stays '': Ask's way of saying "take this lane off", which
+  // `carryStepLanes` honours and strips. A lane past the first MAX_LANES
+  // becomes '' too, so its steps are shared rather than given a stored lane.
+  const kept = new Set<string>();
+  return entries.map(({ text, lane }) => {
+    if (lane === undefined) return { text };
+    const fit = fitted.get(lane) ?? lane;
+    if (fit === '' || kept.has(fit)) return { text, lane: fit };
+    if (kept.size >= MAX_LANES) return { text, lane: '' };
+    kept.add(fit);
+    return { text, lane: fit };
+  });
 }
 
 function normalizeTags(value: unknown): string[] {
@@ -73,7 +135,14 @@ function normalizeTags(value: unknown): string[] {
   return tags;
 }
 
-export function normalizeRecipeDraft(value: unknown): RecipeDraft | undefined {
+/**
+ * `stored` is the recipe the proposal edits, when known: a lane Ask wrote
+ * too long is then cut to a name none of its lanes has.
+ */
+export function normalizeRecipeDraft(
+  value: unknown,
+  stored?: { steps: readonly RecipeStep[] },
+): RecipeDraft | undefined {
   if (!isPlainObject(value)) return undefined;
 
   const title = nonEmptyString(value.title);
@@ -86,7 +155,10 @@ export function normalizeRecipeDraft(value: unknown): RecipeDraft | undefined {
     title,
     servings,
     ingredientSections: normalizeIngredientSections(value.ingredientSections),
-    steps: normalizeSteps(value.steps),
+    steps: normalizeSteps(
+      value.steps,
+      (stored?.steps ?? []).flatMap((step) => (step.lane === undefined ? [] : [step.lane])),
+    ),
     tags: normalizeTags(value.tags),
   };
 

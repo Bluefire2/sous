@@ -37,6 +37,28 @@ function recipe(overrides: Partial<Recipe> = {}): Recipe {
   };
 }
 
+describe('recipeToText with lanes (docs/plans/parallel-steps.md)', () => {
+  it('heads a block of parallel steps and prefixes each with its lane', () => {
+    const text = recipeToText(
+      recipe({
+        steps: [
+          { text: 'Boil water.' },
+          { text: 'Fry garlic.', lane: 'Sauce' },
+          { text: 'Cook pasta.', lane: 'Pasta' },
+          { text: 'Toss.' },
+        ],
+        notes: undefined,
+        sourceUrl: undefined,
+      }),
+      'en',
+      tFor('en'),
+    );
+    expect(text.endsWith(
+      ['Steps', '1. Boil water.', 'At the same time', '2. [Sauce] Fry garlic.', '3. [Pasta] Cook pasta.', '4. Toss.'].join('\n'),
+    )).toBe(true);
+  });
+});
+
 describe('recipeToText', () => {
   it('writes title, servings, sections, numbered steps, notes and the source in English', () => {
     expect(recipeToText(recipe(), 'en', tFor('en'))).toBe(

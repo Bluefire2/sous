@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useId, useMemo, type ReactNode } from 'react';
 import { useLocale, useT } from '../i18n';
 import { displayTemperatures, ingredientLine } from '../lib/recipeText';
 import type { RecipeTextSize } from '../lib/settings';
+import { activeSteps, isStepDone, stepBlocks, stepsWaitingForLanes } from '../lib/stepLanes';
 import type { Recipe } from '../lib/types';
 import type { UnitSystem } from '../lib/unitConversion';
 
@@ -207,19 +208,156 @@ export function IngredientsSection({
   );
 }
 
+/** One step row: a full-width button with no control inside it (i18n principle 3). */
+function StepButton({
+  index,
+  text,
+  isCurrent,
+  isDone,
+  dimmed,
+  afterLanes,
+  large,
+  onTap,
+}: {
+  index: number;
+  text: string;
+  isCurrent: boolean;
+  isDone: boolean;
+  dimmed: boolean;
+  /** A shared step that waits for lanes not finished yet (`stepsWaitingForLanes`). */
+  afterLanes: boolean;
+  /** The device's large recipe text (Settings → Cooking). */
+  large: boolean;
+  onTap: (index: number) => void;
+}) {
+  const t = useT();
+  // The current step stays one step above the others at either size.
+  const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
+  return (
+    <button
+      type="button"
+      onClick={() => onTap(index)}
+      aria-current={isCurrent ? 'step' : undefined}
+      className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink focus-visible:outline-solid print:px-0 print:py-1 print:text-ink print:opacity-100 ${
+        large ? `${largeRowText} ` : ''
+      }${
+        isCurrent
+          ? 'bg-surface ring-2 ring-amber-400'
+          : isDone
+            ? 'bg-surface-muted text-ink-subtle'
+            : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
+      } ${dimmed ? 'opacity-50' : ''}`}
+    >
+      <span
+        className={`font-semibold print:text-ink ${isCurrent ? 'text-amber-500' : 'text-ink-subtle'}`}
+      >
+        {/* Paper shows every step's number, whatever the cook progress. A
+            screen reader hears the number and "Done", not the tick. */}
+        {isDone ? (
+          <>
+            <span aria-hidden="true" className="print:hidden">
+              ✓
+            </span>
+            <span className="sr-only">{index + 1}</span>
+            <span aria-hidden="true" className="hidden print:inline">
+              {index + 1}
+            </span>
+          </>
+        ) : (
+          index + 1
+        )}
+      </span>
+      <span className="min-w-0">
+        <span className={isCurrent ? currentText : ''}>{text}</span>
+        {isDone && <span className="sr-only"> {t('common.done')}</span>}
+        {afterLanes && (
+          <span className="mt-0.5 block text-sm text-ink-muted print:hidden">
+            {t('recipe.afterEveryLane')}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Which lane this person follows when two people cook
+ * (`docs/plans/parallel-steps.md`). Only rendered for a recipe with lanes.
+ * `active` undefined is Everyone. The pick dims other lanes; it never hides
+ * a step and never changes progress.
+ */
+export function LaneChips({
+  lanes,
+  active,
+  onChange,
+}: {
+  lanes: readonly string[];
+  active: string | undefined;
+  onChange: (lane: string | undefined) => void;
+}) {
+  const t = useT();
+  const labelId = useId();
+  const chip = (pressed: boolean) =>
+    `rounded-full border px-3 py-1 text-sm font-medium shadow-sm ${
+      pressed
+        ? 'border-amber-600/70 bg-accent-soft text-ink'
+        : 'border-line bg-surface text-ink-muted hover:bg-surface-muted'
+    }`;
+  return (
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      className="mt-2 flex flex-wrap items-center gap-2 print:hidden"
+    >
+      <span id={labelId} className="text-sm text-ink-muted">
+        {t('recipe.laneChips')}
+      </span>
+      <button
+        type="button"
+        aria-pressed={active === undefined}
+        onClick={() => onChange(undefined)}
+        className={chip(active === undefined)}
+      >
+        {t('recipe.laneEveryone')}
+      </button>
+      {lanes.map((lane) => (
+        <button
+          key={lane}
+          type="button"
+          aria-pressed={active === lane}
+          onClick={() => onChange(lane)}
+          className={chip(active === lane)}
+        >
+          {lane}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function StepsSection({
   recipe,
   displayRecipe,
   currentStep,
-  onStep,
+  doneSteps,
+  onTap,
+  activeLane,
+  lanePicker,
   afterDone,
   textSize = 'normal',
   units = 'asWritten',
 }: {
   recipe: Recipe;
   displayRecipe: Recipe;
+  /** Every step before this index is done. */
   currentStep: number;
-  onStep: (step: number) => void;
+  /** Steps done ahead of `currentStep` in a parallel block. */
+  doneSteps: readonly number[];
+  onTap: (index: number) => void;
+  /** The lane this person follows; other lanes' steps are dimmed. */
+  activeLane?: string;
+  /** Shown under the heading, such as `LaneChips`. */
+  lanePicker?: ReactNode;
   /** Shown under "Done" once every step is ticked, such as the cook-log link. */
   afterDone?: ReactNode;
   /** The device's recipe text size, read by the screen (`useRecipeTextSize`). */
@@ -228,49 +366,82 @@ export function StepsSection({
   units?: UnitSystem;
 }) {
   const t = useT();
+  // Structure always comes from the stored recipe; a translation only
+  // supplies text (i18n principle 4).
+  const blocks = useMemo(() => stepBlocks(recipe.steps), [recipe.steps]);
   const large = textSize === 'large';
-  // The current step stays one step above the others at either size.
-  const currentText = large ? 'text-xl print:text-base' : 'text-lg print:text-base';
+  const progress = { currentStep, doneSteps };
+  const active = activeSteps(recipe.steps, progress);
+  const waiting = stepsWaitingForLanes(recipe.steps, progress);
+  const row = (index: number, dimmed: boolean) => (
+    <StepButton
+      index={index}
+      text={displayTemperatures(
+        displayRecipe.steps[index]?.text ?? recipe.steps[index].text,
+        units,
+        t,
+      )}
+      isCurrent={active.has(index)}
+      isDone={isStepDone(progress, index)}
+      dimmed={dimmed}
+      afterLanes={waiting.has(index)}
+      large={large}
+      onTap={onTap}
+    />
+  );
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{t('common.steps')}</h2>
+      {lanePicker}
       <ol className="mt-2 flex flex-col gap-2">
-        {recipe.steps.map((step, i) => {
-          const isCurrent = i === currentStep;
-          const isDone = i < currentStep;
-          const text = displayTemperatures(displayRecipe.steps[i]?.text ?? step.text, units, t);
+        {blocks.map((block) => {
+          if (block.kind === 'sync') {
+            return <li key={block.index}>{row(block.index, false)}</li>;
+          }
+          const headingId = `steps-together-${block.start}`;
+          // One lane alone runs at the same time as nothing, so its box is
+          // named by the lane, without the "At the same time" heading.
+          const together = block.lanes.length > 1;
           return (
-            <li key={i}>
-              <button
-                type="button"
-                onClick={() => onStep(i === currentStep ? i + 1 : i)}
-                className={`flex w-full gap-3 rounded-xl px-3 py-3 text-left shadow-sm transition-colors print:px-0 print:py-1 print:text-ink ${
-                  large ? `${largeRowText} ` : ''
-                }${
-                  isCurrent
-                    ? 'bg-surface ring-2 ring-amber-400'
-                    : isDone
-                      ? 'bg-surface-muted text-ink-subtle'
-                      : 'bg-surface hover:bg-surface-muted active:bg-surface-muted'
-                }`}
+            <li key={block.start}>
+              <div
+                role="group"
+                aria-labelledby={headingId}
+                className="rounded-xl border border-line p-2 print:border-0 print:p-0"
               >
-                <span
-                  className={`font-semibold print:text-ink ${
-                    isCurrent ? 'text-amber-500' : 'text-ink-subtle'
-                  }`}
+                {together && (
+                  <p
+                    id={headingId}
+                    className="px-1 text-xs font-semibold tracking-wide text-amber-600 uppercase print:text-ink"
+                  >
+                    {t('recipe.atTheSameTime')}
+                  </p>
+                )}
+                {/* At most MAX_LANES lanes, so they fit side by side. */}
+                <div
+                  className={`grid gap-3 sm:auto-cols-fr sm:grid-flow-col ${together ? 'mt-2' : ''}`}
                 >
-                  {/* Paper shows every step's number, whatever the cook progress. */}
-                  {isDone ? (
-                    <>
-                      <span className="print:hidden">✓</span>
-                      <span className="hidden print:inline">{i + 1}</span>
-                    </>
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <span className={isCurrent ? currentText : ''}>{text}</span>
-              </button>
+                  {block.lanes.map((run) => {
+                    const dimmed = activeLane !== undefined && run.lane !== activeLane;
+                    return (
+                      <div key={run.lane} className="min-w-0">
+                        {/* A lane name is recipe text, shown as written. */}
+                        <h3
+                          id={together ? undefined : headingId}
+                          className={`px-1 text-sm font-semibold print:opacity-100 ${dimmed ? 'opacity-50' : ''}`}
+                        >
+                          {run.lane}
+                        </h3>
+                        <ol className="mt-1 flex flex-col gap-2">
+                          {run.steps.map((index) => (
+                            <li key={index}>{row(index, dimmed)}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </li>
           );
         })}

@@ -4,26 +4,35 @@ import { selectCookRow } from './librarySelectors';
 import { withLocalWrite } from './localWrite';
 import { useLibrarySelect } from './useLibrary';
 import { finiteCookUpdatedAt, pushOps } from './remote';
+import { normalizeStepProgress, tapStep as tapStepProgress } from './stepLanes';
 import type { CookStateRow, Recipe } from './types';
 
 export interface CookState {
   servings: number;
+  /** Every step before this index is done. */
   currentStep: number;
+  /** Steps done ahead of `currentStep` in a parallel block, sorted. */
+  doneSteps: readonly number[];
   checkedKeys: ReadonlySet<string>;
 }
 
 export interface CookStateApi extends CookState {
   setServings: (n: number) => void;
-  setCurrentStep: (i: number) => void;
+  /** Applies a tap on step `index` (`tapStep` in `stepLanes.ts`). */
+  tapStep: (index: number) => void;
   toggleChecked: (key: string) => void;
   /** Ingredient item names for the checked keys, skipping stale ones. */
   checkedItemNames: (recipe: Recipe) => string[];
 }
 
-type Progress = Omit<CookStateRow, 'recipeId' | 'recipeUpdatedAt' | 'updatedAt'>;
+type Progress = Omit<CookStateRow, 'recipeId' | 'recipeUpdatedAt' | 'updatedAt' | 'doneSteps'> & {
+  doneSteps: number[];
+};
 
 /** Shared so the memo below keeps a stable `Set` identity across renders. */
 const NO_KEYS: string[] = [];
+/** Shared so a row without block progress hands out one stable empty list. */
+const NO_DONE: number[] = [];
 
 /**
  * Positional keys and a step index only mean something against the recipe they
@@ -36,11 +45,12 @@ function progressFor(
 ): Progress {
   const servings = row?.servings ?? recipe?.servings ?? 1;
   if (!row || !recipe || row.recipeUpdatedAt !== recipe.updatedAt) {
-    return { servings, currentStep: 0, checkedKeys: NO_KEYS };
+    return { servings, currentStep: 0, doneSteps: NO_DONE, checkedKeys: NO_KEYS };
   }
   return {
     servings,
     currentStep: row.currentStep,
+    doneSteps: row.doneSteps ?? NO_DONE,
     checkedKeys: row.checkedKeys,
   };
 }
@@ -69,8 +79,17 @@ const cookStateStore = {
   ): Promise<void> {
     const prev = progressFor(getCook(recipe.id), recipe);
     const updatedAt = Date.now();
+    const { doneSteps: rawDone, ...changed } = change(prev);
+    // Fold and clean block progress on every write; the key is left out when
+    // empty, so a recipe without lanes writes exactly the old row.
+    const { currentStep, doneSteps } = normalizeStepProgress(
+      { currentStep: changed.currentStep, doneSteps: rawDone },
+      recipe.steps.length,
+    );
     const next: CookStateRow = {
-      ...change(prev),
+      ...changed,
+      currentStep,
+      ...(doneSteps.length > 0 ? { doneSteps } : {}),
       recipeId: recipe.id,
       recipeUpdatedAt: recipe.updatedAt,
       updatedAt,
@@ -115,7 +134,7 @@ export function useCookState(recipe: Recipe | null | undefined): CookStateApi {
   const recipeId = recipe?.id;
   const row = useLibrarySelect(selectCookRow(recipeId));
 
-  const { servings, currentStep, checkedKeys } = progressFor(row, recipe);
+  const { servings, currentStep, doneSteps, checkedKeys } = progressFor(row, recipe);
   const checkedSet = useMemo(() => new Set(checkedKeys), [checkedKeys]);
 
   const setServings = useCallback(
@@ -126,12 +145,12 @@ export function useCookState(recipe: Recipe | null | undefined): CookStateApi {
     [recipe],
   );
 
-  const setCurrentStep = useCallback(
-    (i: number) => {
+  const tapStep = useCallback(
+    (index: number) => {
       if (!recipe) return;
       void updateCookState(recipe, (prev) => ({
         ...prev,
-        currentStep: i,
+        ...tapStepProgress(recipe.steps, prev, index),
       }));
     },
     [recipe],
@@ -164,9 +183,10 @@ export function useCookState(recipe: Recipe | null | undefined): CookStateApi {
   return {
     servings,
     currentStep,
+    doneSteps,
     checkedKeys: checkedSet,
     setServings,
-    setCurrentStep,
+    tapStep,
     toggleChecked,
     checkedItemNames,
   };

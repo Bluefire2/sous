@@ -31,6 +31,7 @@ import { onSyncFinished, pullAll, resetDiscardedPullForTests, sync } from './syn
 import { resetRereadScheduleForTests, setRereadQuietForTests } from './localWrite';
 import { invalidateSession } from './session';
 import type { Collection, CookStateRow, Recipe } from './types';
+import { tapStep } from './stepLanes';
 import { updateCookState } from './useCookState';
 
 vi.mock('./remote', async (importOriginal) => {
@@ -236,6 +237,55 @@ afterEach(() => {
   vi.mocked(pullPage).mockReset();
   vi.mocked(pullSharedPage).mockReset();
   localStorage.clear();
+});
+
+describe('cook progress in parallel blocks (docs/plans/parallel-steps.md)', () => {
+  function lanedRecipe(): Recipe {
+    return {
+      ...recipe(),
+      steps: [
+        { text: 'Boil water.' },
+        { text: 'Fry garlic.', lane: 'Sauce' },
+        { text: 'Add tomatoes.', lane: 'Sauce' },
+        { text: 'Cook pasta.', lane: 'Pasta' },
+        { text: 'Drain.', lane: 'Pasta' },
+        { text: 'Toss.' },
+      ],
+    };
+  }
+
+  it('folds doneSteps into currentStep on write and leaves the key out when empty', async () => {
+    const base = lanedRecipe();
+    seed(base, cook(0));
+
+    await updateCookState(base, (prev) => ({ ...prev, doneSteps: [0, 3, 3, 9] }));
+    expect(getCook(RECIPE_ID)).toMatchObject({ currentStep: 1, doneSteps: [3] });
+    expect(cookPutPayload(0)).toMatchObject({ currentStep: 1, doneSteps: [3] });
+
+    await updateCookState(base, (prev) => ({ ...prev, doneSteps: [1, 2, 3, 4] }));
+    expect(getCook(RECIPE_ID)?.currentStep).toBe(5);
+    expect(getCook(RECIPE_ID)).not.toHaveProperty('doneSteps');
+    expect(cookPutPayload(1)).not.toHaveProperty('doneSteps');
+  });
+
+  it('pushes a lane tap without moving the other lane', async () => {
+    const base = lanedRecipe();
+    seed(base, cook(1));
+
+    await updateCookState(base, (prev) => ({ ...prev, ...tapStep(base.steps, prev, 3) }));
+    expect(cookPutPayload(0)).toMatchObject({ currentStep: 1, doneSteps: [3] });
+    await updateCookState(base, (prev) => ({ ...prev, ...tapStep(base.steps, prev, 1) }));
+    expect(cookPutPayload(1)).toMatchObject({ currentStep: 2, doneSteps: [3] });
+  });
+
+  it('starts block progress over when the recipe changed since it was recorded', async () => {
+    const base = lanedRecipe();
+    seed(base, { ...cook(1), doneSteps: [3], recipeUpdatedAt: 1 });
+
+    await updateCookState(base, (prev) => prev);
+    expect(getCook(RECIPE_ID)).toMatchObject({ currentStep: 0, recipeUpdatedAt: 2 });
+    expect(getCook(RECIPE_ID)).not.toHaveProperty('doneSteps');
+  });
 });
 
 describe('optimistic writes vs an in-flight pull', () => {

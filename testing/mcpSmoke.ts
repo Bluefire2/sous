@@ -18,6 +18,9 @@ const member = memberLibrary(0);
 const memberUnfiled = member.recipes.filter(
   (recipe) => !member.collections.some((collection) => collection.recipeIds.includes(recipe.id)),
 ).length;
+const memberWeeknights =
+  member.collections.find((collection) => collection.id === FIXTURE_IDS.member.weeknights)?.recipeIds.length ?? 0;
+const memberPestoSteps = member.recipes.find((recipe) => recipe.id === FIXTURE_IDS.member.pestoPasta)?.steps ?? [];
 
 const INITIALIZE = {
   jsonrpc: '2.0',
@@ -354,6 +357,14 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
     roast === undefined ? 'missing roast chicken' : `collection ${String(roast.collectionName)}`,
   );
 
+  const pesto = await mcp(baseUrl, toolCall('get_recipes', { ids: [FIXTURE_IDS.member.pestoPasta] }), token);
+  const pestoSteps = ((toolResult(pesto.body)?.structuredContent?.recipes ?? []) as { steps?: unknown }[])[0]?.steps;
+  check(
+    'get_recipes returns step lanes',
+    pesto.status === 200 && JSON.stringify(pestoSteps) === JSON.stringify(memberPestoSteps),
+    JSON.stringify(pestoSteps),
+  );
+
   const collections = await mcp(baseUrl, toolCall('list_collections', {}), token);
   const rows = (toolResult(collections.body)?.structuredContent?.collections ?? []) as {
     id: string;
@@ -364,7 +375,7 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
   check(
     'list_collections is Weeknights, Baking, and Unfiled',
     byName.get('Weeknights')?.id === FIXTURE_IDS.member.weeknights &&
-      byName.get('Weeknights')?.recipeCount === 3 &&
+      byName.get('Weeknights')?.recipeCount === memberWeeknights &&
       byName.get('Baking')?.id === FIXTURE_IDS.member.baking &&
       byName.get('Baking')?.recipeCount === 2 &&
       byName.get('Unfiled')?.recipeCount === memberUnfiled &&
@@ -478,6 +489,27 @@ async function checkTools(baseUrl: string, token: string, memberCookie: string, 
     const reread = await mcp(baseUrl, toolCall('get_recipes', { ids: [createdId] }), token);
     const stored = ((toolResult(reread.body)?.structuredContent?.recipes ?? []) as { servings?: unknown }[])[0];
     check('the conflict did not write', stored?.servings === 3, `servings ${String(stored?.servings)}`);
+
+    const lanedSteps = [
+      { text: 'Simmer the lentils until soft.', lane: 'Lentils' },
+      { text: 'Fry the onions.', lane: 'Onions' },
+      { text: 'Stir together.' },
+    ];
+    const laned = await mcp(
+      baseUrl,
+      toolCall('update_recipe', {
+        id: createdId,
+        version: editedRecipe?.version,
+        changes: { steps: lanedSteps },
+      }),
+      token,
+    );
+    const lanedRecipe = toolResult(laned.body)?.structuredContent?.recipe as { steps?: unknown } | undefined;
+    check(
+      'update_recipe saves step lanes',
+      laned.status === 200 && JSON.stringify(lanedRecipe?.steps) === JSON.stringify(lanedSteps),
+      `status ${laned.status} ${toolError(laned.body) ?? JSON.stringify(lanedRecipe?.steps)}`,
+    );
   }
 
   const foreign = await mcp(

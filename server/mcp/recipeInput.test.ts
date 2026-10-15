@@ -112,6 +112,37 @@ describe('validateNewRecipe', () => {
     expect(newRecipePayload(validated.recipe, ID, 1).ok).toBe(false);
   });
 
+  it('keeps a step lane, trims it, and rejects a long or non-string one', () => {
+    const laned = validateNewRecipe({
+      ...FULL,
+      steps: [{ text: 'Sweat the leeks.', lane: ' Soup ' }, { text: 'Toast bread.', lane: '' }],
+    });
+    expect(laned.ok).toBe(true);
+    if (!laned.ok) return;
+    expect(laned.recipe.steps).toEqual([{ text: 'Sweat the leeks.', lane: 'Soup' }, { text: 'Toast bread.' }]);
+    const built = newRecipePayload(laned.recipe, ID, 1);
+    expect(built.ok && built.payload.steps).toEqual(laned.recipe.steps);
+
+    expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', lane: 'x'.repeat(25) }] }))).toEqual([
+      'steps[0].lane',
+    ]);
+    expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', lane: 3 }] }))).toEqual(['steps[0].lane']);
+    expect(
+      errorsOf(
+        validateNewRecipe({
+          ...FULL,
+          steps: ['A', 'B', 'C', 'D'].map((lane) => ({ text: `step ${lane}`, lane })),
+        }),
+      ),
+    ).toEqual(['steps']);
+    for (const lane of ['Sauce\nprep', 'Sauce\tprep', 'Sauce  prep']) {
+      expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', lane }] }))).toEqual([
+        'steps[0].lane',
+      ]);
+    }
+    expect(errorsOf(validateNewRecipe({ ...FULL, steps: [{ text: 'a', foo: 1 }] }))).toEqual(['steps[0].foo']);
+  });
+
   it('formats errors one per line with their path', () => {
     const result = validateNewRecipe({ title: 3, servings: 2, ingredientSections: [], steps: [] });
     expect(result.ok).toBe(false);
@@ -201,6 +232,13 @@ describe('mergeRecipeChanges', () => {
       tags: ['pasta'],
     });
     expect(merged).not.toHaveProperty('serverUpdatedAt');
+  });
+
+  it('keeps step lanes on an unrelated change and takes new steps as given', () => {
+    const laned = { ...stored, steps: [{ text: 'Boil', lane: 'Pasta' }, { text: 'Serve' }] };
+    expect(mergeRecipeChanges(laned, { servings: 4 }, 300)?.steps).toEqual(laned.steps);
+    const next = [{ text: 'Boil' }, { text: 'Fry', lane: 'Sauce' }];
+    expect(mergeRecipeChanges(laned, { steps: next }, 300)?.steps).toEqual(next);
   });
 
   it('null clears an optional field', () => {
