@@ -615,7 +615,11 @@ Docker is not installed locally; local `bash scripts/deploy.sh` still uses
 Cloud Build.
 
 This file does not track what is deployed. Read the live revision with
-`gcloud run services describe sous` before a deploy.
+`gcloud run services describe sous` before a deploy, and the live commit
+with `curl https://sous.kyrylo.lol/api/version` (no session). Both deploy
+paths run `scripts/write-build-info.sh` before building the image, which
+writes the gitignored `server/build-info.json` (`server/buildInfo.ts` reads
+it); a build without it reports `null`.
 
 The `emailLower` backfill (`node --env-file=.env.local
 scripts/backfill-email-lower.ts`, ADC for `cooking-assistant-508423`, dry run

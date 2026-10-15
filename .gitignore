@@ -17,3 +17,5 @@ gha-creds-*.json
 .claude/launch.json
 # Coverage report (npm run test:coverage)
 coverage/
+# Written by scripts/write-build-info.sh before a deploy builds the image
+server/build-info.json

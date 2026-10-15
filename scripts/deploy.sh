@@ -258,6 +258,8 @@ if [[ "${SKIP_BUILD:-}" == "1" ]]; then
   info "SKIP_BUILD=1, deploying existing image ${IMAGE}"
 else
   info "Building ${IMAGE}"
+  # The image reports this commit at /api/version (server/build-info.json).
+  EXPECTED_COMMIT="$(sh "$REPO_ROOT/scripts/write-build-info.sh")"
   # .gcloudignore keeps .env* out of the uploaded source. Verify with:
   #   gcloud meta list-files-for-upload
   gcloud builds submit "$(to_native_path "$REPO_ROOT")" --tag "$IMAGE" --project="$PROJECT"
@@ -296,6 +298,18 @@ DIGEST="$(gcloud run services describe "$SERVICE_NAME" --region="$REGION" \
 
 info "Deployed to ${SERVICE_URL:-(url unavailable)}"
 info "Running image: ${DIGEST:-(unknown)}"
+
+# EXPECTED_COMMIT is set above when this run built the image, or by the Deploy
+# workflow, which builds it itself. The deploy has happened either way; a
+# mismatch is a warning to look at, not a reason to fail.
+if [[ -n "${EXPECTED_COMMIT:-}" && -n "${SERVICE_URL:-}" ]]; then
+  LIVE_VERSION="$(curl -s --max-time 15 "${SERVICE_URL}/api/version" || true)"
+  if [[ "$LIVE_VERSION" == *"\"commit\":\"${EXPECTED_COMMIT}\""* ]]; then
+    info "Live build: ${EXPECTED_COMMIT}"
+  else
+    warn "expected /api/version to report ${EXPECTED_COMMIT}, got: ${LIVE_VERSION:-(no answer)}"
+  fi
+fi
 info ""
 info "After this deploy (step 20): fill OAuth consent-screen Branding URLs and publish (step 21)."
 info ""

@@ -68,6 +68,9 @@ jobs:
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/sous/${SERVICE_NAME}:${IMAGE_TAG}"
           echo "Building ${IMAGE}"
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          # The image reports this commit at /api/version; deploy.sh checks it.
+          EXPECTED_COMMIT="$(sh scripts/write-build-info.sh)"
+          echo "EXPECTED_COMMIT=${EXPECTED_COMMIT}" >> "${GITHUB_ENV}"
           docker build -t "${IMAGE}" .
           docker push "${IMAGE}"
           echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"

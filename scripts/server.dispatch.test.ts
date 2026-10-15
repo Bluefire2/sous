@@ -17,6 +17,7 @@ import { MAX_IMPORT_BODY_BYTES } from '../server/importRoute.ts';
 import { readBoundedText, RequestBodyError } from '../server/membership.ts';
 import { SESSION_COOKIE_NAME, signSession } from '../server/session.ts';
 import * as sync from '../server/sync.ts';
+import { buildInfo } from '../server/buildInfo.ts';
 import { apiRoutes, createRequestListener, UNREAD_BODY_LIMITS } from './server.ts';
 
 vi.mock('../server/sync.ts', async (importOriginal) => {
@@ -64,6 +65,7 @@ const ANONYMOUS_STATUS: Record<string, number> = {
   'POST /api/settings/kitchen': 401,
   'GET /api/settings/preferences': 401,
   'POST /api/settings/preferences': 401,
+  'GET /api/version': 200,
 };
 
 const UUID = '0b7c9a52-3d7e-4a43-9a43-2f4c5f6f7a10';
@@ -245,6 +247,15 @@ describe('exact API routes', () => {
     expect((await send(apiBase, 'GET', '/api/nope')).status).toBe(404);
     expect((await send(staticBase, 'GET', '/api/nope')).status).toBe(404);
     expect((await send(apiBase, 'GET', '/api/sync/pull/extra')).status).toBe(404);
+  });
+});
+
+describe('version', () => {
+  it('reports the build without a session, uncached', async () => {
+    const res = await send(apiBase, 'GET', '/api/version');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.json()).toEqual(buildInfo);
   });
 });
 
