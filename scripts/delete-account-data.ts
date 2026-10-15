@@ -30,7 +30,7 @@ import {
   readDeletionSubject,
   type DeletionStep,
 } from '../server/accountDeletion.ts';
-import { allowedEmails } from '../server/env.ts';
+import { allowedEmails, firestoreTarget } from '../server/env.ts';
 import { isSafeFirestoreDocumentId } from '../server/grants.ts';
 
 const REFUSAL_TEXT = {
@@ -50,6 +50,8 @@ export interface DeleteAccountDataDeps {
   steps: Readonly<Record<string, DeletionStep>>;
   order: readonly string[];
   allowedRaw: () => string;
+  /** Which database the steps use, printed before the first read (`firestoreTarget`). */
+  target?: () => string;
   now: () => number;
   log: (line: string) => void;
   error: (line: string) => void;
@@ -71,6 +73,9 @@ export async function runDeleteAccountData(
     deps.error(REFUSAL_TEXT['bad-sub']);
     return 2;
   }
+  // Production is the named database sous-us; an unset FIRESTORE_DATABASE_ID
+  // would read (default), the stale copy, and report success.
+  if (deps.target !== undefined) deps.log(`Firestore: ${deps.target()}`);
 
   const subject = await deps.readSubject(sub);
   const refusal = deletionRefusal({
@@ -141,6 +146,7 @@ if (isDirectRun()) {
     steps: ACCOUNT_DELETION_STEPS,
     order: ACCOUNT_DELETION_ORDER,
     allowedRaw: allowedEmails,
+    target: () => firestoreTarget(),
     now: () => Date.now(),
     log: (line) => console.log(line),
     error: (line) => console.error(line),

@@ -10,8 +10,10 @@
  */
 import { FieldPath } from '@google-cloud/firestore';
 import { emailLowerBackfill, getStoreFirestore } from '../server/store.ts';
+import { firestoreTarget } from '../server/env.ts';
 
 const apply = process.argv.includes('--apply');
+console.error(`Firestore: ${firestoreTarget()}`);
 const db = getStoreFirestore();
 let scanned = 0;
 let pending = 0;

@@ -1,5 +1,10 @@
 # sous.kyrylo.lol (Cloud Run)
 
+> **Superseded region (2026-10).** Sous moved to `us-central1`; see
+> [`us-region-move.md`](us-region-move.md). The `europe-west1` references
+> below are history. The rule behind "`europe-west1` is mandatory" still
+> holds: the region must support Cloud Run domain mappings.
+
 Move the app off Vercel and serve it at `https://sous.kyrylo.lol` as a public
 Cloud Run service, renamed **Sous** everywhere a user can see the name. No
 auth change, no per-user storage, no data-model change — those are Phase 2.

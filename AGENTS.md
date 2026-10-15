@@ -577,16 +577,17 @@ part of sharing.
 | | |
 | --- | --- |
 | GCP project | `cooking-assistant-508423` (number `62867274312`) |
-| Region / Firestore | `europe-west1`, Native `(default)` — no `FIRESTORE_DATABASE_ID` |
+| Region | `us-central1` (moved from `europe-west1` 2026-10, `docs/plans/us-region-move.md`) |
+| Firestore | Native, **named** database `sous-us`: `FIRESTORE_DATABASE_ID=sous-us` everywhere (deploy, `.env.local`), and every `gcloud firestore` command needs `--database=sous-us`. The old `(default)` in `europe-west1` is not live |
 | Cloud Run | `sous`, port 8080 |
-| Photo bucket (planned) | `gs://sous-photos-cooking-assistant-508423` |
+| Photo bucket | `gs://sous-photos-us-cooking-assistant-508423` |
 | Runtime SA | confirm `serviceAccountName`; empty ⇒ `62867274312-compute@developer.gserviceaccount.com` |
 | `gcloud` | `C:\Users\chern\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd` — **not on PATH** |
 | Default gcloud project on this machine | `match-cal-507107` — always pass `--project=cooking-assistant-508423` |
 
 Local ADC: `gcloud auth application-default login` and
 `set-quota-project cooking-assistant-508423`. Dev talks to **real** Firestore
-(and, once set, the real bucket). Opt-outs: `FIRESTORE_EMULATOR_HOST`, unset
+and the real bucket. Opt-outs: `FIRESTORE_EMULATOR_HOST`, unset
 `PHOTO_BUCKET`. Same Google account ⇒ same `sub` ⇒ local experiments mutate
 the production library. Test mode (How to run it) avoids that: fake
 personas against a seeded emulator.
@@ -637,7 +638,8 @@ it exercises the real delete path.
   401 there is intended)
 - Dockerfile Node pin, multi-stage shape, or `CMD` (only `COPY server` was
   the Phase 2 image change)
-- Region, domain mapping, certificate
+- Region (`us-central1` since the 2026-10 move, `docs/plans/us-region-move.md`;
+  another move is a migration, not a setting), domain mapping, certificate
 - `0x1E` chat framing / Gemini request shape / `maxDuration = 60`
 - Adding Google scopes, refresh tokens, or Auth.js
 - Polling sync, Firestore listeners, WebSockets
@@ -832,6 +834,7 @@ does not record branches or whether something is deployed.
 | `docs/plans/cooking-screen-settings.md` | Merged (#174). Settings → Cooking: keep the screen awake (default on) and recipe text size (normal / large), device-local in `cook.wakeLock` and `cook.recipeTextSize`, read live by RecipeView and PublicRecipe. |
 | `docs/plans/route-code-splitting.md` | Merged. Every screen but PublicReturn is a lazy chunk (`lazyScreen` in `src/lib/chunkReload.ts`); a chunk missing after a deploy reloads the tab once, guarded by `sous.chunkReloadAt` in sessionStorage. |
 | `docs/plans/screen-titles.md` | Merged. Browser tab titles per screen with React 19's `<title>`: "<screen> · Sous" from the catalogs, or a recipe or collection name; "Sous" for the library. |
+| `docs/plans/us-region-move.md` | Merged (#190). Deploys target `us-central1`: Cloud Run, Firestore named database `sous-us`, and the US photo bucket. The cutover and the later deletion of the EU resources are recorded in the plan. |
 
 If iOS standalone PWA sign-in jumps to Safari and the app stays signed out,
 stop and plan the GIS `id_token` fallback from the parent Decisions. Do not

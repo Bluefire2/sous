@@ -51,7 +51,7 @@
   </head>
   <body>
     <h1>Privacy policy</h1>
-    <p class="muted">Last updated: 10 October 2026</p>
+    <p class="muted">Last updated: 14 October 2026</p>
 
     <h2>What is stored</h2>
     <p>
@@ -78,7 +78,7 @@
       Your recipes, chat messages, cooking progress, cook log entries (the
       date you cooked, rating, servings, notes, lessons and photos), and
       attached photos are stored in Google Cloud (Firestore and Cloud Storage) in the
-      <code>europe-west1</code> region. They are loaded into this browser
+      <code>us-central1</code> region. They are loaded into this browser
       while you are signed in. There is no on-device recipe database.
       The page title shown in the browser tab names the recipe or collection
       you have open, including ones shared with you, and a translated title
@@ -93,7 +93,7 @@
     <p>
       If you fill in Kitchen profile in Settings, the allergies, diets, foods
       to avoid, dislikes, equipment and notes you enter are stored in
-      Firestore (<code>europe-west1</code>) under your account until you
+      Firestore (<code>us-central1</code>) under your account until you
       change them or your account is deleted. Allergies and diets can say
       something about your health or beliefs; leave out anything you would
       rather not store. The profile is not in backups and connected apps
@@ -112,7 +112,7 @@
       If an import goes wrong, or you mark an import with a thumbs down, you
       can choose to send an import report. Nothing is sent unless you press
       Send report. A report is stored in Firestore
-      (<code>europe-west1</code>), separately from your library, and only the
+      (<code>us-central1</code>), separately from your library, and only the
       owner reads it, to fix recipe import. It holds your account id
       (<code>sub</code>); how the recipe arrived; the full link you imported,
       including anything after a <code>?</code> or <code>#</code>; for pasted
@@ -127,7 +127,7 @@
     </p>
     <p>
       If you send a suggestion from Suggest a feature, it is stored in
-      Firestore (<code>europe-west1</code>), separately from your library, and
+      Firestore (<code>us-central1</code>), separately from your library, and
       only the owner reads it. It holds your account id (<code>sub</code>);
       the text you wrote; whether you allowed the owner to email you about it;
       the app language; whether you opened the page from your library or from
@@ -143,7 +143,7 @@
       If you complete Google sign-in but are not a member, and you press
       Request access, Sous stores your email address, Google display name,
       Google account id (<code>sub</code>) and the request timestamps in
-      Firestore (<code>europe-west1</code>) so the owner can decide. No
+      Firestore (<code>us-central1</code>) so the owner can decide. No
       recipe library and no <code>users/{sub}</code> document is created for
       a person who is not admitted.
     </p>
@@ -376,7 +376,7 @@
       library assistant message, and each recipe written from an idea, but
       not with the web search. Gemini processes these requests on
       Google's infrastructure, which is not limited to the
-      <code>europe-west1</code> region. Recipe import fetches the URL you
+      <code>us-central1</code> region. Recipe import fetches the URL you
       paste. If you press Request access, the
       notification email to the owner is sent through Resend and contains
       your email address, display name and the time of the request; it

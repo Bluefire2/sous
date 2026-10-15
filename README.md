@@ -10,7 +10,7 @@ Live at <https://sous.kyrylo.lol>.
 The app is called Sous; the repo, database, and directories are still `cook`.
 
 Sign in with Google. Recipes, chat history, cooking progress, and photos live
-in your account (Firestore and Cloud Storage in `europe-west1`). The app loads
+in your account (Firestore and Cloud Storage in `us-central1`). The app loads
 them when you are signed in. The server also talks to Gemini on your behalf
 when you use chat or import.
 
@@ -258,17 +258,20 @@ session when a thumbnail is shown.
 
 ## Deployment
 
-Cloud Run in `europe-west1` (not `europe-west2` — that region has no Cloud Run
-domain mappings), GCP project `cooking-assistant-508423`, Artifact Registry
-repo `sous`. The multi-stage [`Dockerfile`](Dockerfile) pins
+Cloud Run in `us-central1` (moved from `europe-west1` in October 2026; see
+[`docs/plans/us-region-move.md`](docs/plans/us-region-move.md)), GCP project
+`cooking-assistant-508423`, Artifact Registry repo `sous`, Firestore named
+database `sous-us`, photo bucket `sous-photos-us-cooking-assistant-508423`, all
+in `us-central1`. Another region must support Cloud Run domain mappings
+(`europe-west2`, for one, does not). The multi-stage [`Dockerfile`](Dockerfile) pins
 `node:22.20-bookworm-slim`, builds `dist/`, and `CMD`s
 `["node", "scripts/server.ts"]`. No secrets in any layer: `.dockerignore` and
 `.gcloudignore` exclude `.env*`.
 
 Build, push, and deploy with the env map the container needs. The generator
-writes **ten** required keys (`GEMINI_API_KEY`, `AUTH_GOOGLE_ID`,
+writes **eleven** required keys (`GEMINI_API_KEY`, `AUTH_GOOGLE_ID`,
 `AUTH_GOOGLE_SECRET`, `SESSION_SECRET`, `ALLOWED_EMAILS`, `PUBLIC_ORIGIN`,
-`GOOGLE_CLOUD_PROJECT`, `PHOTO_BUCKET`, `MAIL_FROM`, `OWNER_NOTIFY_EMAIL`)
+`GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE_ID`, `PHOTO_BUCKET`, `MAIL_FROM`, `OWNER_NOTIFY_EMAIL`)
 and adds **`RESEND_API_KEY`**, **`TRANSLATE_PROVIDER`**, and **`TRANSLATE_MODEL`**
 only when they are set — omitting an empty optional key removes it from Cloud
 Run because `--env-vars-file` replaces the whole map.
@@ -305,7 +308,7 @@ prints them, and uses `--env-vars-file` so comma-containing values like
 `ALLOWED_EMAILS` stay intact. Then map the domain:
 
 ```bash
-gcloud beta run domain-mappings create --service=sous --domain=sous.kyrylo.lol --region=europe-west1 --project=cooking-assistant-508423
+gcloud beta run domain-mappings create --service=sous --domain=sous.kyrylo.lol --region=us-central1 --project=cooking-assistant-508423
 ```
 
 In Cloudflare, a grey-cloud (DNS only) CNAME `sous` → whatever that command
@@ -405,7 +408,7 @@ Two details that are easy to trip over:
 
 Your Google account id, email, and display name are stored server-side so sync
 knows who you are. Recipes, chat messages, cooking progress, and attached photos
-are stored in Google Cloud (Firestore and Cloud Storage in `europe-west1`).
+are stored in Google Cloud (Firestore and Cloud Storage in `us-central1`).
 They are loaded into the browser while you are signed in. There is no app
 password and no
 Google refresh token. Chat and import send recipe text (and any photos you
@@ -443,6 +446,32 @@ their client push it back on the next sync.
    node --env-file=.env.local scripts/delete-account-data.ts <SUB> --apply
    ```
 
+   The first line it prints is the database. It must say
+   `cooking-assistant-508423/sous-us`; `(default)` means `.env.local` lacks
+   `FIRESTORE_DATABASE_ID=sous-us` and the script is reading the old
+   `europe-west1` copy. Until that copy is deleted
+   (`docs/plans/us-region-move.md`, phase 4), also clear it:
+   1. In the console, open the `(default)` database and set
+      `members/{sub}.status` to `revoked`. Step 1 only revoked them in
+      `sous-us`, and the script refuses to apply while the EU copy still says
+      `active`. The EU service is frozen, so there is no cache to wait out.
+   2. Run this script against `(default)`. The first line must say
+      `cooking-assistant-508423/(default)`. In PowerShell:
+
+      ```powershell
+      $env:FIRESTORE_DATABASE_ID = '(default)'
+      node --env-file=.env.local scripts/delete-account-data.ts <SUB>
+      node --env-file=.env.local scripts/delete-account-data.ts <SUB> --apply
+      Remove-Item Env:FIRESTORE_DATABASE_ID
+      ```
+
+      In Git Bash, put `FIRESTORE_DATABASE_ID='(default)'` in front of each
+      `node` instead. Never use an empty value: PowerShell unsets an empty
+      variable, and `--env-file` then fills in `sous-us` again. Clear the
+      variable afterwards, or the next run in that shell also reads
+      `(default)`.
+   3. Run step 5 on `gs://sous-photos-cooking-assistant-508423` as well.
+
    `--apply` refuses while `members/{sub}` is still active or any email
    stored for them (profile, membership, access request) is in
    `ALLOWED_EMAILS`, read from `.env.local`, which must match the deployed
@@ -477,7 +506,7 @@ their client push it back on the next sync.
 5. Remove photo objects (Firestore does not touch GCS):
 
    ```bash
-   gcloud storage rm --recursive gs://sous-photos-cooking-assistant-508423/users/<SUB>/ --project=cooking-assistant-508423
+   gcloud storage rm --recursive gs://sous-photos-us-cooking-assistant-508423/users/<SUB>/ --project=cooking-assistant-508423
    ```
 
    On this machine `gcloud` is often not on PATH; use

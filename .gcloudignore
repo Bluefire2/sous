@@ -11,3 +11,8 @@ docs
 .DS_Store
 extension
 gha-creds-*.json
+# Agent worktrees and tool state in a local checkout; never part of an image.
+.claude
+.agents
+.codex
+coverage

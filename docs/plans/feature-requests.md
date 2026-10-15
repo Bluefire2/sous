@@ -44,7 +44,7 @@ sixth crowds narrow phones.
 | | |
 | --- | --- |
 | GCP project | `cooking-assistant-508423` |
-| Database | Firestore Native, `(default)`, region `europe-west1` (the same database as the library) |
+| Database | Firestore Native, named database `sous-us`, region `us-central1` (the same database as the library; `(default)` in `europe-west1` until the 2026-10 move, `us-region-move.md`) |
 | Collection | `featureRequests`, top level. Not under `users/{uid}`. |
 | Document id | A UUID v4 the page generates for each suggestion. A retry of the same suggestion reuses it; "Suggest something else" makes a new one. |
 | Writer | Only `POST /api/feature-request` (`server/featureRequest.ts`), through the Admin SDK, with `create()`. A repeat id (ALREADY_EXISTS, gRPC code 6) counts as success. No client writes Firestore directly. |

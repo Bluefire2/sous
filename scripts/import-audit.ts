@@ -9,6 +9,7 @@
  * query string or fragment, counts, and titles; never recipe text.
  */
 import { getStoreFirestore } from '../server/store.ts';
+import { firestoreTarget } from '../server/env.ts';
 
 const email = (process.argv[2] ?? '').trim().toLowerCase();
 if (email === '') {
@@ -37,6 +38,7 @@ function ingredientCount(sections: unknown): number {
   );
 }
 
+console.error(`Firestore: ${firestoreTarget()}`);
 const db = getStoreFirestore();
 let users = await db.collection('users').where('emailLower', '==', email).get();
 if (users.empty) {

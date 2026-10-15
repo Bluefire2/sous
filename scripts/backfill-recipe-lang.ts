@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeLang } from '../server/lang.ts';
 import { getStoreFirestore, isLiveDoc } from '../server/store.ts';
+import { firestoreTarget } from '../server/env.ts';
 import {
   DEFAULT_TRANSLATE_PROVIDER,
   detectLanguage,
@@ -228,6 +229,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  console.error(`Firestore: ${firestoreTarget()}`);
   const db = getStoreFirestore();
   const counts: Counts = {
     scanned: 0,

@@ -13,3 +13,6 @@ extension
 testing
 gha-creds-*.json
 coverage
+.claude
+.agents
+.codex

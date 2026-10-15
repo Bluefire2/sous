@@ -11,6 +11,7 @@
  * only. `--days` defaults to 30.
  */
 import { getStoreFirestore } from '../server/store.ts';
+import { firestoreTarget } from '../server/env.ts';
 
 const USAGE = 'usage: node --env-file=.env.local scripts/feature-requests.ts [--days N] [--email addr]';
 
@@ -41,6 +42,7 @@ function iso(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) ? new Date(value).toISOString() : '-';
 }
 
+console.error(`Firestore: ${firestoreTarget()}`);
 const db = getStoreFirestore();
 
 let subs: Set<string> | undefined;

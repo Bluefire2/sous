@@ -10,6 +10,18 @@ set -euo pipefail
 # deployed service, so a redeploy needs nothing in the environment.
 # SESSION_SECRET is only generated when describe succeeds and the var was
 # absent — regenerating it on a flaky describe would sign every device out.
+# With no service at all it is generated only under
+# ALLOW_NEW_SESSION_SECRET=1, so a first deploy in a new region cannot sign
+# everyone out by accident.
+#
+# First deploy of an existing app in a new region: read the secrets off the
+# old region's service instead of typing them,
+#
+#   SECRETS_FROM_REGION=europe-west1 bash scripts/deploy.sh
+#
+# Inline only, never exported: a later deploy would keep reading secrets off
+# the old service and, since the env map is replaced whole, revert any change
+# made on the new one.
 #
 # Runs in Git Bash on Windows and unchanged in Cloud Shell. Does not create the
 # project, enable APIs, or create the Artifact Registry repo; see
@@ -18,9 +30,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT="${PROJECT:-cooking-assistant-508423}"
-# europe-west1, not europe-west2: Cloud Run refuses domain mappings there, and
-# a service deployed in the wrong region cannot be mapped without redeploying.
-REGION="${REGION:-europe-west1}"
+# us-central1, where the members are (moved from europe-west1 in 2026-10,
+# docs/plans/us-region-move.md). The region must support Cloud Run domain
+# mappings (europe-west2, for one, does not): a service deployed in the wrong
+# region cannot be mapped without redeploying. Firestore (sous-us) and the
+# photo bucket are in the same region; a region change moves all three.
+REGION="${REGION:-us-central1}"
+# Where secrets are read back from; the deploy itself always goes to REGION.
+SECRETS_REGION="${SECRETS_FROM_REGION:-$REGION}"
 SERVICE_NAME="${SERVICE_NAME:-sous}"
 REPO_NAME="${REPO_NAME:-sous}"
 IMAGE_REPO="${REGION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}/${SERVICE_NAME}"
@@ -93,7 +110,9 @@ load_deployed_service_describe() {
   local json stderr err
   err=0
   stderr="$(mktemp)"
-  json="$(gcloud run services describe "$SERVICE_NAME" --region="$REGION" \
+  [[ "$SECRETS_REGION" == "$REGION" ]] \
+    || info "Reading secrets off ${SERVICE_NAME} in ${SECRETS_REGION}; deploying to ${REGION}"
+  json="$(gcloud run services describe "$SERVICE_NAME" --region="$SECRETS_REGION" \
     --project="$PROJECT" --format=json 2>"$stderr")" || err=$?
   if [[ "$err" -ne 0 ]]; then
     if grep -qiE 'NOT_FOUND|could not find|does not exist|Resource .* was not found' "$stderr"; then
@@ -216,6 +235,8 @@ resolve_session_secret() {
         fi
         ;;
       no_service)
+        [[ "${ALLOW_NEW_SESSION_SECRET:-}" == "1" ]] \
+          || die "no ${SERVICE_NAME} service in ${SECRETS_REGION} to read SESSION_SECRET from. A new secret signs every device out: for a move between regions, set SECRETS_FROM_REGION to the old region; for a brand-new app, set ALLOW_NEW_SESSION_SECRET=1."
         value="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64"))')"
         info "SESSION_SECRET generated (32 random bytes); save it in a password manager — changing it signs every device out"
         ;;
@@ -276,7 +297,7 @@ trap 'rm -f "$ENV_FILE"' EXIT
 # JSON.stringify produces a double-quoted YAML scalar and escapes quotes and
 # backslashes. Do not put the values on the node command line — they are
 # already in the environment. Single-line -e: see strip_controls.
-node -e 'const fs=require("fs");const dest=process.argv[process.argv.length-1];const fixed={PUBLIC_ORIGIN:"https://sous.kyrylo.lol",GOOGLE_CLOUD_PROJECT:"cooking-assistant-508423",PHOTO_BUCKET:"sous-photos-cooking-assistant-508423"};const keys=["GEMINI_API_KEY","AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","SESSION_SECRET","ALLOWED_EMAILS","PUBLIC_ORIGIN","GOOGLE_CLOUD_PROJECT","PHOTO_BUCKET","MAIL_FROM","OWNER_NOTIFY_EMAIL","RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"];const optional=new Set(["RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"]);const lines=keys.flatMap(k=>{const v=fixed[k]??process.env[k];if(typeof v!=="string"||v===""){if(optional.has(k))return[];process.exit(2)}return[k+": "+JSON.stringify(v)]});fs.writeFileSync(dest,lines.join("\n")+"\n");' "$(to_native_path "$ENV_FILE")" \
+node -e 'const fs=require("fs");const dest=process.argv[process.argv.length-1];const fixed={PUBLIC_ORIGIN:"https://sous.kyrylo.lol",GOOGLE_CLOUD_PROJECT:"cooking-assistant-508423",FIRESTORE_DATABASE_ID:"sous-us",PHOTO_BUCKET:"sous-photos-us-cooking-assistant-508423"};const keys=["GEMINI_API_KEY","AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","SESSION_SECRET","ALLOWED_EMAILS","PUBLIC_ORIGIN","GOOGLE_CLOUD_PROJECT","FIRESTORE_DATABASE_ID","PHOTO_BUCKET","MAIL_FROM","OWNER_NOTIFY_EMAIL","RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"];const optional=new Set(["RESEND_API_KEY","TRANSLATE_PROVIDER","TRANSLATE_MODEL"]);const lines=keys.flatMap(k=>{const v=fixed[k]??process.env[k];if(typeof v!=="string"||v===""){if(optional.has(k))return[];process.exit(2)}return[k+": "+JSON.stringify(v)]});fs.writeFileSync(dest,lines.join("\n")+"\n");' "$(to_native_path "$ENV_FILE")" \
   || die "failed to write --env-vars-file (a required secret was empty?)"
 
 info "Deploying Cloud Run service ${SERVICE_NAME} in ${REGION}"
