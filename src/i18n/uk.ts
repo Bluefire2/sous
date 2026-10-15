@@ -173,6 +173,10 @@ export const uk: Messages = {
   'settings.about': 'Про застосунок',
   'settings.privacy': 'Конфіденційність',
   'settings.terms': 'Умови',
+  'settings.version': 'Версія',
+  'settings.versionCommit': 'Коміт {commit}',
+  'settings.versionBuilt': 'Зібрано {time}',
+  'settings.versionUnknown': 'Для цієї збірки відомостей про версію немає.',
 
   'admin.title': 'Запрошення',
   'admin.intro':

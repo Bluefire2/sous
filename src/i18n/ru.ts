@@ -171,6 +171,10 @@ export const ru: Messages = {
   'settings.about': 'О приложении',
   'settings.privacy': 'Конфиденциальность',
   'settings.terms': 'Условия',
+  'settings.version': 'Версия',
+  'settings.versionCommit': 'Коммит {commit}',
+  'settings.versionBuilt': 'Собрано {time}',
+  'settings.versionUnknown': 'Для этой сборки сведений о версии нет.',
 
   'admin.title': 'Приглашения',
   'admin.intro':

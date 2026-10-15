@@ -443,6 +443,15 @@ export const MOCKS = {
   suggestionAccepted: async (context) => {
     await context.route('**/api/feature-request', (route) => route.fulfill({ status: 204 }));
   },
+  /** The server reports a build from three days ago; test mode's own server has no build info. */
+  buildVersionKnown: async (context) => {
+    await context.route('**/api/version', (route) =>
+      json(route, 200, {
+        commit: '24b1ce74f9ab83ae45ac80d1070dee31417555b3',
+        builtAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      }),
+    );
+  },
   /**
    * Saving the kitchen profile succeeds and echoes the seeded member profile,
    * without writing, so other captures still see the seed. GET is not routed.

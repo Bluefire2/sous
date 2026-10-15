@@ -176,6 +176,10 @@ export const en = {
   'settings.about': 'About',
   'settings.privacy': 'Privacy',
   'settings.terms': 'Terms',
+  'settings.version': 'Version',
+  'settings.versionCommit': 'Commit {commit}',
+  'settings.versionBuilt': 'Built {time}',
+  'settings.versionUnknown': "Version details aren't available for this build.",
 
   'admin.title': 'Invitations',
   'admin.intro':

@@ -148,6 +148,10 @@ export const zhHans: Messages = {
   'settings.about': '关于',
   'settings.privacy': '隐私',
   'settings.terms': '条款',
+  'settings.version': '版本',
+  'settings.versionCommit': '提交 {commit}',
+  'settings.versionBuilt': '{time}构建',
+  'settings.versionUnknown': '此构建没有版本信息。',
 
   'admin.title': '邀请',
   'admin.intro': '批准后，对方会得到自己的空食谱库，并收到一封告知已获批准的邮件。移除访问会在一分钟内生效。',
