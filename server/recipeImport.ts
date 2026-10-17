@@ -71,6 +71,8 @@ export interface ImportedIngredient {
   unit?: string;
   item: string;
   note?: string;
+  /** Only ever `true`; absent means required. */
+  optional?: boolean;
 }
 
 export interface ImportedIngredientSection {
@@ -273,6 +275,11 @@ const RECIPE_SCHEMA: Schema = {
                 },
                 item: { type: Type.STRING, description: 'The ingredient itself' },
                 note: { type: Type.STRING, description: 'e.g. "thinly sliced"' },
+                optional: {
+                  type: Type.BOOLEAN,
+                  description:
+                    'true only when the recipe marks this ingredient as optional; then leave "optional" out of the note. Omit otherwise.',
+                },
               },
               required: ['item'],
             },
@@ -642,6 +649,7 @@ function normalizeIngredient(item: unknown): ImportedIngredient | undefined {
   if (unit !== undefined) result.unit = unit;
   const note = nonEmptyString(item.note);
   if (note !== undefined) result.note = note;
+  if (item.optional === true) result.optional = true;
   return result;
 }
 

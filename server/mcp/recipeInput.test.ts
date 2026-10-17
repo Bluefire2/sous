@@ -20,7 +20,7 @@ const FULL = {
   cookMinutes: 30,
   ingredientSections: [
     { items: [{ item: 'leeks', quantity: 3 }, { item: 'potatoes', quantity: 500, unit: 'g', note: 'peeled' }] },
-    { name: 'To serve', items: [{ item: 'crème fraîche', unit: '' }] },
+    { name: 'To serve', items: [{ item: 'crème fraîche', unit: '' }, { item: 'chives', optional: true }] },
   ],
   steps: [{ text: 'Sweat the leeks.' }, { text: 'Add potatoes and stock; simmer.' }],
   tags: ['soup', ' soup', 'vegetarian'],
@@ -41,7 +41,18 @@ describe('validateNewRecipe', () => {
     expect(result.recipe.title).toBe('Leek and potato soup');
     expect(result.recipe.tags).toEqual(['soup', 'vegetarian']);
     expect(result.recipe.lang).toBe('en');
-    expect(result.recipe.ingredientSections[1]).toEqual({ name: 'To serve', items: [{ item: 'crème fraîche' }] });
+    expect(result.recipe.ingredientSections[1]).toEqual({
+      name: 'To serve',
+      items: [{ item: 'crème fraîche' }, { item: 'chives', optional: true }],
+    });
+  });
+
+  it('stores an ingredient optional flag only as true and rejects a non-boolean', () => {
+    const withOptional = (optional: unknown) =>
+      validateNewRecipe({ ...FULL, ingredientSections: [{ items: [{ item: 'chives', optional }] }] });
+    const off = withOptional(false);
+    expect(off.ok && off.recipe.ingredientSections[0].items[0]).toEqual({ item: 'chives' });
+    expect(errorsOf(withOptional('yes'))).toEqual(['ingredientSections[0].items[0].optional']);
   });
 
   it('every accepted payload passes the push validator and the client shape check', () => {

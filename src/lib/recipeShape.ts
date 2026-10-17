@@ -29,6 +29,7 @@ function normalizeIngredient(item: unknown): Ingredient | undefined {
   if (unit !== undefined) result.unit = unit;
   const note = nonEmptyString(item.note);
   if (note !== undefined) result.note = note;
+  if (item.optional === true) result.optional = true;
   return result;
 }
 
@@ -111,6 +112,7 @@ function isValidIngredient(item: unknown): item is Ingredient {
   if ('quantity' in item && finiteNumber(item.quantity) === undefined) return false;
   if ('unit' in item && typeof item.unit !== 'string') return false;
   if ('note' in item && typeof item.note !== 'string') return false;
+  // A malformed `optional` reads as required; compactRecipe drops it.
   return true;
 }
 

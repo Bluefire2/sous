@@ -134,6 +134,14 @@ describe('recipeToText', () => {
     expect(text).toContain('Ingredients\nDough\n- 500 g flour');
   });
 
+  it('labels an optional ingredient in the UI language', () => {
+    const optional = recipe({
+      ingredientSections: [{ items: [{ item: 'chili flakes', optional: true }, { item: 'salt' }] }],
+    });
+    expect(recipeToText(optional, 'en', tFor('en'))).toContain('- chili flakes · optional\n- salt');
+    expect(recipeToText(optional, 'uk', tFor('uk'))).toContain('- chili flakes · за бажанням');
+  });
+
   it('keeps the base quantities whatever servings a cook scaled to', () => {
     // The formatter has no servings input: the text is always the recipe as written.
     const text = recipeToText(recipe({ servings: 2 }), 'en', tFor('en'));

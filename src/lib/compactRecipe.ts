@@ -3,7 +3,31 @@ import { compactImportCheck } from './importCheck';
 import { compactGalleryPhotoIds } from './recipePhotos';
 import { compactSavedFrom } from './recipeSavedFrom';
 import { compactVariantOf } from './recipeVariant';
-import type { Recipe } from './types';
+import type { IngredientSection, Recipe } from './types';
+
+/**
+ * `optional` is stored only as `true`, so any other value (`false` from a
+ * backup, or a malformed one) is dropped. Unchanged sections keep their
+ * identity, so a clean recipe compacts to the same array.
+ */
+function compactIngredientSections(sections: IngredientSection[]): IngredientSection[] {
+  let changed = false;
+  const next = sections.map((section) => {
+    if (!section.items.some((ing) => 'optional' in ing && ing.optional !== true)) {
+      return section;
+    }
+    changed = true;
+    return {
+      ...section,
+      items: section.items.map((ing) => {
+        if (!('optional' in ing) || ing.optional === true) return ing;
+        const { optional: _dropped, ...rest } = ing;
+        return rest;
+      }),
+    };
+  });
+  return changed ? next : sections;
+}
 
 /**
  * `put` replaces the whole record, so an explicit `undefined` would sit in
@@ -17,7 +41,7 @@ export function compactRecipe(recipe: Recipe): Recipe {
     updatedAt: recipe.updatedAt,
     title: recipe.title,
     servings: recipe.servings,
-    ingredientSections: recipe.ingredientSections,
+    ingredientSections: compactIngredientSections(recipe.ingredientSections),
     steps: recipe.steps,
     tags: recipe.tags,
   };

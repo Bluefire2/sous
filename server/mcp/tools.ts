@@ -202,6 +202,10 @@ const ingredientSchema: JsonSchema = {
     quantity: { type: 'number', exclusiveMinimum: 0, description: 'Amount as a number, e.g. 1.5' },
     unit: { type: 'string', maxLength: RECIPE_LIMITS.unit, description: 'e.g. "g", "cup", "tbsp"' },
     note: { type: 'string', maxLength: RECIPE_LIMITS.note, description: 'e.g. "finely chopped"' },
+    optional: {
+      type: 'boolean',
+      description: 'true when the recipe works without this ingredient; leave "optional" out of the note. Omit otherwise.',
+    },
   },
   required: ['item'],
   additionalProperties: false,

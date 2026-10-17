@@ -52,6 +52,8 @@ export interface TranslatableIngredient {
   unit?: string;
   item: string;
   note?: string;
+  /** Structure, not text: copied through, never translated. */
+  optional?: boolean;
 }
 
 export interface TranslatableSection {
@@ -175,6 +177,9 @@ export function applyTranslation(
         if (item.note !== undefined) {
           nextItem.note = translated(byId, noteId(sectionIndex, itemIndex), item.note);
         }
+        if (item.optional === true) {
+          nextItem.optional = true;
+        }
         return nextItem;
       }),
     };
@@ -243,6 +248,9 @@ function compactIngredient(value: unknown): TranslatableIngredient | null {
   }
   if (note !== undefined) {
     item.note = note;
+  }
+  if (value.optional === true) {
+    item.optional = true;
   }
   return item;
 }

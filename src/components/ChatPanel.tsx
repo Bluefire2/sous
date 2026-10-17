@@ -36,6 +36,7 @@ function ingredientLine(
   ing: Ingredient,
   locale: ReturnType<typeof useLocale>,
   labelUnit: (token: string) => string,
+  optionalLabel: string,
 ): string {
   const parts = [
     ing.quantity !== undefined ? formatQuantity(ing.quantity, locale) : null,
@@ -43,20 +44,23 @@ function ingredientLine(
     ing.item,
   ].filter(Boolean);
   const base = parts.join(' ');
-  return ing.note ? `${base} (${ing.note})` : base;
+  const line = ing.note ? `${base} (${ing.note})` : base;
+  // Part of the line so flipping the flag shows up in the diff as a changed row.
+  return ing.optional === true ? `${line} · ${optionalLabel}` : line;
 }
 
 function recipeLines(
   r: Recipe | RecipeDraft,
   locale: ReturnType<typeof useLocale>,
   labelUnit: (token: string) => string,
+  optionalLabel: string,
 ): {
   ingredients: string[];
   steps: string[];
 } {
   return {
     ingredients: r.ingredientSections.flatMap((s) =>
-      s.items.map((item) => ingredientLine(item, locale, labelUnit)),
+      s.items.map((item) => ingredientLine(item, locale, labelUnit, optionalLabel)),
     ),
     steps: r.steps.map((s) => s.text),
   };
@@ -117,8 +121,9 @@ function ProposalCard({
   }
 
   const labelUnit = (token: string) => unitLabel(token, t);
-  const before = recipeLines(recipe, locale, labelUnit);
-  const after = recipeLines(proposal, locale, labelUnit);
+  const optionalLabel = t('recipe.optionalIngredient');
+  const before = recipeLines(recipe, locale, labelUnit, optionalLabel);
+  const after = recipeLines(proposal, locale, labelUnit, optionalLabel);
   const removedIngredients = before.ingredients.filter(
     (l) => !after.ingredients.includes(l),
   );
